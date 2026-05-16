@@ -1,0 +1,18 @@
+## Interface: 120005
+## Title: BawrSpam
+## Notes: Personal chat-spam filter with recoverable history.
+## Author: Royaleint
+## Version: 1.0.0
+## SavedVariables: BawrSpamDB
+
+embeds.xml
+DB.lua
+Cleanse.lua
+PatternData.lua
+Patterns.lua
+Scoring.lua
+Trust.lua
+Suppression.lua
+History.lua
+ChatScanner.lua
+Init.lua

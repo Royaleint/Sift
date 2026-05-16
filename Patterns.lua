@@ -34,7 +34,7 @@ function Patterns._InjectDataForTest(data)
 end
 
 function Patterns:LoadOnInit()
-  if not _data then return end
+  if not _data then return false end
   assert(_data.version == 1, "PatternData version mismatch: expected 1, got " .. tostring(_data.version))
   for i, entry in ipairs(_data.entries) do
     _compiled[i] = {
@@ -44,6 +44,7 @@ function Patterns:LoadOnInit()
       pattern  = _decode(entry.e, i, _data.seedLow, _data.seedHigh),
     }
   end
+  return true
 end
 
 function Patterns:Match(cleansedText)
