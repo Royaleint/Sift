@@ -142,6 +142,58 @@ function Cleanse._Stage5_StyledAlnum(text)
   end)
 end
 
+-- Stage 6: in-word leetspeak via single-pass character loop.
+-- Each candidate leet char gets substituted only if BOTH neighbors are ASCII letters.
+-- The loop never revisits a position, so overlapping substitutions all fire correctly.
+Cleanse._leetMap = {
+  ["0"] = "o", ["1"] = "l", ["3"] = "e", ["4"] = "a", ["5"] = "s",
+  ["7"] = "t", ["8"] = "b", ["@"] = "a", ["$"] = "s",
+}
+local function _isAsciiLetter(byte)
+  return (byte >= 0x41 and byte <= 0x5A) or (byte >= 0x61 and byte <= 0x7A)
+end
+function Cleanse._Stage6_Leetspeak(text)
+  local n = #text
+  if n < 3 then return text end
+  local out = {}
+  for i = 1, n do
+    local c = string.sub(text, i, i)
+    local sub = Cleanse._leetMap[c]
+    if sub and i > 1 and i < n then
+      local prev = string.byte(text, i - 1)
+      local next_ = string.byte(text, i + 1)
+      if _isAsciiLetter(prev) and _isAsciiLetter(next_) then
+        out[#out + 1] = sub
+      else
+        out[#out + 1] = c
+      end
+    else
+      out[#out + 1] = c
+    end
+  end
+  return table.concat(out)
+end
+
+-- Stage 7: lowercase (ASCII-only post-stages-4-5).
+function Cleanse._Stage7_Lowercase(text)
+  return string.lower(text)
+end
+
+-- Stage 8: run-length collapse. "goooold" → "gold".
+-- Lua 5.1 patterns disallow quantifiers on back-references, so iterate (.)%1 to fixed point.
+function Cleanse._Stage8_RunLength(text)
+  local n
+  repeat
+    text, n = string.gsub(text, "(.)%1", "%1")
+  until n == 0
+  return text
+end
+
+-- Stage 9: symbol / whitespace strip.
+function Cleanse._Stage9_Symbols(text)
+  return (string.gsub(text, "[%*%-<>%(%)\"!%?=`'_%+#%%%^&;:~{}%[%]%s/\\|,.@]", ""))
+end
+
 -- Dual-mode export. MUST be the final statement so WoW's chunk loader gets the table as the
 -- return value when running standalone (build tool) AND attaches to NS.Cleanse when loaded
 -- via TOC. Smoke-test this dual-mode behavior in BSP-002 when the addon first loads in WoW.
