@@ -1,10 +1,10 @@
 local _, NS = ...
 local HistoryPanel = {}
 
-local DEFAULT_PANEL_WIDTH  = 800
-local DEFAULT_PANEL_HEIGHT = 500
-local MIN_PANEL_WIDTH      = 600
-local MIN_PANEL_HEIGHT     = 400
+local DEFAULT_PANEL_WIDTH  = 820
+local DEFAULT_PANEL_HEIGHT = 540
+local MIN_PANEL_WIDTH      = 720
+local MIN_PANEL_HEIGHT     = 500
 
 local LIST_ROW_HEIGHT = 36
 local LIST_MAX_ROWS   = 12
