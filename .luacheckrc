@@ -10,6 +10,7 @@ globals = {
     "BawrSpamConfigDialog",
     "BawrSpamConfigOptionsPanel",
     "BawrSpamContextMenu",
+    "BawrSpamHistoryListScroll",
     -- Slash registration
     "SlashCmdList",
     "SLASH_BAWRSPAM1",

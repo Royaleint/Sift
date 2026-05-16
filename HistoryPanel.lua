@@ -815,8 +815,43 @@ SelectEntry = function(id)
 end
 
 local function CreateListPane()
-  local scroll = CreateFrame("ScrollFrame", nil, listPane, "FauxScrollFrameTemplate")
-  scroll:SetPoint("TOPLEFT",     listPane, "TOPLEFT",     0,   0)
+  -- Column-header strip at the very top of the list pane.
+  local header = CreateFrame("Frame", nil, listPane)
+  header:SetHeight(18)
+  header:SetPoint("TOPLEFT",  listPane, "TOPLEFT",  0, 0)
+  header:SetPoint("TOPRIGHT", listPane, "TOPRIGHT", 0, 0)
+  listPane.columnHeader = header
+
+  header.timeLabel = header:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  header.timeLabel:SetPoint("LEFT", header, "LEFT", 10, 0)
+  header.timeLabel:SetWidth(36)
+  header.timeLabel:SetJustifyH("CENTER")
+  header.timeLabel:SetText("Time")
+
+  header.senderLabel = header:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  header.senderLabel:SetPoint("LEFT",  header.timeLabel, "RIGHT",  4, 0)
+  header.senderLabel:SetPoint("RIGHT", header,           "RIGHT", -94, 0)
+  header.senderLabel:SetJustifyH("CENTER")
+  header.senderLabel:SetText("Sender")
+
+  header.badgeLabel = header:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  header.badgeLabel:SetPoint("RIGHT", header, "RIGHT", -34, 0)
+  header.badgeLabel:SetWidth(54)
+  header.badgeLabel:SetJustifyH("CENTER")
+  header.badgeLabel:SetText("Category")
+
+  header.scoreLabel = header:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  header.scoreLabel:SetPoint("RIGHT", header, "RIGHT", -4, 0)
+  header.scoreLabel:SetWidth(30)
+  header.scoreLabel:SetJustifyH("CENTER")
+  header.scoreLabel:SetText("Score")
+
+  -- ScrollFrame MUST be named for FauxScrollFrameTemplate to wire its
+  -- $parentScrollBar/etc. children correctly. Without a name, the template's
+  -- internal `_G[frame:GetName() .. "ScrollBar"]` lookup fails and rows stay
+  -- invisible until numItems > numToDisplay forces the path to recover.
+  local scroll = CreateFrame("ScrollFrame", "BawrSpamHistoryListScroll", listPane, "FauxScrollFrameTemplate")
+  scroll:SetPoint("TOPLEFT",     listPane, "TOPLEFT",     0, -18)
   scroll:SetPoint("BOTTOMRIGHT", listPane, "BOTTOMRIGHT", -SCROLLBAR_GUTTER, 18)
   scroll:SetScript("OnVerticalScroll", function(self, yOffset)
     FauxScrollFrame_OnVerticalScroll(self, yOffset, LIST_ROW_HEIGHT, RefreshList)
