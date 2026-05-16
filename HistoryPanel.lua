@@ -68,8 +68,10 @@ local SORT_LABELS = {
   sender = "Sender",
 }
 
-local DOUBLE_CLICK_WINDOW = 0.4
-local MAX_ORIGINAL_CHARS  = 800
+local DOUBLE_CLICK_WINDOW    = 0.4
+local MAX_ORIGINAL_CHARS     = 800
+local AUDIT_COLLAPSED_HEIGHT = 20
+local AUDIT_EXPANDED_HEIGHT  = 80
 
 local fallbackMenuFrame
 
@@ -503,6 +505,10 @@ end
 
 local function ToggleAudit()
   detailPane.auditExpanded = not detailPane.auditExpanded
+  if detailPane.audit then
+    detailPane.audit:SetHeight(
+      detailPane.auditExpanded and AUDIT_EXPANDED_HEIGHT or AUDIT_COLLAPSED_HEIGHT)
+  end
   if RefreshDetail then RefreshDetail() end
 end
 
@@ -1025,20 +1031,23 @@ local function CreateDetailPane()
   detailPane.sender = sender
   detailPane.sections.sender = sender
 
+  -- Audit toggle. Bottom-up anchored to sender.TOPLEFT so that growing the
+  -- audit Button's height pushes the breakdown (and the rest of the stack
+  -- above) UPWARD — keeping the body fully contained inside the audit frame
+  -- instead of overflowing into the sender section.
   local audit = CreateFrame("Button", nil, detailPane)
-  audit:SetHeight(20)
+  audit:SetHeight(AUDIT_COLLAPSED_HEIGHT)
   audit:SetPoint("BOTTOMLEFT",  sender, "TOPLEFT",  0, 4)
   audit:SetPoint("BOTTOMRIGHT", sender, "TOPRIGHT", 0, 4)
   audit.label = audit:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   audit.label:SetPoint("LEFT", audit, "LEFT", 0, 0)
   audit.label:SetText("Show audit details \226\150\182")
   audit:SetScript("OnClick", ToggleAudit)
-  -- Audit body sits inside the audit Button frame; when expanded it spills
-  -- visually upward over the breakdown but does not push other anchors.
   audit.body = audit:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  audit.body:SetPoint("TOPLEFT",  audit, "TOPLEFT",   0, -18)
-  audit.body:SetPoint("TOPRIGHT", audit, "TOPRIGHT",  0, -18)
+  audit.body:SetPoint("TOPLEFT",     audit, "TOPLEFT",     0, -18)
+  audit.body:SetPoint("BOTTOMRIGHT", audit, "BOTTOMRIGHT", 0,   2)
   audit.body:SetJustifyH("LEFT")
+  audit.body:SetWordWrap(true)
   audit.body:Hide()
   detailPane.audit = audit
   detailPane.auditExpanded = false
