@@ -25,7 +25,7 @@ local defaults = {
       filterBubbles = false,
       lfgScanEnabled = true,
       showMinimapButton = true,
-      historyMaxEntries = 1000,
+      historyMaxEntries = 300,
       devMode = false,
     },
   },

@@ -157,10 +157,18 @@ local function CreateBackdropFrame(parent)
     tile = true, tileSize = 16, edgeSize = 16,
     insets = { left = 4, right = 4, top = 4, bottom = 4 },
   })
+  f:SetBackdropColor(0.02, 0.02, 0.025, 0.96)
+  f:SetBackdropBorderColor(0.35, 0.36, 0.42, 1)
   f:SetFrameStrata("HIGH")
   f:SetClampedToScreen(true)
   f:Hide()
   return f
+end
+
+local function OpenConfigPanel()
+  if NS.ConfigPanel and NS.ConfigPanel.Open then
+    NS.ConfigPanel.Open("Detection")
+  end
 end
 
 local function CreateHeaderBar(parent)
@@ -179,6 +187,12 @@ local function CreateHeaderBar(parent)
   local title = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
   title:SetPoint("LEFT", header, "LEFT", 4, 0)
   title:SetText("BawrSpam — History")
+
+  local config = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+  config:SetSize(70, 22)
+  config:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -32, -5)
+  config:SetText("Config")
+  config:SetScript("OnClick", OpenConfigPanel)
 
   local close = CreateFrame("Button", nil, parent, "UIPanelCloseButton")
   close:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 2, -2)
@@ -1218,10 +1232,17 @@ local function RegisterMinimap()
     type  = "launcher",
     text  = "BawrSpam",
     icon  = "Interface\\Icons\\INV_Misc_Note_03",
-    OnClick = function() HistoryPanel.Toggle() end,
+    OnClick = function(_, button)
+      if button == "RightButton" then
+        OpenConfigPanel()
+      else
+        HistoryPanel.Toggle()
+      end
+    end,
     OnTooltipShow = function(tooltip)
       tooltip:AddLine("BawrSpam")
-      tooltip:AddLine("Click to toggle history.", 1, 1, 1)
+      tooltip:AddLine("Left-click to toggle history.", 1, 1, 1)
+      tooltip:AddLine("Right-click to open config.", 1, 1, 1)
     end,
   })
 

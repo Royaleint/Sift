@@ -38,7 +38,7 @@ local DEFAULT_SETTINGS = {
   antiSignalCap = -5,
   filterBubbles = false,
   lfgScanEnabled = true,
-  historyMaxEntries = 1000,
+  historyMaxEntries = 300,
   showMinimapButton = true,
   devMode = false,
 }
@@ -770,6 +770,9 @@ local function ParseImportText(text)
         exportedAt = tonumber(value)
       elseif key == "entry" then
         local fields = SplitPipeFields(value)
+        if fields and #fields == 5 then
+          fields[6] = ""
+        end
         if not fields or #fields ~= 6 then
           return nil, "Line " .. lineNumber .. " must have 6 entry fields."
         end
@@ -927,6 +930,8 @@ local function EnsureDialog()
       edgeSize = 16,
       insets = { left = 4, right = 4, top = 4, bottom = 4 },
     })
+    dialogFrame:SetBackdropColor(0.02, 0.02, 0.025, 0.96)
+    dialogFrame:SetBackdropBorderColor(0.35, 0.36, 0.42, 1)
   end
 
   dialogFrame.title = dialogFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -937,6 +942,7 @@ local function EnsureDialog()
   dialogFrame.close = CreateFrame("Button", nil, dialogFrame, "UIPanelCloseButton")
   dialogFrame.close:SetPoint("TOPRIGHT", dialogFrame, "TOPRIGHT", 0, 0)
   dialogFrame.close:SetScript("OnClick", CloseDialog)
+  dialogFrame.close:Hide()
 
   dialogFrame.status = dialogFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   dialogFrame.status:SetPoint("BOTTOMLEFT", dialogFrame, "BOTTOMLEFT", 18, 50)
@@ -974,6 +980,14 @@ local function ShowTextDialog(title, text, primaryLabel, primaryHandler)
   dialog.title:SetText(title)
   dialog.status:SetText("")
   dialog.primary:SetText(primaryLabel or "Close")
+  dialog.primary:ClearAllPoints()
+  if primaryHandler then
+    dialog.primary:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", -128, 16)
+    dialog.cancel:Show()
+  else
+    dialog.primary:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", -18, 16)
+    dialog.cancel:Hide()
+  end
   dialog.primary:SetScript("OnClick", function()
     if primaryHandler then
       primaryHandler(dialog.textValue or "")
@@ -981,6 +995,7 @@ local function ShowTextDialog(title, text, primaryLabel, primaryHandler)
       CloseDialog()
     end
   end)
+  dialog.close:Hide()
 
   local edit = AceGUI:Create("MultiLineEditBox")
   dialog.editWidget = edit
@@ -1210,8 +1225,10 @@ RenderAllowlist = function()
     listState.allowlistPage = 1
     ConfigPanel.ShowSection("Allowlist")
   end)
-  AddNativeButton("Export", CONTENT_PAD + 300, y + 6, 72, ConfigPanel.OpenExportDialog)
-  AddNativeButton("Import", CONTENT_PAD + 380, y + 6, 72, ConfigPanel.OpenImportDialog)
+  y = y - 34
+
+  AddNativeButton("Export", CONTENT_PAD, y + 6, 72, ConfigPanel.OpenExportDialog)
+  AddNativeButton("Import", CONTENT_PAD + 82, y + 6, 72, ConfigPanel.OpenImportDialog)
   y = y - 34
 
   AddText("Add from History", "GameFontNormalSmall", CONTENT_PAD, y + 2, 104)
@@ -1464,6 +1481,8 @@ local function CreateBackdropFrame(parent)
       edgeSize = 16,
       insets = { left = 4, right = 4, top = 4, bottom = 4 },
     })
+    f:SetBackdropColor(0.02, 0.02, 0.025, 0.96)
+    f:SetBackdropBorderColor(0.35, 0.36, 0.42, 1)
   end
   f:SetFrameStrata("HIGH")
   f:SetClampedToScreen(true)
