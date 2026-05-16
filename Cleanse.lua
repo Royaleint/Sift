@@ -194,6 +194,70 @@ function Cleanse._Stage9_Symbols(text)
   return (string.gsub(text, "[%*%-<>%(%)\"!%?=`'_%+#%%%^&;:~{}%[%]%s/\\|,.@]", ""))
 end
 
+-- Returns boolean. Flushes word state on any non-letter codepoint.
+local function _DetectMixedScript(text)
+  if not text or text == "" then return false end
+  local function scriptOf(cp)
+    if (cp >= 0x41 and cp <= 0x5A) or (cp >= 0x61 and cp <= 0x7A) then return "latin" end
+    if cp >= 0x0400 and cp <= 0x04FF then return "cyrillic" end
+    if cp >= 0x0370 and cp <= 0x03FF then return "greek" end
+    if cp >= 0x0590 and cp <= 0x05FF then return "hebrew" end
+    if cp >= 0x0600 and cp <= 0x06FF then return "arabic" end
+    return nil
+  end
+
+  local mixed = false
+  local wordHasLatin, wordHasOther = false, false
+  local function flushWord()
+    if wordHasLatin and wordHasOther then mixed = true end
+    wordHasLatin, wordHasOther = false, false
+  end
+
+  Cleanse._ScanCodepoints(text, function(cp)
+    local s = scriptOf(cp)
+    if not s then
+      flushWord()   -- any non-letter codepoint is a word boundary
+    elseif s == "latin" then
+      wordHasLatin = true
+    else
+      wordHasOther = true
+    end
+    return cp
+  end)
+  flushWord()
+  return mixed
+end
+
+function Cleanse.Analyze(text)
+  if type(text) ~= "string" then
+    return { normalized = "", signals = { mixedScript = false, containsItemLinks = false } }
+  end
+
+  local containsItemLinks = string.find(text, "|H", 1, true) ~= nil
+
+  text = Cleanse._Stage1_ItemLinks(text)
+  text = Cleanse._Stage2_FormatChars(text)
+  text = Cleanse._Stage3_CombiningMarks(text)
+
+  local mixedScript = _DetectMixedScript(text)
+
+  text = Cleanse._Stage4_Confusables(text)
+  text = Cleanse._Stage5_StyledAlnum(text)
+  text = Cleanse._Stage6_Leetspeak(text)
+  text = Cleanse._Stage7_Lowercase(text)
+  text = Cleanse._Stage8_RunLength(text)
+  text = Cleanse._Stage9_Symbols(text)
+
+  return {
+    normalized = text,
+    signals = { mixedScript = mixedScript, containsItemLinks = containsItemLinks },
+  }
+end
+
+function Cleanse.Text(text)
+  return Cleanse.Analyze(text).normalized
+end
+
 -- Dual-mode export. MUST be the final statement so WoW's chunk loader gets the table as the
 -- return value when running standalone (build tool) AND attaches to NS.Cleanse when loaded
 -- via TOC. Smoke-test this dual-mode behavior in BSP-002 when the addon first loads in WoW.
