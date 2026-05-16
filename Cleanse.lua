@@ -239,6 +239,8 @@ function Cleanse.Analyze(text)
   text = Cleanse._Stage2_FormatChars(text)
   text = Cleanse._Stage3_CombiningMarks(text)
 
+  -- mixedScript must run before Stage 4 (confusable fold collapses non-Latin to Latin,
+  -- erasing the signal).
   local mixedScript = _DetectMixedScript(text)
 
   text = Cleanse._Stage4_Confusables(text)
