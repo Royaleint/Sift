@@ -6,6 +6,9 @@ globals = {
     "BawrSpamDB",
     -- Named UI frames (require global for UISpecialFrames + Blizz close behavior)
     "BawrSpamHistoryFrame",
+    "BawrSpamConfigFrame",
+    "BawrSpamConfigDialog",
+    "BawrSpamConfigOptionsPanel",
     "BawrSpamContextMenu",
     -- Slash registration
     "SlashCmdList",
@@ -46,6 +49,11 @@ read_globals = {
     "StaticPopup_Show",
     "CLOSE",
     "MenuUtil",
+    "Settings",
+    "InterfaceOptions_AddCategory",
+    "InterfaceOptionsFrame",
+    "InterfaceOptionsFrame_OpenToCategory",
+    "HideUIPanel",
     "ChatFontNormal",
 
     -- WoW API (C_ namespaces)

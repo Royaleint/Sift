@@ -31,11 +31,15 @@ local function Initialize()
     NS.Trust.Initialize()
   end
 
-  if NS.HistoryPanel and NS.HistoryPanel.Initialize then
-    NS.HistoryPanel.Initialize()
-  end
+	if NS.HistoryPanel and NS.HistoryPanel.Initialize then
+		NS.HistoryPanel.Initialize()
+	end
 
-  initialized = true
+	if NS.ConfigPanel and NS.ConfigPanel.Initialize then
+		NS.ConfigPanel.Initialize()
+	end
+
+	initialized = true
 end
 
 local function InstallScanner()
@@ -51,7 +55,15 @@ local function ToggleHistory()
     NS.HistoryPanel.Toggle()
   else
     Print("history panel is unavailable.")
-  end
+	end
+end
+
+local function OpenConfig(section)
+	if NS.ConfigPanel and NS.ConfigPanel.Open then
+		NS.ConfigPanel.Open(section)
+	else
+		Print("config panel is unavailable.")
+	end
 end
 
 local function RunSyntheticTest(message)
@@ -80,21 +92,115 @@ local function RunSyntheticTest(message)
     "Player-9999-FFFFFFFF"
   )
 
-  Print("synthetic test " .. (blocked and "blocked" or "passed") .. ".")
+	Print("synthetic test " .. (blocked and "blocked" or "passed") .. ".")
+end
+
+local function NormalizeSender(value)
+	if type(value) ~= "string" then
+		return nil
+	end
+	value = string.gsub(value, "^%s+", "")
+	value = string.gsub(value, "%s+$", "")
+	if value == "" then
+		return nil
+	end
+	return string.lower(value)
+end
+
+local function ResolveHistorySender(nameRealm)
+	local target = NormalizeSender(nameRealm)
+	if not target or not NS.History or not NS.History.GetAll then
+		return nil
+	end
+
+	local records = NS.History.GetAll()
+	for i = 1, #records do
+		local record = records[i]
+		local label = record.name or ""
+		if record.realm and record.realm ~= "" then
+			label = label .. "-" .. record.realm
+		end
+		if NormalizeSender(label) == target and record.guid then
+			return record.guid, record.name, record.realm
+		end
+	end
+	return nil
+end
+
+local function AllowFromHistory(rest)
+	local guid, name, realm = ResolveHistorySender(rest)
+	if not guid then
+		Print("allow requires a sender from History, formatted as Name-Realm.")
+		return
+	end
+
+	if NS.Trust and NS.Trust.AddAllowlist and NS.Trust.AddAllowlist(guid, name, realm, "manual") then
+		Print("allowlisted " .. tostring(name or rest) .. ".")
+	else
+		Print("sender is already allowlisted or cannot be allowlisted.")
+	end
+end
+
+local function OpenExport()
+	if NS.ConfigPanel and NS.ConfigPanel.OpenExportDialog then
+		NS.ConfigPanel.OpenExportDialog()
+	else
+		OpenConfig("Allowlist")
+	end
+end
+
+local function OpenImport()
+	if NS.ConfigPanel and NS.ConfigPanel.OpenImportDialog then
+		NS.ConfigPanel.OpenImportDialog()
+	else
+		OpenConfig("Allowlist")
+	end
+end
+
+local function ConfirmClearHistory()
+	if NS.ConfigPanel and NS.ConfigPanel.ConfirmClearHistory then
+		NS.ConfigPanel.ConfirmClearHistory()
+	else
+		Print("config panel is unavailable.")
+	end
+end
+
+local function ConfirmClearBlocked()
+	if NS.ConfigPanel and NS.ConfigPanel.ConfirmClearBlocked then
+		NS.ConfigPanel.ConfirmClearBlocked()
+	else
+		Print("config panel is unavailable.")
+	end
+end
+
+local COMMANDS = {
+	[""] = function() ToggleHistory() end,
+	history = function() ToggleHistory() end,
+	config = function() OpenConfig("Detection") end,
+	options = function() OpenConfig("Detection") end,
+	allow = AllowFromHistory,
+	export = OpenExport,
+	import = OpenImport,
+	clearhistory = ConfirmClearHistory,
+	clearblocked = ConfirmClearBlocked,
+	test = RunSyntheticTest,
+}
+
+local function PrintUsage()
+	Print("usage: /bawrspam [history|config|options|allow|export|import|clearhistory|clearblocked|test]")
 end
 
 local function SlashHandler(msg)
-  msg = msg or ""
-  local command, rest = string.match(msg, "^(%S*)%s*(.-)%s*$")
-  command = string.lower(command or "")
+	msg = msg or ""
+	local command, rest = string.match(msg, "^(%S*)%s*(.-)%s*$")
+	command = string.lower(command or "")
 
-  if command == "" or command == "history" then
-    ToggleHistory()
-  elseif command == "test" then
-    RunSyntheticTest(rest)
-  else
-    Print("usage: /bawrspam | /bawrspam history")
-  end
+	local handler = COMMANDS[command]
+	if handler then
+		handler(rest)
+	else
+		PrintUsage()
+	end
 end
 
 local frame = CreateFrame("Frame")

@@ -75,6 +75,7 @@ local listPane
 local detailPane
 local sizeDirty
 local minimapLDB
+local minimapOptions
 local filterState
 local sortMode
 local selectedEntryId
@@ -93,12 +94,16 @@ local function DefaultFilterState()
 end
 
 local function GetCharStore()
-  local db = NS.DB and NS.DB.db
-  if not db or not db.char then return nil end
-  if not db.char.historyPanel then
+	local db = NS.DB and NS.DB.db
+	if not db or not db.char then return nil end
+	if not db.char.historyPanel then
     db.char.historyPanel = {}
   end
-  return db.char.historyPanel
+	return db.char.historyPanel
+end
+
+local function GetSettings()
+	return NS.DB and NS.DB.GetSettings and NS.DB.GetSettings() or {}
 end
 
 local function SavePosition()
@@ -119,7 +124,7 @@ local function SaveSize()
 end
 
 local function ApplyStoredGeometry()
-  local store = GetCharStore() or {}
+	local store = GetCharStore() or {}
 
   local width  = store.width  or DEFAULT_PANEL_WIDTH
   local height = store.height or DEFAULT_PANEL_HEIGHT
@@ -132,7 +137,16 @@ local function ApplyStoredGeometry()
     frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", store.x, store.y)
   else
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-  end
+	end
+end
+
+local function ClearStoredGeometry()
+	local store = GetCharStore()
+	if not store then return end
+	store.x = nil
+	store.y = nil
+	store.width = nil
+	store.height = nil
 end
 
 local function CreateBackdropFrame(parent)
@@ -1196,9 +1210,9 @@ local function BuildFrame()
 end
 
 local function RegisterMinimap()
-  local LDB     = LibStub and LibStub("LibDataBroker-1.1", true)
-  local LDBIcon = LibStub and LibStub("LibDBIcon-1.0",      true)
-  if not LDB or not LDBIcon then return end
+	local LDB     = LibStub and LibStub("LibDataBroker-1.1", true)
+	local LDBIcon = LibStub and LibStub("LibDBIcon-1.0",      true)
+	if not LDB or not LDBIcon then return end
 
   minimapLDB = LDB:NewDataObject("BawrSpam", {
     type  = "launcher",
@@ -1211,8 +1225,10 @@ local function RegisterMinimap()
     end,
   })
 
-  local opts = { hide = false }
-  pcall(LDBIcon.Register, LDBIcon, "BawrSpam", minimapLDB, opts)
+	local settings = GetSettings()
+	minimapOptions = minimapOptions or {}
+	minimapOptions.hide = settings.showMinimapButton == false
+	pcall(LDBIcon.Register, LDBIcon, "BawrSpam", minimapLDB, minimapOptions)
 end
 
 function HistoryPanel.Initialize()
@@ -1243,7 +1259,49 @@ function HistoryPanel.Hide()
 end
 
 function HistoryPanel.IsShown()
-  return frame ~= nil and frame:IsShown()
+	return frame ~= nil and frame:IsShown()
+end
+
+function HistoryPanel.ResetPosition()
+	ClearStoredGeometry()
+	if frame then
+		frame:SetSize(DEFAULT_PANEL_WIDTH, DEFAULT_PANEL_HEIGHT)
+		frame:ClearAllPoints()
+		frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+		SaveSize()
+	end
+end
+
+function HistoryPanel.RefreshMinimap()
+	local LDBIcon = LibStub and LibStub("LibDBIcon-1.0", true)
+	if not LDBIcon then return end
+	if not minimapLDB then
+		RegisterMinimap()
+	end
+	if minimapOptions then
+		pcall(LDBIcon.Refresh, LDBIcon, "BawrSpam", minimapOptions)
+	end
+end
+
+function HistoryPanel.SetMinimapShown(shown)
+	local value = shown == true
+	if NS.DB and NS.DB.SetSetting then
+		NS.DB.SetSetting("showMinimapButton", value)
+	end
+
+	minimapOptions = minimapOptions or {}
+	minimapOptions.hide = not value
+	local LDBIcon = LibStub and LibStub("LibDBIcon-1.0", true)
+	if not LDBIcon then return end
+	if not minimapLDB then
+		RegisterMinimap()
+	end
+	if value then
+		pcall(LDBIcon.Show, LDBIcon, "BawrSpam")
+	else
+		pcall(LDBIcon.Hide, LDBIcon, "BawrSpam")
+	end
+	HistoryPanel.RefreshMinimap()
 end
 
 NS.HistoryPanel = HistoryPanel

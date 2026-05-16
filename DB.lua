@@ -24,6 +24,7 @@ local defaults = {
       antiSignalCap = -5,
       filterBubbles = false,
       lfgScanEnabled = true,
+      showMinimapButton = true,
       historyMaxEntries = 1000,
       devMode = false,
     },
@@ -52,11 +53,44 @@ local function DevLog(message)
   end
 end
 
-local function ClampHistoryMax(settings)
-  local value = tonumber(settings.historyMaxEntries) or defaults.global.settings.historyMaxEntries
-  if value < 100 then value = 100 end
-  if value > 5000 then value = 5000 end
-  settings.historyMaxEntries = value
+local function CopyDefaults(source)
+  local copy = {}
+  for key, value in pairs(source) do
+    if type(value) == "table" then
+      copy[key] = CopyDefaults(value)
+    else
+      copy[key] = value
+    end
+  end
+  return copy
+end
+
+local function ClampNumber(value, minValue, maxValue, fallback)
+  value = tonumber(value) or fallback
+  if value < minValue then value = minValue end
+  if value > maxValue then value = maxValue end
+  return value
+end
+
+local function RepairSettings(settings)
+  local defaultSettings = defaults.global.settings
+  settings.threshold = ClampNumber(settings.threshold, 1, 10, defaultSettings.threshold)
+  settings.mixedScriptWeight = ClampNumber(settings.mixedScriptWeight, 0, 3, defaultSettings.mixedScriptWeight)
+  settings.antiSignalCap = ClampNumber(settings.antiSignalCap, -10, -1, defaultSettings.antiSignalCap)
+  settings.historyMaxEntries = ClampNumber(settings.historyMaxEntries, 100, 5000, defaultSettings.historyMaxEntries)
+  settings.mixedScriptEnabled = settings.mixedScriptEnabled ~= false
+  settings.filterBubbles = settings.filterBubbles == true
+  settings.lfgScanEnabled = settings.lfgScanEnabled ~= false
+  settings.showMinimapButton = settings.showMinimapButton ~= false
+  settings.devMode = settings.devMode == true
+  settings.enabledCategories = type(settings.enabledCategories) == "table" and settings.enabledCategories or {}
+  for category, enabled in pairs(defaultSettings.enabledCategories) do
+    if settings.enabledCategories[category] == nil then
+      settings.enabledCategories[category] = enabled
+    else
+      settings.enabledCategories[category] = settings.enabledCategories[category] == true
+    end
+  end
 end
 
 local function RepairShape(db)
@@ -69,7 +103,7 @@ local function RepairShape(db)
   db.char.history = db.char.history or {}
   db.char.historyCursor = db.char.historyCursor or 0
   db.char.lastSeenVersion = db.char.lastSeenVersion or ADDON_VERSION
-  ClampHistoryMax(db.global.settings)
+  RepairSettings(db.global.settings)
 end
 
 local function ApplyMigrations(db)
@@ -114,6 +148,68 @@ end
 
 function DB.GetSettings()
   return DB.db and DB.db.global and DB.db.global.settings
+end
+
+function DB.SetSetting(key, value)
+  local settings = DB.GetSettings()
+  if not settings or type(key) ~= "string" then
+    return nil
+  end
+
+  if key == "threshold" then
+    settings.threshold = ClampNumber(value, 1, 10, defaults.global.settings.threshold)
+  elseif key == "mixedScriptWeight" then
+    settings.mixedScriptWeight = ClampNumber(value, 0, 3, defaults.global.settings.mixedScriptWeight)
+  elseif key == "antiSignalCap" then
+    settings.antiSignalCap = ClampNumber(value, -10, -1, defaults.global.settings.antiSignalCap)
+  elseif key == "historyMaxEntries" then
+    settings.historyMaxEntries = ClampNumber(value, 100, 5000, defaults.global.settings.historyMaxEntries)
+  elseif key == "enabledCategories" then
+    if type(value) ~= "table" then
+      return nil
+    end
+    settings.enabledCategories = {}
+    for category, defaultEnabled in pairs(defaults.global.settings.enabledCategories) do
+      local enabled = value[category]
+      if enabled == nil then
+        enabled = defaultEnabled
+      end
+      settings.enabledCategories[category] = enabled == true
+    end
+  elseif key == "mixedScriptEnabled" or key == "filterBubbles" or key == "lfgScanEnabled"
+    or key == "showMinimapButton" or key == "devMode" then
+    settings[key] = value == true
+  else
+    return nil
+  end
+
+  return settings[key]
+end
+
+function DB.SetCategoryEnabled(category, enabled)
+  local settings = DB.GetSettings()
+  if not settings or type(category) ~= "string" then
+    return nil
+  end
+
+  if defaults.global.settings.enabledCategories[category] == nil then
+    return nil
+  end
+
+  settings.enabledCategories = settings.enabledCategories or {}
+  settings.enabledCategories[category] = enabled == true
+  return settings.enabledCategories[category]
+end
+
+function DB.ResetSettings()
+  local global = DB.GetGlobal()
+  if not global then
+    return nil
+  end
+
+  global.settings = CopyDefaults(defaults.global.settings)
+  RepairSettings(global.settings)
+  return global.settings
 end
 
 function DB.IsDevMode()

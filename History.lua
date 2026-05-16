@@ -89,5 +89,39 @@ function History.MarkRestored(id)
   end
 end
 
+function History.Clear()
+  local char = GetChar()
+  if not char then
+    return 0
+  end
+
+  local history = char.history or {}
+  local count = #history
+  if type(wipe) == "function" then
+    wipe(history)
+  else
+    for index = #history, 1, -1 do
+      history[index] = nil
+    end
+  end
+  char.history = history
+  return count
+end
+
+function History.TrimToMax(maxEntries)
+  local char = GetChar()
+  local history = char and char.history or {}
+  local max = tonumber(maxEntries) or MaxEntries()
+  if max < 100 then max = 100 end
+  if max > 5000 then max = 5000 end
+
+  local removed = 0
+  while #history > max do
+    table.remove(history, 1)
+    removed = removed + 1
+  end
+  return removed
+end
+
 NS.History = History
 return History
