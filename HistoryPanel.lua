@@ -771,8 +771,10 @@ RefreshList = function()
   if not listPane or not listPane.scroll then return end
   local scroll = listPane.scroll
 
-  currentEntriesSnapshot = GetEntries() or {}
-  local entries = ApplyFilterAndSort(currentEntriesSnapshot)
+  local allEntries = GetEntries() or {}
+  currentEntriesSnapshot = allEntries
+  local entries = ApplyFilterAndSort(allEntries) or {}
+  local totalEntries = #allEntries
   local visibleRows = VisibleRowCount(scroll)
   FauxScrollFrame_Update(scroll, #entries, visibleRows, LIST_ROW_HEIGHT)
   local offset = FauxScrollFrame_GetOffset(scroll)
@@ -780,7 +782,7 @@ RefreshList = function()
   if NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode() then
     print(string.format(
       "|cff33ff99BawrSpam|r RefreshList: total=%d filtered=%d visibleRows=%d offset=%d outcome=%s",
-      #currentEntriesSnapshot, #entries, visibleRows, offset,
+      totalEntries, #entries, visibleRows, offset,
       tostring(filterState and filterState.outcome)))
   end
 
