@@ -95,6 +95,53 @@ function Cleanse._Stage3_CombiningMarks(text)
   end)
 end
 
+-- Seed confusables. Keys: source codepoint; Values: ASCII target codepoint.
+Cleanse._confusables = {
+  -- Cyrillic small
+  [0x0430] = 0x61, [0x0435] = 0x65, [0x043E] = 0x6F, [0x0440] = 0x70,
+  [0x0441] = 0x63, [0x0443] = 0x79, [0x0445] = 0x78,
+  -- Cyrillic capital
+  [0x0410] = 0x41, [0x0412] = 0x42, [0x0415] = 0x45, [0x041A] = 0x4B,
+  [0x041C] = 0x4D, [0x041D] = 0x48, [0x041E] = 0x4F, [0x0420] = 0x50,
+  [0x0421] = 0x43, [0x0422] = 0x54, [0x0425] = 0x58,
+  -- Greek small
+  [0x03B1] = 0x61, [0x03B5] = 0x65, [0x03B9] = 0x69, [0x03BD] = 0x76,
+  [0x03BF] = 0x6F, [0x03C1] = 0x70,
+  -- Math symbols that visually equal ASCII
+  [0x2044] = 0x2F,  -- ⁄ → /
+}
+
+function Cleanse._Stage4_Confusables(text)
+  return Cleanse._ScanCodepoints(text, function(cp)
+    return Cleanse._confusables[cp] or cp
+  end)
+end
+
+-- Stage 5: explicit alphanumeric block ranges only. Each branch maps one contiguous block
+-- whose semantics we've verified. Blocks with reserved holes (Italic, Bold-Italic, etc.)
+-- are deferred to UTR #39 full-table generation in BSP-001.x.
+function Cleanse._Stage5_StyledAlnum(text)
+  return Cleanse._ScanCodepoints(text, function(cp)
+    -- Math Bold A-Z (no holes): U+1D400-U+1D419
+    if cp >= 0x1D400 and cp <= 0x1D419 then return 0x41 + (cp - 0x1D400) end
+    -- Math Bold a-z (no holes): U+1D41A-U+1D433
+    if cp >= 0x1D41A and cp <= 0x1D433 then return 0x61 + (cp - 0x1D41A) end
+    -- Math Bold digits 0-9: U+1D7CE-U+1D7D7
+    if cp >= 0x1D7CE and cp <= 0x1D7D7 then return 0x30 + (cp - 0x1D7CE) end
+    -- Fullwidth A-Z: U+FF21-U+FF3A
+    if cp >= 0xFF21 and cp <= 0xFF3A then return 0x41 + (cp - 0xFF21) end
+    -- Fullwidth a-z: U+FF41-U+FF5A
+    if cp >= 0xFF41 and cp <= 0xFF5A then return 0x61 + (cp - 0xFF41) end
+    -- Fullwidth 0-9: U+FF10-U+FF19
+    if cp >= 0xFF10 and cp <= 0xFF19 then return 0x30 + (cp - 0xFF10) end
+    -- Enclosed Ⓐ-Ⓩ: U+24B6-U+24CF
+    if cp >= 0x24B6 and cp <= 0x24CF then return 0x41 + (cp - 0x24B6) end
+    -- Enclosed ⓐ-ⓩ: U+24D0-U+24E9
+    if cp >= 0x24D0 and cp <= 0x24E9 then return 0x61 + (cp - 0x24D0) end
+    return cp
+  end)
+end
+
 -- Dual-mode export. MUST be the final statement so WoW's chunk loader gets the table as the
 -- return value when running standalone (build tool) AND attaches to NS.Cleanse when loaded
 -- via TOC. Smoke-test this dual-mode behavior in BSP-002 when the addon first loads in WoW.
