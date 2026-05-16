@@ -190,8 +190,8 @@ end
 
 local function CreatePanes(parent)
   local list = CreateFrame("Frame", nil, parent)
-  list:SetPoint("TOPLEFT",    parent, "TOPLEFT",    6, -72)
-  list:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 6,   6)
+  list:SetPoint("TOPLEFT",    parent, "TOPLEFT",    6, -104)
+  list:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 6,    6)
   list:SetWidth(LIST_PANE_WIDTH)
 
   local detail = CreateFrame("Frame", nil, parent)
@@ -483,6 +483,10 @@ end
 local RefreshList, SelectEntry, UpdateSenderFilterChip
 
 local function PerformRestore(entry)
+  if NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode() then
+    print("|cff33ff99BawrSpam|r PerformRestore: id=" .. tostring(entry and entry.id)
+      .. " outcome=" .. tostring(entry and entry.outcome))
+  end
   if not entry or entry.outcome == "restored" then return end
   if NS.History and NS.History.MarkRestored then
     NS.History.MarkRestored(entry.id)
@@ -502,6 +506,10 @@ local function PerformRestore(entry)
 end
 
 local function PerformAlwaysAllow(entry)
+  if NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode() then
+    print("|cff33ff99BawrSpam|r PerformAlwaysAllow: id=" .. tostring(entry and entry.id)
+      .. " guid=" .. tostring(entry and entry.guid))
+  end
   if not entry or not entry.guid or entry.guid == "" then return end
   if NS.Trust and NS.Trust.AddAllowlist then
     NS.Trust.AddAllowlist(entry.guid, entry.name, entry.realm, "history")
@@ -870,54 +878,21 @@ local function CreateDetailPane()
   detailPane.header = hdr
   detailPane.sections.header = hdr
 
-  local orig = CreateFrame("Frame", nil, detailPane)
-  orig:SetHeight(90)
-  orig:SetPoint("TOPLEFT",  hdr, "BOTTOMLEFT",  0, -8)
-  orig:SetPoint("TOPRIGHT", hdr, "BOTTOMRIGHT", 0, -8)
-  orig.label = orig:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-  orig.label:SetPoint("TOPLEFT", orig, "TOPLEFT", 0, 0)
-  orig.label:SetText("|cff58a0ffORIGINAL MESSAGE|r")
-  orig.body = orig:CreateFontString(nil, "OVERLAY", "ChatFontNormal")
-  orig.body:SetPoint("TOPLEFT",  orig, "TOPLEFT",   8, -16)
-  orig.body:SetPoint("TOPRIGHT", orig, "TOPRIGHT", -8, -16)
-  orig.body:SetJustifyH("LEFT")
-  orig.body:SetJustifyV("TOP")
-  orig.body:SetNonSpaceWrap(true)
-  detailPane.original = orig
-  detailPane.sections.original = orig
+  -- Bottom-up layout: actions pin to detailPane bottom, sender/audit/breakdown
+  -- stack upward, and the original-message section flexes to fill whatever
+  -- remains between the header (top) and the breakdown (bottom of the stack).
+  -- This keeps the layout correct across all panel heights and prevents
+  -- sender/actions from overlapping at MIN_PANEL_HEIGHT.
 
-  local brk = CreateFrame("Frame", nil, detailPane)
-  brk:SetHeight(130)
-  brk:SetPoint("TOPLEFT",  orig, "BOTTOMLEFT",  0, -8)
-  brk:SetPoint("TOPRIGHT", orig, "BOTTOMRIGHT", 0, -8)
-  brk.label = brk:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-  brk.label:SetPoint("TOPLEFT", brk, "TOPLEFT", 0, 0)
-  brk.label:SetText("|cffffbb33WHY BLOCKED \226\128\148 SCORE BREAKDOWN|r")
-  brk.rows = {}
-  detailPane.breakdown = brk
-  detailPane.sections.breakdown = brk
-
-  local audit = CreateFrame("Button", nil, detailPane)
-  audit:SetHeight(20)
-  audit:SetPoint("TOPLEFT",  brk, "BOTTOMLEFT",  0, -8)
-  audit:SetPoint("TOPRIGHT", brk, "BOTTOMRIGHT", 0, -8)
-  audit.label = audit:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-  audit.label:SetPoint("LEFT", audit, "LEFT", 0, 0)
-  audit.label:SetText("Show audit details \226\150\182")
-  audit:SetScript("OnClick", ToggleAudit)
-  audit.body = audit:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  audit.body:SetPoint("TOPLEFT",  audit, "BOTTOMLEFT",  0, -4)
-  audit.body:SetPoint("TOPRIGHT", audit, "BOTTOMRIGHT", 0, -4)
-  audit.body:SetJustifyH("LEFT")
-  audit.body:Hide()
-  detailPane.audit = audit
-  detailPane.auditExpanded = false
-  detailPane.sections.audit = audit
+  local actions = CreateFrame("Frame", nil, detailPane)
+  actions:SetHeight(40)
+  actions:SetPoint("BOTTOMLEFT",  detailPane, "BOTTOMLEFT",  0, 0)
+  actions:SetPoint("BOTTOMRIGHT", detailPane, "BOTTOMRIGHT", 0, 0)
 
   local sender = CreateFrame("Frame", nil, detailPane)
   sender:SetHeight(36)
-  sender:SetPoint("TOPLEFT",  audit, "BOTTOMLEFT",  0, -32)
-  sender:SetPoint("TOPRIGHT", audit, "BOTTOMRIGHT", 0, -32)
+  sender:SetPoint("BOTTOMLEFT",  actions, "TOPLEFT",  0, 4)
+  sender:SetPoint("BOTTOMRIGHT", actions, "TOPRIGHT", 0, 4)
   sender.label = sender:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   sender.label:SetPoint("TOPLEFT", sender, "TOPLEFT", 0, 0)
   sender.label:SetText("|cff5ad080SENDER HISTORY|r")
@@ -926,10 +901,56 @@ local function CreateDetailPane()
   detailPane.sender = sender
   detailPane.sections.sender = sender
 
-  local actions = CreateFrame("Frame", nil, detailPane)
-  actions:SetHeight(40)
-  actions:SetPoint("BOTTOMLEFT",  detailPane, "BOTTOMLEFT",  0, 0)
-  actions:SetPoint("BOTTOMRIGHT", detailPane, "BOTTOMRIGHT", 0, 0)
+  local audit = CreateFrame("Button", nil, detailPane)
+  audit:SetHeight(20)
+  audit:SetPoint("BOTTOMLEFT",  sender, "TOPLEFT",  0, 4)
+  audit:SetPoint("BOTTOMRIGHT", sender, "TOPRIGHT", 0, 4)
+  audit.label = audit:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  audit.label:SetPoint("LEFT", audit, "LEFT", 0, 0)
+  audit.label:SetText("Show audit details \226\150\182")
+  audit:SetScript("OnClick", ToggleAudit)
+  -- Audit body sits inside the audit Button frame; when expanded it spills
+  -- visually upward over the breakdown but does not push other anchors.
+  audit.body = audit:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  audit.body:SetPoint("TOPLEFT",  audit, "TOPLEFT",   0, -18)
+  audit.body:SetPoint("TOPRIGHT", audit, "TOPRIGHT",  0, -18)
+  audit.body:SetJustifyH("LEFT")
+  audit.body:Hide()
+  detailPane.audit = audit
+  detailPane.auditExpanded = false
+  detailPane.sections.audit = audit
+
+  local brk = CreateFrame("Frame", nil, detailPane)
+  brk:SetHeight(130)
+  brk:SetPoint("BOTTOMLEFT",  audit, "TOPLEFT",  0, 8)
+  brk:SetPoint("BOTTOMRIGHT", audit, "TOPRIGHT", 0, 8)
+  brk.label = brk:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  brk.label:SetPoint("TOPLEFT", brk, "TOPLEFT", 0, 0)
+  brk.label:SetText("|cffffbb33WHY BLOCKED \226\128\148 SCORE BREAKDOWN|r")
+  brk.rows = {}
+  detailPane.breakdown = brk
+  detailPane.sections.breakdown = brk
+
+  local orig = CreateFrame("Frame", nil, detailPane)
+  -- Flex height: anchored TOP to header.BOTTOM and BOTTOM to breakdown.TOP
+  orig:SetPoint("TOPLEFT",     hdr, "BOTTOMLEFT",  0, -8)
+  orig:SetPoint("TOPRIGHT",    hdr, "BOTTOMRIGHT", 0, -8)
+  orig:SetPoint("BOTTOMLEFT",  brk, "TOPLEFT",     0, 8)
+  orig:SetPoint("BOTTOMRIGHT", brk, "TOPRIGHT",    0, 8)
+  orig.label = orig:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  orig.label:SetPoint("TOPLEFT", orig, "TOPLEFT", 0, 0)
+  orig.label:SetText("|cff58a0ffORIGINAL MESSAGE|r")
+  orig.body = orig:CreateFontString(nil, "OVERLAY", "ChatFontNormal")
+  orig.body:SetPoint("TOPLEFT",     orig, "TOPLEFT",      8, -16)
+  orig.body:SetPoint("TOPRIGHT",    orig, "TOPRIGHT",    -8, -16)
+  orig.body:SetPoint("BOTTOMLEFT",  orig, "BOTTOMLEFT",   8,   4)
+  orig.body:SetPoint("BOTTOMRIGHT", orig, "BOTTOMRIGHT", -8,   4)
+  orig.body:SetJustifyH("LEFT")
+  orig.body:SetJustifyV("TOP")
+  orig.body:SetNonSpaceWrap(true)
+  detailPane.original = orig
+  detailPane.sections.original = orig
+
   actions.btn1 = CreateFrame("Button", nil, actions, "UIPanelButtonTemplate")
   actions.btn1:SetSize(184, 24)
   actions.btn1:SetPoint("LEFT", actions, "LEFT", 0, 0)
@@ -956,13 +977,23 @@ local function UpdateChipVisual(chip, cat)
   end
 end
 
+local CHIP_WIDTHS = {
+  RMT        = 50,
+  Boosting   = 72,
+  Casino     = 60,
+  Phishing   = 72,
+  Commercial = 86,
+  Anti       = 50,
+}
+
 local function BuildCategoryChips(strip)
   local chips = {}
   local x = 0
   for _, cat in ipairs(CATEGORIES) do
     local chip = CreateFrame("Button", nil, strip, "UIPanelButtonTemplate")
-    chip:SetSize(48, 22)
-    chip:SetPoint("LEFT", strip, "LEFT", x, 0)
+    local w = CHIP_WIDTHS[cat] or 60
+    chip:SetSize(w, 22)
+    chip:SetPoint("TOPLEFT", strip, "TOPLEFT", x, 0)
     chip:SetText(cat)
     chip:SetScript("OnClick", function()
       filterState.categories[cat] = (filterState.categories[cat] == false)
@@ -971,13 +1002,13 @@ local function BuildCategoryChips(strip)
     end)
     UpdateChipVisual(chip, cat)
     chips[cat] = chip
-    x = x + 50
+    x = x + w + 4
   end
   strip.chips = chips
   return x
 end
 
-local function BuildAceGUIDropdown(parent, values, labels, current, width, anchorX, onChange)
+local function BuildAceGUIDropdown(parent, values, labels, current, width, anchorX, label, onChange)
   local AceGUI = LibStub and LibStub("AceGUI-3.0", true)
   if not AceGUI then return nil end
 
@@ -990,10 +1021,11 @@ local function BuildAceGUIDropdown(parent, values, labels, current, width, ancho
   end
   dd:SetList(list, values)
   dd:SetValue(current)
+  dd:SetLabel(label or "")
   dd:SetWidth(width)
   dd.frame:SetParent(parent)
   dd.frame:ClearAllPoints()
-  dd.frame:SetPoint("LEFT", parent, "LEFT", anchorX, 0)
+  dd.frame:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", anchorX, 0)
   dd.frame:Show()
   dd:SetCallback("OnValueChanged", function(_, _, value) onChange(value) end)
   return dd
@@ -1010,10 +1042,11 @@ local function BuildAceGUISortDropdown(parent, anchorX, onChange)
   for _, key in ipairs(SORT_VALUES) do list[key] = SORT_LABELS[key] end
   dd:SetList(list, SORT_VALUES)
   dd:SetValue(sortMode or "newest")
+  dd:SetLabel("Sort")
   dd:SetWidth(120)
   dd.frame:SetParent(parent)
   dd.frame:ClearAllPoints()
-  dd.frame:SetPoint("LEFT", parent, "LEFT", anchorX, 0)
+  dd.frame:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", anchorX, 0)
   dd.frame:Show()
   dd:SetCallback("OnValueChanged", function(_, _, value) onChange(value) end)
   return dd
@@ -1021,8 +1054,8 @@ end
 
 local function CreateSenderFilterChip()
   local chip = CreateFrame("Frame", nil, frame)
-  chip:SetPoint("TOPLEFT",  frame, "TOPLEFT",   8, -68)
-  chip:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, -68)
+  chip:SetPoint("TOPLEFT",  frame, "TOPLEFT",   8, -100)
+  chip:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, -100)
   chip:SetHeight(18)
   chip:Hide()
 
@@ -1045,58 +1078,62 @@ UpdateSenderFilterChip = function()
     chip.label:SetText("|cff58a0ffFiltering by:|r " .. FormatSender(filterState.senderFilter))
     chip:Show()
     listPane:ClearAllPoints()
-    listPane:SetPoint("TOPLEFT",    frame, "TOPLEFT",    6, -90)
-    listPane:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 6,   6)
+    listPane:SetPoint("TOPLEFT",    frame, "TOPLEFT",    6, -122)
+    listPane:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 6,    6)
   else
     chip:Hide()
     listPane:ClearAllPoints()
-    listPane:SetPoint("TOPLEFT",    frame, "TOPLEFT",    6, -72)
-    listPane:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 6,   6)
+    listPane:SetPoint("TOPLEFT",    frame, "TOPLEFT",    6, -104)
+    listPane:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 6,    6)
   end
 end
 
 local function CreateHeaderFilters()
+  -- Two-row filter strip: chips on top, labeled dropdowns + Refresh on bottom.
   local strip = CreateFrame("Frame", nil, frame)
-  strip:SetHeight(28)
+  strip:SetHeight(60)
   strip:SetPoint("TOPLEFT",  frame, "TOPLEFT",   8, -36)
   strip:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, -36)
   frame.filterStrip = strip
 
-  local nextX = BuildCategoryChips(strip)
-  nextX = nextX + 8
+  BuildCategoryChips(strip)
 
+  local ddX = 0
   strip.surfaceDD = BuildAceGUIDropdown(strip, SURFACE_VALUES, SURFACE_LABELS,
-    filterState.surface, 100, nextX,
+    filterState.surface, 100, ddX, "Surface",
     function(value)
       filterState.surface = value
       if RefreshList then RefreshList() end
     end)
-  if strip.surfaceDD then nextX = nextX + 104 end
+  if strip.surfaceDD then ddX = ddX + 110 end
 
   strip.timeDD = BuildAceGUIDropdown(strip, TIME_WINDOW_VALUES, nil,
-    filterState.timeWindow, 100, nextX,
+    filterState.timeWindow, 100, ddX, "Time window",
     function(value)
       filterState.timeWindow = value
       if RefreshList then RefreshList() end
     end)
-  if strip.timeDD then nextX = nextX + 104 end
+  if strip.timeDD then ddX = ddX + 110 end
 
   strip.outcomeDD = BuildAceGUIDropdown(strip, OUTCOME_VALUES, nil,
-    filterState.outcome, 100, nextX,
+    filterState.outcome, 100, ddX, "Outcome",
     function(value)
       filterState.outcome = value
       if RefreshList then RefreshList() end
     end)
-  if strip.outcomeDD then nextX = nextX + 104 end
+  if strip.outcomeDD then ddX = ddX + 110 end
 
-  strip.sortDD = BuildAceGUISortDropdown(strip, nextX, function(value)
+  strip.sortDD = BuildAceGUISortDropdown(strip, ddX, function(value)
     sortMode = value
+    if NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode() then
+      print("|cff33ff99BawrSpam|r sort=" .. tostring(value))
+    end
     if RefreshList then RefreshList() end
   end)
 
   local refresh = CreateFrame("Button", nil, strip, "UIPanelButtonTemplate")
   refresh:SetSize(70, 22)
-  refresh:SetPoint("RIGHT", strip, "RIGHT", 0, 0)
+  refresh:SetPoint("BOTTOMRIGHT", strip, "BOTTOMRIGHT", 0, 0)
   refresh:SetText("Refresh")
   refresh:SetScript("OnClick", function()
     if RefreshList then RefreshList() end
@@ -1123,7 +1160,10 @@ local function BuildFrame()
   CreateSenderFilterChip()
   UpdateSenderFilterChip()
 
-  frame:SetScript("OnSizeChanged", function() sizeDirty = true end)
+  frame:SetScript("OnSizeChanged", function()
+    sizeDirty = true
+    if RefreshList then RefreshList() end
+  end)
   frame:SetScript("OnHide", function()
     if sizeDirty then SaveSize() end
   end)
