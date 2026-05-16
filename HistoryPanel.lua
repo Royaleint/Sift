@@ -776,7 +776,12 @@ RefreshList = function()
   local entries = ApplyFilterAndSort(allEntries) or {}
   local totalEntries = #allEntries
   local visibleRows = VisibleRowCount(scroll)
-  FauxScrollFrame_Update(scroll, #entries, visibleRows, LIST_ROW_HEIGHT)
+  -- 11th positional `alwaysShowScrollBar = true` keeps the ScrollFrame visible
+  -- when numItems <= numToDisplay. Blizzard's FauxScrollFrame_Update otherwise
+  -- calls frame:Hide() in that branch (SecureScrollTemplates.lua:167), which
+  -- also hides every row child — that was the list-empty bug.
+  FauxScrollFrame_Update(scroll, #entries, visibleRows, LIST_ROW_HEIGHT,
+    nil, nil, nil, nil, nil, nil, true)
   local offset = FauxScrollFrame_GetOffset(scroll)
 
   if NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode() then
@@ -815,11 +820,13 @@ SelectEntry = function(id)
 end
 
 local function CreateListPane()
-  -- Column-header strip at the very top of the list pane.
+  -- Column-header strip at the very top of the list pane. Right anchor
+  -- subtracts SCROLLBAR_GUTTER so headers align with row column positions
+  -- (rows themselves are SCROLLBAR_GUTTER narrower than listPane).
   local header = CreateFrame("Frame", nil, listPane)
   header:SetHeight(18)
   header:SetPoint("TOPLEFT",  listPane, "TOPLEFT",  0, 0)
-  header:SetPoint("TOPRIGHT", listPane, "TOPRIGHT", 0, 0)
+  header:SetPoint("TOPRIGHT", listPane, "TOPRIGHT", -SCROLLBAR_GUTTER, 0)
   listPane.columnHeader = header
 
   header.timeLabel = header:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
