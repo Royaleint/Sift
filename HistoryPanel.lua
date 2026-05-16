@@ -476,8 +476,8 @@ local function RenderSenderHistory(entry)
   detailPane.sender.stats:SetText(string.format(
     "Total blocks: %d   \194\183   First seen: %s   \194\183   Last seen: %s",
     count,
-    firstSeen and date("%Y-%m-%d %H:%M", firstSeen) or "\226\128\148",
-    lastSeen  and date("%Y-%m-%d %H:%M", lastSeen)  or "\226\128\148"))
+    firstSeen and RelativeTime(firstSeen) or "\226\128\148",
+    lastSeen  and RelativeTime(lastSeen)  or "\226\128\148"))
 end
 
 local RefreshList, SelectEntry, UpdateSenderFilterChip
@@ -911,10 +911,16 @@ local function CreateDetailPane()
   sender:SetPoint("BOTTOMLEFT",  actions, "TOPLEFT",  0, 4)
   sender:SetPoint("BOTTOMRIGHT", actions, "TOPRIGHT", 0, 4)
   sender.label = sender:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-  sender.label:SetPoint("TOPLEFT", sender, "TOPLEFT", 0, 0)
+  sender.label:SetPoint("TOPLEFT",  sender, "TOPLEFT",  0, 0)
+  sender.label:SetPoint("TOPRIGHT", sender, "TOPRIGHT", 0, 0)
+  sender.label:SetJustifyH("LEFT")
   sender.label:SetText("|cff5ad080SENDER HISTORY|r")
+
   sender.stats = sender:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-  sender.stats:SetPoint("TOPLEFT", sender, "TOPLEFT", 8, -16)
+  sender.stats:SetPoint("TOPLEFT",  sender, "TOPLEFT",   8, -16)
+  sender.stats:SetPoint("TOPRIGHT", sender, "TOPRIGHT", -8, -16)
+  sender.stats:SetJustifyH("LEFT")
+  sender.stats:SetWordWrap(true)
   detailPane.sender = sender
   detailPane.sections.sender = sender
 
