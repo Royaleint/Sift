@@ -15,4 +15,5 @@ Trust.lua
 Suppression.lua
 History.lua
 ChatScanner.lua
+HistoryPanel.lua
 Init.lua

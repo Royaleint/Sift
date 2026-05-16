@@ -31,6 +31,10 @@ local function Initialize()
     NS.Trust.Initialize()
   end
 
+  if NS.HistoryPanel and NS.HistoryPanel.Initialize then
+    NS.HistoryPanel.Initialize()
+  end
+
   initialized = true
 end
 
@@ -42,38 +46,11 @@ local function InstallScanner()
   NS.ChatScanner.Install()
 end
 
-local function FormatHistoryLine(record)
-  local sender = record.name or "(unknown)"
-  if record.realm then
-    sender = sender .. "-" .. record.realm
-  end
-
-  return string.format(
-    "#%s [%s] %s score %s/%s: %s",
-    tostring(record.id or "?"),
-    tostring(record.channel or record.surface or "?"),
-    sender,
-    tostring(record.score or "?"),
-    tostring(record.threshold or "?"),
-    tostring(record.original or "")
-  )
-end
-
-local function PrintHistory(limit)
-  if not NS.History or not NS.History.GetRecent then
-    Print("history is unavailable.")
-    return
-  end
-
-  local records = NS.History.GetRecent(limit)
-  if #records == 0 then
-    Print("history is empty.")
-    return
-  end
-
-  Print("recent blocked messages:")
-  for i = 1, #records do
-    Print(FormatHistoryLine(records[i]))
+local function ToggleHistory()
+  if NS.HistoryPanel and NS.HistoryPanel.Toggle then
+    NS.HistoryPanel.Toggle()
+  else
+    Print("history panel is unavailable.")
   end
 end
 
@@ -111,14 +88,12 @@ local function SlashHandler(msg)
   local command, rest = string.match(msg, "^(%S*)%s*(.-)%s*$")
   command = string.lower(command or "")
 
-  if command == "history" then
-    PrintHistory(tonumber(rest))
+  if command == "" or command == "history" then
+    ToggleHistory()
   elseif command == "test" then
     RunSyntheticTest(rest)
-  elseif command == "" then
-    PrintHistory(10)
   else
-    Print("usage: /bawrspam history [count]")
+    Print("usage: /bawrspam | /bawrspam history")
   end
 end
 
