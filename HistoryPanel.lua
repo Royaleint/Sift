@@ -37,9 +37,9 @@ local TIME_WINDOW_VALUES = { "All", "Last hour", "Today", "Last 7 days" }
 local OUTCOME_VALUES     = { "Blocked", "Restored", "All" }
 local SORT_VALUES        = { "newest", "score", "sender" }
 local SORT_LABELS = {
-  newest = "Newest first",
-  score  = "Score (highest)",
-  sender = "Sender frequency",
+  newest = "Newest",
+  score  = "Score",
+  sender = "Sender",
 }
 
 local DOUBLE_CLICK_WINDOW = 0.4
@@ -627,8 +627,25 @@ local function RenderActions(entry)
 
   actions.btn1:Hide()
   actions.btn2:Hide()
+  actions.btn1:Enable()
+  actions.btn2:Enable()
 
-  if not entry or entry.outcome == "restored" then
+  if not entry then return end
+
+  -- Already restored: keep a disabled "Restored" indicator visible so the
+  -- user can see the action took effect (don't blank the buttons out).
+  if entry.outcome == "restored" then
+    actions.btn1:SetText("\226\156\147 Restored")
+    actions.btn1:SetScript("OnClick", nil)
+    actions.btn1:Disable()
+    actions.btn1:Show()
+    if NS.Trust and NS.Trust.IsAllowlisted and entry.guid and entry.guid ~= ""
+       and NS.Trust.IsAllowlisted(entry.guid) then
+      actions.btn2:SetText("Allowlisted")
+      actions.btn2:SetScript("OnClick", nil)
+      actions.btn2:Disable()
+      actions.btn2:Show()
+    end
     return
   end
 
@@ -1100,20 +1117,20 @@ local function CreateHeaderFilters()
 
   local ddX = 0
   strip.surfaceDD = BuildAceGUIDropdown(strip, SURFACE_VALUES, SURFACE_LABELS,
-    filterState.surface, 100, ddX, "Surface",
+    filterState.surface, 130, ddX, "Surface",
     function(value)
       filterState.surface = value
       if RefreshList then RefreshList() end
     end)
-  if strip.surfaceDD then ddX = ddX + 110 end
+  if strip.surfaceDD then ddX = ddX + 140 end
 
   strip.timeDD = BuildAceGUIDropdown(strip, TIME_WINDOW_VALUES, nil,
-    filterState.timeWindow, 100, ddX, "Time window",
+    filterState.timeWindow, 110, ddX, "Time window",
     function(value)
       filterState.timeWindow = value
       if RefreshList then RefreshList() end
     end)
-  if strip.timeDD then ddX = ddX + 110 end
+  if strip.timeDD then ddX = ddX + 120 end
 
   strip.outcomeDD = BuildAceGUIDropdown(strip, OUTCOME_VALUES, nil,
     filterState.outcome, 100, ddX, "Outcome",
