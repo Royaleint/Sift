@@ -48,6 +48,7 @@ local content
 local navButtons = {}
 local activeSection = "Detection"
 local sizeDirty
+local embeddedMode
 local initialized
 local interfaceRegistered
 local popupsRegistered
@@ -1556,25 +1557,43 @@ local function CreateNav(parent)
   end
 end
 
-local function BuildFrame()
+local function BuildFrame(parent)
+  local embedded = parent ~= nil
   if frame then
+    if embedded and frame.SetParent then
+      frame:SetParent(parent)
+      frame:ClearAllPoints()
+      frame:SetAllPoints(parent)
+      embeddedMode = true
+    end
     return
   end
 
-  frame = CreateBackdropFrame(UIParent)
-  frame:SetMovable(true)
-  frame:SetResizable(true)
-  if frame.SetResizeBounds then
-    frame:SetResizeBounds(MIN_WIDTH, MIN_HEIGHT)
-  end
+  if embedded then
+    frame = CreateFrame("Frame", "BawrSpamConfigFrame", parent)
+    frame:SetAllPoints(parent)
+    embeddedMode = true
+  else
+    frame = CreateBackdropFrame(UIParent)
+    frame:SetMovable(true)
+    frame:SetResizable(true)
+    if frame.SetResizeBounds then
+      frame:SetResizeBounds(MIN_WIDTH, MIN_HEIGHT)
+    end
 
-  CreateHeaderBar(frame)
-  CreateResizeHandle(frame)
+    CreateHeaderBar(frame)
+    CreateResizeHandle(frame)
+  end
   CreateNav(frame)
 
   content = CreateFrame("Frame", nil, frame)
-  content:SetPoint("TOPLEFT", frame, "TOPLEFT", NAV_WIDTH + 16, -40)
-  content:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -12, 12)
+  if embedded then
+    content:SetPoint("TOPLEFT", frame, "TOPLEFT", NAV_WIDTH + 8, 0)
+    content:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+  else
+    content:SetPoint("TOPLEFT", frame, "TOPLEFT", NAV_WIDTH + 16, -40)
+    content:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -12, 12)
+  end
 
   frame:SetScript("OnSizeChanged", function()
     sizeDirty = true
@@ -1585,8 +1604,10 @@ local function BuildFrame()
     end
   end)
 
-  ApplyStoredGeometry()
-  if UISpecialFrames then
+  if not embedded then
+    ApplyStoredGeometry()
+  end
+  if not embedded and UISpecialFrames then
     tinsert(UISpecialFrames, "BawrSpamConfigFrame")
   end
 end
@@ -1605,12 +1626,20 @@ end
 
 function ConfigPanel.Open(section)
   ConfigPanel.Initialize()
+  if NS.HistoryPanel and NS.HistoryPanel.ShowConfig then
+    NS.HistoryPanel.ShowConfig(section)
+    return
+  end
   BuildFrame()
   ConfigPanel.ShowSection(section or activeSection or "Detection")
   frame:Show()
 end
 
 function ConfigPanel.Close()
+  if embeddedMode and NS.HistoryPanel and NS.HistoryPanel.Show then
+    NS.HistoryPanel.Show()
+    return
+  end
   if frame then
     frame:Hide()
   end
@@ -1618,6 +1647,10 @@ end
 
 function ConfigPanel.Toggle(section)
   ConfigPanel.Initialize()
+  if NS.HistoryPanel and NS.HistoryPanel.ShowConfig then
+    NS.HistoryPanel.ShowConfig(section)
+    return
+  end
   BuildFrame()
   if frame:IsShown() then
     frame:Hide()
@@ -1627,6 +1660,12 @@ function ConfigPanel.Toggle(section)
 end
 
 function ConfigPanel.ResetPosition()
+  if embeddedMode then
+    if NS.HistoryPanel and NS.HistoryPanel.ResetPosition then
+      NS.HistoryPanel.ResetPosition()
+    end
+    return
+  end
   local store = GetCharStore()
   if store then
     store.x = nil
@@ -1639,6 +1678,18 @@ function ConfigPanel.ResetPosition()
     SavePosition()
     SaveSize()
   end
+end
+
+function ConfigPanel.Attach(parent, section)
+  if not parent then
+    return nil
+  end
+
+  ConfigPanel.Initialize()
+  BuildFrame(parent)
+  ConfigPanel.ShowSection(section or activeSection or "Detection")
+  frame:Show()
+  return frame
 end
 
 function ConfigPanel.ShowSection(section)

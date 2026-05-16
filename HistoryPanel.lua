@@ -80,6 +80,10 @@ local filterState
 local sortMode
 local selectedEntryId
 local currentEntriesSnapshot
+local configHost
+local tabButtons = {}
+local activeMode = "History"
+local activeConfigSection = "Detection"
 
 local function DefaultFilterState()
   local cats = {}
@@ -166,9 +170,7 @@ local function CreateBackdropFrame(parent)
 end
 
 local function OpenConfigPanel()
-  if NS.ConfigPanel and NS.ConfigPanel.Open then
-    NS.ConfigPanel.Open("Detection")
-  end
+  HistoryPanel.ShowConfig("Detection")
 end
 
 local function CreateHeaderBar(parent)
@@ -187,12 +189,6 @@ local function CreateHeaderBar(parent)
   local title = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
   title:SetPoint("LEFT", header, "LEFT", 4, 0)
   title:SetText("BawrSpam — History")
-
-  local config = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-  config:SetSize(70, 22)
-  config:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -32, -5)
-  config:SetText("Config")
-  config:SetScript("OnClick", OpenConfigPanel)
 
   local close = CreateFrame("Button", nil, parent, "UIPanelCloseButton")
   close:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 2, -2)
@@ -219,12 +215,12 @@ end
 local function CreatePanes(parent)
   local list = CreateFrame("Frame", nil, parent)
   list:SetPoint("TOPLEFT",    parent, "TOPLEFT",    6, -104)
-  list:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 6,    6)
+  list:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 6,   40)
   list:SetWidth(LIST_PANE_WIDTH)
 
   local detail = CreateFrame("Frame", nil, parent)
   detail:SetPoint("TOPLEFT",     list,   "TOPRIGHT",     6,  0)
-  detail:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -6,  6)
+  detail:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -6, 40)
 
   return list, detail
 end
@@ -1130,13 +1126,75 @@ UpdateSenderFilterChip = function()
     chip:Show()
     listPane:ClearAllPoints()
     listPane:SetPoint("TOPLEFT",    frame, "TOPLEFT",    6, -122)
-    listPane:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 6,    6)
+    listPane:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 6,   40)
   else
     chip:Hide()
     listPane:ClearAllPoints()
     listPane:SetPoint("TOPLEFT",    frame, "TOPLEFT",    6, -104)
-    listPane:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 6,    6)
+    listPane:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 6,   40)
   end
+end
+
+local function SetTabHighlight()
+  for mode, button in pairs(tabButtons) do
+    if mode == activeMode then
+      button:LockHighlight()
+    else
+      button:UnlockHighlight()
+    end
+  end
+end
+
+local function ShowHistoryContent()
+  activeMode = "History"
+  if configHost then configHost:Hide() end
+  if listPane then listPane:Show() end
+  if detailPane then detailPane:Show() end
+  if frame and frame.filterStrip then frame.filterStrip:Show() end
+  UpdateSenderFilterChip()
+  SetTabHighlight()
+end
+
+local function ShowConfigContent(section)
+  activeMode = "Config"
+  activeConfigSection = section or activeConfigSection or "Detection"
+  if frame and frame.filterStrip then frame.filterStrip:Hide() end
+  if frame and frame.senderChip then frame.senderChip:Hide() end
+  if listPane then listPane:Hide() end
+  if detailPane then detailPane:Hide() end
+  if configHost then
+    configHost:Show()
+    if NS.ConfigPanel and NS.ConfigPanel.Attach then
+      NS.ConfigPanel.Attach(configHost, activeConfigSection)
+    end
+  end
+  SetTabHighlight()
+end
+
+local function CreateTabStrip(parent)
+  local strip = CreateFrame("Frame", nil, parent)
+  strip:SetHeight(30)
+  strip:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 8, 6)
+  strip:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -8, 6)
+
+  local history = CreateFrame("Button", nil, strip, "UIPanelButtonTemplate")
+  history:SetSize(92, 24)
+  history:SetPoint("LEFT", strip, "LEFT", 0, 0)
+  history:SetText("History")
+  history:SetScript("OnClick", function()
+    HistoryPanel.Show()
+  end)
+  tabButtons.History = history
+
+  local config = CreateFrame("Button", nil, strip, "UIPanelButtonTemplate")
+  config:SetSize(92, 24)
+  config:SetPoint("LEFT", history, "RIGHT", 6, 0)
+  config:SetText("Config")
+  config:SetScript("OnClick", function()
+    HistoryPanel.ShowConfig(activeConfigSection)
+  end)
+  tabButtons.Config = config
+  parent.tabStrip = strip
 end
 
 local function CreateHeaderFilters()
@@ -1209,6 +1267,11 @@ local function BuildFrame()
   CreateDetailPane()
   CreateHeaderFilters()
   CreateSenderFilterChip()
+  configHost = CreateFrame("Frame", nil, frame)
+  configHost:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, -40)
+  configHost:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -6, 40)
+  configHost:Hide()
+  CreateTabStrip(frame)
   UpdateSenderFilterChip()
 
   frame:SetScript("OnSizeChanged", function()
@@ -1261,17 +1324,23 @@ end
 
 function HistoryPanel.Toggle()
   BuildFrame()
-  if frame:IsShown() then
+  if frame:IsShown() and activeMode == "History" then
     frame:Hide()
   else
-    RefreshList()
-    frame:Show()
+    HistoryPanel.Show()
   end
 end
 
 function HistoryPanel.Show()
   BuildFrame()
+  ShowHistoryContent()
   RefreshList()
+  frame:Show()
+end
+
+function HistoryPanel.ShowConfig(section)
+  BuildFrame()
+  ShowConfigContent(section)
   frame:Show()
 end
 
