@@ -63,6 +63,38 @@ function Cleanse._ScanCodepoints(text, transformFn)
   return table.concat(out)
 end
 
+-- Stage 1: strip item-link wrappers (color codes + |H...|h[visible]|h → [visible]).
+function Cleanse._Stage1_ItemLinks(text)
+  text = string.gsub(text, "|c%x%x%x%x%x%x%x%x", "")
+  text = string.gsub(text, "|r", "")
+  text = string.gsub(text, "|H[^|]*|h(%b[])|h", "%1")
+  return text
+end
+
+-- Stage 2: strip format / direction-override / zero-width / variation-selector codepoints.
+function Cleanse._Stage2_FormatChars(text)
+  return Cleanse._ScanCodepoints(text, function(cp)
+    if cp == 0x00AD or cp == 0xFEFF or cp == 0x2060 then return nil end
+    if cp >= 0x200B and cp <= 0x200D then return nil end
+    if cp >= 0xFE00 and cp <= 0xFE0F then return nil end
+    if cp >= 0x202A and cp <= 0x202E then return nil end
+    if cp >= 0xE0000 and cp <= 0xE007F then return nil end
+    return cp
+  end)
+end
+
+-- Stage 3: strip combining marks.
+function Cleanse._Stage3_CombiningMarks(text)
+  return Cleanse._ScanCodepoints(text, function(cp)
+    if cp >= 0x0300 and cp <= 0x036F then return nil end
+    if cp >= 0x1AB0 and cp <= 0x1AFF then return nil end
+    if cp >= 0x1DC0 and cp <= 0x1DFF then return nil end
+    if cp >= 0x20D0 and cp <= 0x20FF then return nil end
+    if cp >= 0xFE20 and cp <= 0xFE2F then return nil end
+    return cp
+  end)
+end
+
 -- Dual-mode export. MUST be the final statement so WoW's chunk loader gets the table as the
 -- return value when running standalone (build tool) AND attaches to NS.Cleanse when loaded
 -- via TOC. Smoke-test this dual-mode behavior in BSP-002 when the addon first loads in WoW.
