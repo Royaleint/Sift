@@ -73,7 +73,7 @@ function Scoring.Score(analysis, options)
   local patterns = options.patterns or _injectedPatterns or (NS and NS.Patterns)
   local hits = {}
   if patterns and patterns.Match then
-    hits = patterns:Match(analysis.normalized or "")
+    hits = patterns:Match(analysis.normalized or "") or {}
   end
   return Scoring._ScoreHits(hits, analysis or { signals = {} }, options)
 end
