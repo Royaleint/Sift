@@ -31,6 +31,10 @@ end
 function History.Append(record)
   local char = GetChar()
   if not char or type(record) ~= "table" then
+    if NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode() then
+      print("|cff33ff99BawrSpam|r History.Append: REJECTED (char="
+        .. tostring(char) .. " record-type=" .. type(record) .. ")")
+    end
     return nil
   end
 
@@ -47,6 +51,11 @@ function History.Append(record)
   local maxEntries = MaxEntries()
   while #char.history > maxEntries do
     table.remove(char.history, 1)
+  end
+
+  if NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode() then
+    print(string.format("|cff33ff99BawrSpam|r History.Append: id=%d surface=%s outcome=%s count=%d",
+      record.id, tostring(record.surface), tostring(record.outcome), #char.history))
   end
 
   return record.id

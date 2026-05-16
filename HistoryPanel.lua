@@ -33,6 +33,32 @@ local SURFACE_LABELS = {
   ["lfg-applicant"] = "LFG applicant",
 }
 
+-- Friendly labels for the WoW chat event names persisted as entry.channel.
+-- entry.channelName (when present, captured from the live event payload) is
+-- preferred over this map — these labels are the fallback when channelName
+-- is nil (e.g. SAY/YELL/WHISPER events where there's no channel name) or
+-- for old entries written before ChatScanner started capturing channelName.
+local CHAT_EVENT_LABELS = {
+  CHAT_MSG_SAY        = "Say",
+  CHAT_MSG_YELL       = "Yell",
+  CHAT_MSG_WHISPER    = "Whisper",
+  CHAT_MSG_EMOTE      = "Emote",
+  CHAT_MSG_TEXT_EMOTE = "Emote",
+  CHAT_MSG_DND        = "DND auto-response",
+  CHAT_MSG_AFK        = "AFK auto-response",
+  CHAT_MSG_CHANNEL    = "Channel",
+}
+
+local function FormatChannel(entry)
+  if entry.channelName and entry.channelName ~= "" then
+    return entry.channelName
+  end
+  if entry.channel and CHAT_EVENT_LABELS[entry.channel] then
+    return CHAT_EVENT_LABELS[entry.channel]
+  end
+  return entry.channel or "\226\128\148"
+end
+
 local TIME_WINDOW_VALUES = { "All", "Last hour", "Today", "Last 7 days" }
 local OUTCOME_VALUES     = { "Blocked", "Restored", "All" }
 local SORT_VALUES        = { "newest", "score", "sender" }
@@ -719,7 +745,7 @@ RefreshDetail = function()
   end
   if not entry then return end
 
-  local channel = entry.channel or "\226\128\148"
+  local channel = FormatChannel(entry)
   local linkSuffix = entry.containsItemLinks and "   \194\183   contains item link" or ""
   local surfaceLabel = (entry.surface and SURFACE_LABELS[entry.surface]) or entry.surface or "?"
   detailPane.header.senderText:SetText(FormatSender(entry))
@@ -754,6 +780,13 @@ RefreshList = function()
   local visibleRows = VisibleRowCount(scroll)
   FauxScrollFrame_Update(scroll, #entries, visibleRows, LIST_ROW_HEIGHT)
   local offset = FauxScrollFrame_GetOffset(scroll)
+
+  if NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode() then
+    print(string.format(
+      "|cff33ff99BawrSpam|r RefreshList: total=%d filtered=%d visibleRows=%d offset=%d outcome=%s",
+      #currentEntriesSnapshot, #entries, visibleRows, offset,
+      tostring(filterState and filterState.outcome)))
+  end
 
   for i = 1, LIST_MAX_ROWS do
     local row = scroll.rows[i]

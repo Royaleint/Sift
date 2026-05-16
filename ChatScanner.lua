@@ -74,7 +74,7 @@ local function Pipeline(
   flags,
   _unknown,
   _channelNumber,
-  _channelName,
+  channelName,
   _unknown2,
   counter,
   guid
@@ -103,6 +103,7 @@ local function Pipeline(
     ts = ServerTime(),
     surface = "chat",
     channel = event,
+    channelName = (type(channelName) == "string" and channelName ~= "") and channelName or nil,
     guid = guid,
     name = name,
     realm = realm,
