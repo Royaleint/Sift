@@ -1,6 +1,9 @@
 # Private dev workspace (nested git repo, separately tracked)
 BawrSpam_Dev/
 
+# Local git worktrees
+.worktrees/
+
 # Agent / tool layer (Claude Code, Codex)
 .claude/
 .codex/
