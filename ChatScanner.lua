@@ -5,12 +5,26 @@ local CHAT_EVENTS = {
   "CHAT_MSG_SAY",
   "CHAT_MSG_YELL",
   "CHAT_MSG_WHISPER",
+  "CHAT_MSG_BN_WHISPER",
   "CHAT_MSG_CHANNEL",
   "CHAT_MSG_EMOTE",
-  "CHAT_MSG_TEXT_EMOTE",
   "CHAT_MSG_DND",
   "CHAT_MSG_AFK",
 }
+
+-- luacheck: push ignore 211/EVENT_TO_SURFACE
+-- Dormant in Commit 1 of BSP-008; consumed by the pause gate in Commit 2.
+local EVENT_TO_SURFACE = {
+  CHAT_MSG_SAY        = "chat",
+  CHAT_MSG_YELL       = "chat",
+  CHAT_MSG_CHANNEL    = "chat",
+  CHAT_MSG_EMOTE      = "chat",
+  CHAT_MSG_DND        = "chat",
+  CHAT_MSG_AFK        = "chat",
+  CHAT_MSG_WHISPER    = "whisper",
+  CHAT_MSG_BN_WHISPER = "bn-whisper",
+}
+-- luacheck: pop
 
 local filterInstalled = {}
 local eventFrame = nil

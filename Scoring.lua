@@ -28,7 +28,8 @@ function Scoring._ScoreHits(hits, analysis, options)
     if not seenRules[h.ruleId] then
       seenRules[h.ruleId] = true
       auditHits[#auditHits + 1] = h.ruleId
-      if enabled[h.category] then
+      local categoryState = enabled[h.category]
+      if categoryState == true or categoryState == "active" or categoryState == "paused" then
         if h.weight < 0 then
           antiRaw = antiRaw + h.weight
         else

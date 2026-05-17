@@ -24,10 +24,12 @@ local CATEGORIES         = { "RMT", "Boosting", "Casino", "Phishing", "Commercia
 -- Surface uses canonical lowercase keys ("chat", "lfg-search", "lfg-applicant")
 -- to match what ChatScanner writes into entry.surface. SURFACE_LABELS maps the
 -- key to its display name so the dropdown UI stays user-friendly.
-local SURFACE_VALUES = { "All", "chat", "lfg-search", "lfg-applicant" }
+local SURFACE_VALUES = { "All", "chat", "whisper", "bn-whisper", "lfg-search", "lfg-applicant" }
 local SURFACE_LABELS = {
-  All              = "All",
-  chat             = "Chat",
+  All               = "All",
+  chat              = "Chat",
+  whisper           = "Whisper",
+  ["bn-whisper"]    = "Bnet whisper",
   ["lfg-search"]    = "LFG search",
   ["lfg-applicant"] = "LFG applicant",
 }
@@ -59,7 +61,7 @@ local function FormatChannel(entry)
 end
 
 local TIME_WINDOW_VALUES = { "All", "Last hour", "Today", "Last 7 days" }
-local OUTCOME_VALUES     = { "Blocked", "Restored", "All" }
+local OUTCOME_VALUES     = { "Blocked", "Restored", "Pass-thru", "All" }
 local SORT_VALUES        = { "newest", "score", "sender" }
 local SORT_LABELS = {
   newest = "Newest",
@@ -330,6 +332,9 @@ local function MatchesFilters(entry)
     return false
   end
 
+  -- filterState.outcome \in { "All", "Blocked", "Restored", "Pass-thru" }
+  -- Lower-cased compare matches against entry.outcome which is one of
+  -- { "blocked", "restored", "pass-thru" } (set by ChatScanner / History.RetroactiveBlock).
   if filterState.outcome and filterState.outcome ~= "All" then
     local desired = string.lower(filterState.outcome)
     if (entry.outcome or "blocked") ~= desired then return false end

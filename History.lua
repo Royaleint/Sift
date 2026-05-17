@@ -32,8 +32,10 @@ local function CountRetained(history)
   local retained = {
     detections = 0,
     blocked = 0,
+    passThru = 0,
     restored = 0,
     bySurface = {},
+    byCategory = {},
   }
 
   for index = 1, #history do
@@ -42,10 +44,25 @@ local function CountRetained(history)
       local surface = record.surface or "chat"
       retained.detections = retained.detections + 1
       retained.bySurface[surface] = (retained.bySurface[surface] or 0) + 1
-      if record.outcome == "restored" then
+      local outcome = record.outcome or "blocked"
+      if outcome == "restored" then
         retained.restored = retained.restored + 1
+      elseif outcome == "pass-thru" then
+        retained.passThru = retained.passThru + 1
       else
         retained.blocked = retained.blocked + 1
+      end
+      local breakdown = record.breakdown
+      if type(breakdown) == "table" then
+        local bestCat, bestVal
+        for cat, val in pairs(breakdown) do
+          if cat ~= "MixedScript" and (not bestVal or val > bestVal) then
+            bestCat, bestVal = cat, val
+          end
+        end
+        if bestCat then
+          retained.byCategory[bestCat] = (retained.byCategory[bestCat] or 0) + 1
+        end
       end
     end
   end
@@ -57,13 +74,22 @@ local function CopyStats(stats)
   local copy = {
     detections = tonumber(stats and stats.detections) or 0,
     blocked = tonumber(stats and stats.blocked) or 0,
+    passThru = tonumber(stats and stats.passThru) or 0,
     restored = tonumber(stats and stats.restored) or 0,
     bySurface = {},
+    byCategory = {},
+    throttled = tonumber(stats and stats.throttled) or 0,
+    bubblesSuppressed = tonumber(stats and stats.bubblesSuppressed) or 0,
   }
 
   if stats and type(stats.bySurface) == "table" then
     for surface, count in pairs(stats.bySurface) do
       copy.bySurface[surface] = tonumber(count) or 0
+    end
+  end
+  if stats and type(stats.byCategory) == "table" then
+    for category, count in pairs(stats.byCategory) do
+      copy.byCategory[category] = tonumber(count) or 0
     end
   end
 
@@ -81,11 +107,19 @@ local function EnsureStats(char)
     stats.blocked = retained.blocked
     stats.restored = retained.restored
     stats.bySurface = retained.bySurface
+    stats.passThru = retained.passThru
+    stats.byCategory = retained.byCategory
+    stats.throttled = stats.throttled or 0
+    stats.bubblesSuppressed = stats.bubblesSuppressed or 0
     stats.initialized = true
   else
     stats.detections = tonumber(stats.detections) or 0
     stats.blocked = tonumber(stats.blocked) or 0
     stats.restored = tonumber(stats.restored) or 0
+    stats.passThru = tonumber(stats.passThru) or 0
+    stats.byCategory = type(stats.byCategory) == "table" and stats.byCategory or {}
+    stats.throttled = tonumber(stats.throttled) or 0
+    stats.bubblesSuppressed = tonumber(stats.bubblesSuppressed) or 0
   end
 
   return stats
@@ -96,12 +130,28 @@ local function IncrementStats(char, record)
   local surface = record.surface or "chat"
 
   stats.detections = (tonumber(stats.detections) or 0) + 1
-  if record.outcome == "restored" then
+  local outcome = record.outcome or "blocked"
+  if outcome == "restored" then
     stats.restored = (tonumber(stats.restored) or 0) + 1
+  elseif outcome == "pass-thru" then
+    stats.passThru = (tonumber(stats.passThru) or 0) + 1
   else
     stats.blocked = (tonumber(stats.blocked) or 0) + 1
   end
   stats.bySurface[surface] = (tonumber(stats.bySurface[surface]) or 0) + 1
+
+  local breakdown = record.breakdown
+  if type(breakdown) == "table" then
+    local bestCat, bestVal
+    for cat, val in pairs(breakdown) do
+      if cat ~= "MixedScript" and (not bestVal or val > bestVal) then
+        bestCat, bestVal = cat, val
+      end
+    end
+    if bestCat then
+      stats.byCategory[bestCat] = (tonumber(stats.byCategory[bestCat]) or 0) + 1
+    end
+  end
 end
 
 function History.Append(record)
@@ -214,6 +264,36 @@ function History.TrimToMax(maxEntries)
     removed = removed + 1
   end
   return removed
+end
+
+function History.IncrementThrottled()
+  local char = GetChar()
+  if not char then return end
+  local stats = EnsureStats(char)
+  stats.throttled = (tonumber(stats.throttled) or 0) + 1
+end
+
+function History.IncrementBubblesSuppressed()
+  local char = GetChar()
+  if not char then return end
+  local stats = EnsureStats(char)
+  stats.bubblesSuppressed = (tonumber(stats.bubblesSuppressed) or 0) + 1
+end
+
+function History.RetroactiveBlock(id)
+  local char = GetChar()
+  local history = char and char.history or {}
+  for index = 1, #history do
+    local record = history[index]
+    if record.id == id and record.outcome == "pass-thru" then
+      record.outcome = "blocked"
+      local stats = EnsureStats(char)
+      stats.passThru = math.max(0, (tonumber(stats.passThru) or 0) - 1)
+      stats.blocked = (tonumber(stats.blocked) or 0) + 1
+      return true
+    end
+  end
+  return false
 end
 
 NS.History = History

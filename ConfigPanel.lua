@@ -457,7 +457,7 @@ local function AddCategoryCheckbox(category, y)
   local settings = GetSettings()
   local enabled = settings and settings.enabledCategories or DEFAULT_SETTINGS.enabledCategories
   checkbox:SetLabel(category)
-  checkbox:SetValue(enabled and enabled[category] ~= false)
+  checkbox:SetValue(enabled and enabled[category] ~= "off" and enabled[category] ~= false)
   checkbox:SetCallback("OnValueChanged", function(_, _, value)
     SetCategoryEnabled(category, value)
   end)
