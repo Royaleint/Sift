@@ -18,6 +18,7 @@ Suppression.lua
 History.lua
 ReportFlow.lua
 ChatScanner.lua
+LFGScanner.lua
 HistoryPanel.lua
 ConfigPanel.lua
 Init.lua

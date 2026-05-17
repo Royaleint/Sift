@@ -52,6 +52,9 @@ local function InstallScanner()
   end
 
   NS.ChatScanner.Install()
+  if NS.LFGScanner and NS.LFGScanner.RefreshEnabled then
+    NS.LFGScanner.RefreshEnabled()
+  end
 end
 
 local function ToggleHistory()

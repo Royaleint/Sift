@@ -111,5 +111,15 @@ function Suppression.SweepLFG()
   end
 end
 
+function Suppression.ClearLFG()
+  for searchResultID in pairs(blockedSearchResults) do
+    blockedSearchResults[searchResultID] = nil
+  end
+
+  for applicantID in pairs(blockedApplicants) do
+    blockedApplicants[applicantID] = nil
+  end
+end
+
 NS.Suppression = Suppression
 return Suppression
