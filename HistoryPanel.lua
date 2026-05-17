@@ -539,10 +539,6 @@ end
 local RefreshList, SelectEntry, UpdateSenderFilterChip
 
 local function PerformRestore(entry)
-  if NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode() then
-    print("|cff33ff99BawrSpam|r PerformRestore: id=" .. tostring(entry and entry.id)
-      .. " outcome=" .. tostring(entry and entry.outcome))
-  end
   if not entry or entry.outcome == "restored" then return end
   if NS.History and NS.History.MarkRestored then
     NS.History.MarkRestored(entry.id)
@@ -562,10 +558,6 @@ local function PerformRestore(entry)
 end
 
 local function PerformAlwaysAllow(entry)
-  if NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode() then
-    print("|cff33ff99BawrSpam|r PerformAlwaysAllow: id=" .. tostring(entry and entry.id)
-      .. " guid=" .. tostring(entry and entry.guid))
-  end
   if not entry or not entry.guid or entry.guid == "" then return end
   if NS.Trust and NS.Trust.AddAllowlist then
     NS.Trust.AddAllowlist(entry.guid, entry.name, entry.realm, "history")
@@ -780,7 +772,6 @@ RefreshList = function()
   local allEntries = GetEntries() or {}
   currentEntriesSnapshot = allEntries
   local entries = ApplyFilterAndSort(allEntries) or {}
-  local totalEntries = #allEntries
   local visibleRows = VisibleRowCount(scroll)
   -- 11th positional `alwaysShowScrollBar = true` keeps the ScrollFrame visible
   -- when numItems <= numToDisplay. Blizzard's FauxScrollFrame_Update otherwise
@@ -789,13 +780,6 @@ RefreshList = function()
   FauxScrollFrame_Update(scroll, #entries, visibleRows, LIST_ROW_HEIGHT,
     nil, nil, nil, nil, nil, nil, true)
   local offset = FauxScrollFrame_GetOffset(scroll)
-
-  if NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode() then
-    print(string.format(
-      "|cff33ff99BawrSpam|r RefreshList: total=%d filtered=%d visibleRows=%d offset=%d outcome=%s",
-      totalEntries, #entries, visibleRows, offset,
-      tostring(filterState and filterState.outcome)))
-  end
 
   for i = 1, LIST_MAX_ROWS do
     local row = scroll.rows[i]
@@ -1320,9 +1304,6 @@ local function CreateHeaderFilters()
 
   strip.sortDD = BuildAceGUISortDropdown(strip, ddX, function(value)
     sortMode = value
-    if NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode() then
-      print("|cff33ff99BawrSpam|r sort=" .. tostring(value))
-    end
     if RefreshList then RefreshList() end
   end)
 
