@@ -12,10 +12,14 @@ PatternData.lua
 Patterns.lua
 Scoring.lua
 Trust.lua
+Throttle.lua
+BubbleSuppressor.lua
 Suppression.lua
 History.lua
+ReportFlow.lua
 ChatScanner.lua
 Tooltip.lua
+LFGScanner.lua
 HistoryPanel.lua
 ConfigPanel.lua
 Init.lua

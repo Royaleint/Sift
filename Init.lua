@@ -39,6 +39,10 @@ local function Initialize()
 		NS.ConfigPanel.Initialize()
 	end
 
+  if NS.BubbleSuppressor and NS.BubbleSuppressor.RegisterCleanup then
+    NS.BubbleSuppressor.RegisterCleanup()
+  end
+
 	initialized = true
 end
 
@@ -48,6 +52,9 @@ local function InstallScanner()
   end
 
   NS.ChatScanner.Install()
+  if NS.LFGScanner and NS.LFGScanner.RefreshEnabled then
+    NS.LFGScanner.RefreshEnabled()
+  end
 end
 
 local function ToggleHistory()
