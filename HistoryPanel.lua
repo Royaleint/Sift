@@ -7,7 +7,6 @@ local MIN_PANEL_WIDTH      = 720
 local MIN_PANEL_HEIGHT     = 500
 
 local LIST_ROW_HEIGHT  = 26
-local LIST_MAX_ROWS    = 12
 local LIST_PANE_WIDTH  = 300
 local SCROLLBAR_GUTTER = 22
 
@@ -352,14 +351,6 @@ local function ApplyFilterAndSort(entries)
   end
   SortByMode(out, sortMode)
   return out
-end
-
-local function VisibleRowCount(scroll)
-  local height = scroll and scroll.GetHeight and scroll:GetHeight() or 0
-  local count = math.floor(height / LIST_ROW_HEIGHT)
-  if count < 1 then count = 1 end
-  if count > LIST_MAX_ROWS then count = LIST_MAX_ROWS end
-  return count
 end
 
 local function DominantCategory(breakdown)
@@ -864,10 +855,46 @@ SelectEntry = function(id)
   RefreshList()
 end
 
+local function InitListRow(button)
+  if button.bsInit then return end
+  button.bsInit = true
+
+  button.stripe = button:CreateTexture(nil, "ARTWORK")
+  button.stripe:SetPoint("TOPLEFT",    button, "TOPLEFT",    0, 0)
+  button.stripe:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 0, 0)
+  button.stripe:SetWidth(4)
+
+  button.selection = button:CreateTexture(nil, "BACKGROUND")
+  button.selection:SetAllPoints()
+  button.selection:SetColorTexture(80 / 255, 140 / 255, 200 / 255, 0.18)
+  button.selection:Hide()
+
+  button.timeText = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  button.timeText:SetPoint("LEFT", button, "LEFT", 10, 0)
+  button.timeText:SetWidth(36)
+  button.timeText:SetJustifyH("LEFT")
+
+  button.senderText = button:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  button.senderText:SetPoint("LEFT",  button.timeText, "RIGHT",  4, 0)
+  button.senderText:SetPoint("RIGHT", button,          "RIGHT", -94, 0)
+  button.senderText:SetJustifyH("LEFT")
+
+  button.badgeText = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  button.badgeText:SetPoint("RIGHT", button, "RIGHT", -34, 0)
+  button.badgeText:SetWidth(54)
+  button.badgeText:SetJustifyH("CENTER")
+
+  button.scoreText = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  button.scoreText:SetPoint("RIGHT", button, "RIGHT", -4, 0)
+  button.scoreText:SetWidth(30)
+  button.scoreText:SetJustifyH("RIGHT")
+
+  button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+end
+
 local function CreateListPane()
   -- Column-header strip at the very top of the list pane. Right anchor
-  -- subtracts SCROLLBAR_GUTTER so headers align with row column positions
-  -- (rows themselves are SCROLLBAR_GUTTER narrower than listPane).
+  -- subtracts SCROLLBAR_GUTTER so headers align with row column positions.
   local header = CreateFrame("Frame", nil, listPane)
   header:SetHeight(18)
   header:SetPoint("TOPLEFT",  listPane, "TOPLEFT",  0, 0)
@@ -898,82 +925,49 @@ local function CreateListPane()
   header.scoreLabel:SetJustifyH("CENTER")
   header.scoreLabel:SetText("Score")
 
-  -- ScrollFrame MUST be named for FauxScrollFrameTemplate to wire its
-  -- $parentScrollBar/etc. children correctly. Without a name, the template's
-  -- internal `_G[frame:GetName() .. "ScrollBar"]` lookup fails and rows stay
-  -- invisible until numItems > numToDisplay forces the path to recover.
-  local scroll = CreateFrame("ScrollFrame", "BawrSpamHistoryListScroll", listPane, "FauxScrollFrameTemplate")
-  scroll:SetPoint("TOPLEFT",     listPane, "TOPLEFT",     0, -18)
-  scroll:SetPoint("BOTTOMRIGHT", listPane, "BOTTOMRIGHT", -SCROLLBAR_GUTTER, 18)
-  scroll:SetScript("OnVerticalScroll", function(self, yOffset)
-    FauxScrollFrame_OnVerticalScroll(self, yOffset, LIST_ROW_HEIGHT, RefreshList)
-  end)
+  local scrollBox = CreateFrame("Frame", nil, listPane, "WowScrollBoxList")
+  scrollBox:SetPoint("TOPLEFT",     listPane, "TOPLEFT",     0, -18)
+  scrollBox:SetPoint("BOTTOMRIGHT", listPane, "BOTTOMRIGHT", -SCROLLBAR_GUTTER, 18)
 
-  scroll.rows = {}
-  for i = 1, LIST_MAX_ROWS do
-    local row = CreateFrame("Button", nil, scroll)
-    row:SetSize(LIST_PANE_WIDTH - SCROLLBAR_GUTTER, LIST_ROW_HEIGHT)
-    if i == 1 then
-      row:SetPoint("TOPLEFT", scroll, "TOPLEFT", 0, 0)
-    else
-      row:SetPoint("TOPLEFT", scroll.rows[i - 1], "BOTTOMLEFT", 0, 0)
-    end
+  local scrollBar = CreateFrame("EventFrame", nil, listPane, "MinimalScrollBar")
+  scrollBar:SetPoint("TOPLEFT",    scrollBox, "TOPRIGHT",    0,  0)
+  scrollBar:SetPoint("BOTTOMLEFT", scrollBox, "BOTTOMRIGHT", 0,  0)
+  scrollBar:SetHideIfUnscrollable(false)
 
-    row.stripe = row:CreateTexture(nil, "ARTWORK")
-    row.stripe:SetPoint("TOPLEFT",    row, "TOPLEFT",    0, 0)
-    row.stripe:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
-    row.stripe:SetWidth(4)
-
-    row.selection = row:CreateTexture(nil, "BACKGROUND")
-    row.selection:SetAllPoints()
-    row.selection:SetColorTexture(80 / 255, 140 / 255, 200 / 255, 0.18)
-    row.selection:Hide()
-
-    row.timeText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    row.timeText:SetPoint("LEFT", row, "LEFT", 10, 0)
-    row.timeText:SetWidth(36)
-    row.timeText:SetJustifyH("LEFT")
-
-    row.senderText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    row.senderText:SetPoint("LEFT",  row.timeText, "RIGHT",  4, 0)
-    row.senderText:SetPoint("RIGHT", row,          "RIGHT", -94, 0)
-    row.senderText:SetJustifyH("LEFT")
-
-    row.badgeText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    row.badgeText:SetPoint("RIGHT", row, "RIGHT", -34, 0)
-    row.badgeText:SetWidth(54)
-    row.badgeText:SetJustifyH("CENTER")
-
-    row.scoreText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    row.scoreText:SetPoint("RIGHT", row, "RIGHT", -4, 0)
-    row.scoreText:SetWidth(30)
-    row.scoreText:SetJustifyH("RIGHT")
-
-    row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    row:SetScript("OnClick", function(self, mouseButton)
-      if not self.entry then return end
+  local view = CreateScrollBoxListLinearView()
+  view:SetElementExtent(LIST_ROW_HEIGHT)
+  view:SetElementInitializer("Button", function(button, entry)
+    InitListRow(button)
+    RenderRow(button, entry)
+    button.selection:SetShown(selectedEntryId == entry.id)
+    button:SetScript("OnClick", function(self, mouseButton)
       if mouseButton == "RightButton" then
         self._lastClick = nil
-        OpenRowContextMenu(self, self.entry)
+        OpenRowContextMenu(self, entry)
         return
       end
       local now = GetTime()
       if self._lastClick and (now - self._lastClick) < DOUBLE_CLICK_WINDOW then
         self._lastClick = nil
-        PerformRestore(self.entry)
-        if ContextEntryCanAllowlist(self.entry) then
-          PerformAlwaysAllow(self.entry)
+        PerformRestore(entry)
+        if ContextEntryCanAllowlist(entry) then
+          PerformAlwaysAllow(entry)
         end
       else
         self._lastClick = now
-        SelectEntry(self.entry.id)
+        SelectEntry(entry.id)
       end
     end)
+  end)
+  view:SetElementResetter(function(button)
+    button:SetScript("OnClick", nil)
+    button.selection:Hide()
+    button._lastClick = nil
+  end)
 
-    scroll.rows[i] = row
-  end
+  ScrollUtil.InitScrollBoxListWithScrollBar(scrollBox, scrollBar, view)
 
-  listPane.scroll = scroll
+  listPane.scroll = scrollBox
 
   local legend = CreateFrame("Frame", nil, listPane)
   legend:SetHeight(18)
