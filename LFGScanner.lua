@@ -10,6 +10,12 @@ local LFG_EVENTS = {
 
 local eventFrame = nil
 local enabled = false
+local renderHooksInstalled = false
+local renderHideEnabled = false
+local renderSweepFrame = nil
+local renderSweepElapsed = 0
+
+local RENDER_SWEEP_INTERVAL = 0.2
 
 local function DevLog(message)
   if NS.DB and NS.DB.DevLog then
@@ -40,6 +46,160 @@ end
 
 local function IsSecret(value)
   return type(issecretvalue) == "function" and issecretvalue(value) == true
+end
+
+local function GetElementData(row)
+  if row and type(row.GetElementData) == "function" then
+    return row:GetElementData()
+  end
+  return nil
+end
+
+local function ResolveSearchResultID(row)
+  if not row then
+    return nil
+  end
+
+  if row.resultID ~= nil then
+    return row.resultID
+  end
+
+  local elementData = GetElementData(row)
+  return elementData and elementData.resultID or nil
+end
+
+local function ResolveApplicantID(row)
+  if not row then
+    return nil
+  end
+
+  if row.applicantID ~= nil then
+    return row.applicantID
+  end
+
+  local elementData = GetElementData(row)
+  return elementData and elementData.id or nil
+end
+
+local function SetRowShown(row, shouldShow)
+  if not row then
+    return
+  end
+
+  if shouldShow then
+    if type(row.Show) == "function" then
+      row:Show()
+    end
+  elseif type(row.Hide) == "function" then
+    row:Hide()
+  end
+end
+
+local function RefreshSearchRow(row)
+  local searchResultID = ResolveSearchResultID(row)
+  local blocked = searchResultID ~= nil
+    and NS.Suppression
+    and NS.Suppression.IsLFGSearchResultBlocked
+    and NS.Suppression.IsLFGSearchResultBlocked(searchResultID)
+  SetRowShown(row, blocked ~= true)
+end
+
+local function RefreshApplicantRow(row)
+  local applicantID = ResolveApplicantID(row)
+  local blocked = applicantID ~= nil
+    and NS.Suppression
+    and NS.Suppression.IsLFGApplicantBlocked
+    and NS.Suppression.IsLFGApplicantBlocked(applicantID)
+  SetRowShown(row, blocked ~= true)
+end
+
+local function ForEachScrollBoxFrame(scrollBox, handler)
+  if not scrollBox or type(scrollBox.ForEachFrame) ~= "function" then
+    return
+  end
+
+  scrollBox:ForEachFrame(handler)
+end
+
+local function GetLFGListFrame()
+  return _G and _G.LFGListFrame or nil
+end
+
+local function SweepVisibleRows()
+  local lfgListFrame = GetLFGListFrame()
+  if not lfgListFrame then
+    return
+  end
+
+  local searchPanel = lfgListFrame.SearchPanel
+  local searchScrollBox = searchPanel and searchPanel.ScrollBox
+  if searchScrollBox and (type(searchScrollBox.IsShown) ~= "function" or searchScrollBox:IsShown()) then
+    ForEachScrollBoxFrame(searchScrollBox, RefreshSearchRow)
+  end
+
+  local applicationViewer = lfgListFrame.ApplicationViewer
+  local applicantScrollBox = applicationViewer and applicationViewer.ScrollBox
+  if applicantScrollBox and (type(applicantScrollBox.IsShown) ~= "function" or applicantScrollBox:IsShown()) then
+    ForEachScrollBoxFrame(applicantScrollBox, RefreshApplicantRow)
+  end
+end
+
+local function InstallRenderHooks()
+  if renderHooksInstalled then
+    return
+  end
+
+  if type(hooksecurefunc) == "function" then
+    pcall(hooksecurefunc, "LFGListSearchPanel_InitButton", function(button)
+      RefreshSearchRow(button)
+    end)
+    pcall(hooksecurefunc, "LFGListSearchEntry_Update", function(row)
+      RefreshSearchRow(row)
+    end)
+    pcall(hooksecurefunc, "LFGListApplicationViewer_InitButton", function(button)
+      RefreshApplicantRow(button)
+    end)
+    pcall(hooksecurefunc, "LFGListApplicationViewer_UpdateApplicant", function(row)
+      RefreshApplicantRow(row)
+    end)
+  end
+
+  renderHooksInstalled = true
+end
+
+local function EnsureRenderSweepFrame()
+  if renderSweepFrame then
+    return renderSweepFrame
+  end
+
+  if type(CreateFrame) ~= "function" then
+    return nil
+  end
+
+  renderSweepFrame = CreateFrame("Frame")
+  renderSweepFrame:SetScript("OnUpdate", function(_self, elapsed)
+    if not renderHideEnabled then
+      return
+    end
+
+    renderSweepElapsed = renderSweepElapsed + (tonumber(elapsed) or 0)
+    if renderSweepElapsed < RENDER_SWEEP_INTERVAL then
+      return
+    end
+
+    renderSweepElapsed = 0
+    SweepVisibleRows()
+  end)
+  return renderSweepFrame
+end
+
+local function SetRenderHideEnabled(shouldEnable)
+  renderHideEnabled = shouldEnable == true
+  if renderHideEnabled then
+    InstallRenderHooks()
+    EnsureRenderSweepFrame()
+  end
+  SweepVisibleRows()
 end
 
 local function TextOrEmpty(value)
@@ -339,16 +499,18 @@ function LFGScanner.SetEnabled(shouldEnable)
       frame:RegisterEvent(LFG_EVENTS[i])
     end
     enabled = true
+    SetRenderHideEnabled(true)
     return true
   end
 
+  enabled = false
   if eventFrame then
     for i = 1, #LFG_EVENTS do
       eventFrame:UnregisterEvent(LFG_EVENTS[i])
     end
   end
-  enabled = false
   ClearTransientLFG()
+  SetRenderHideEnabled(false)
   return true
 end
 
