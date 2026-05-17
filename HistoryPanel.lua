@@ -1,6 +1,10 @@
 local _, NS = ...
 local HistoryPanel = {}
 
+-- BSP-008: i18n hook. Identity function today; future Locale ticket
+-- swaps to NS.L or a string table without touching call sites.
+local function L(s) return s end
+
 local DEFAULT_PANEL_WIDTH  = 820
 local DEFAULT_PANEL_HEIGHT = 540
 local MIN_PANEL_WIDTH      = 720
@@ -157,7 +161,7 @@ local function SaveSize()
 end
 
 local function ApplyStoredGeometry()
-	local store = GetCharStore() or {}
+  local store = GetCharStore() or {}
 
   local width  = store.width  or DEFAULT_PANEL_WIDTH
   local height = store.height or DEFAULT_PANEL_HEIGHT
@@ -167,10 +171,20 @@ local function ApplyStoredGeometry()
 
   frame:ClearAllPoints()
   if store.x and store.y then
-    frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", store.x, store.y)
+    -- BSP-008: clamp off-screen geometry that pre-BSP-008 builds left behind.
+    -- PortraitFrameTemplate's NineSlice extends ~13px beyond the client area,
+    -- so existing TOPLEFT positions that were near-edge may now spill off-screen.
+    local screenW = GetScreenWidth and GetScreenWidth() or 1920
+    local screenH = GetScreenHeight and GetScreenHeight() or 1080
+    if store.x < -200 or store.x > screenW - 100
+       or store.y < 100 or store.y > screenH + 100 then
+      frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    else
+      frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", store.x, store.y)
+    end
   else
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-	end
+  end
 end
 
 local function ClearStoredGeometry()
@@ -183,15 +197,24 @@ local function ClearStoredGeometry()
 end
 
 local function CreateBackdropFrame(parent)
-  local f = CreateFrame("Frame", "BawrSpamHistoryFrame", parent, "BackdropTemplate")
-  f:SetBackdrop({
-    bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
-    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-    tile = true, tileSize = 16, edgeSize = 16,
-    insets = { left = 4, right = 4, top = 4, bottom = 4 },
-  })
-  f:SetBackdropColor(0.02, 0.02, 0.025, 0.96)
-  f:SetBackdropBorderColor(0.35, 0.36, 0.42, 1)
+  local f = CreateFrame("Frame", "BawrSpamHistoryFrame", parent, "PortraitFrameTemplate")
+  f.layoutType = "ButtonFrameTemplateNoPortrait"
+  if f.SetBorder then
+    f:SetBorder("ButtonFrameTemplateNoPortrait")
+  end
+  if f.SetPortraitShown then
+    f:SetPortraitShown(false)
+  end
+  if f.SetTitle then
+    f:SetTitle(L("BawrSpam — History"))
+  elseif f.TitleContainer and f.TitleContainer.TitleText then
+    f.TitleContainer.TitleText:SetText(L("BawrSpam — History"))
+  end
+  -- Center the title within TitleContainer (template default is LEFT-anchored).
+  if f.TitleContainer and f.TitleContainer.TitleText then
+    f.TitleContainer.TitleText:ClearAllPoints()
+    f.TitleContainer.TitleText:SetPoint("CENTER", f.TitleContainer, "CENTER", 0, 0)
+  end
   f:SetFrameStrata("HIGH")
   f:SetClampedToScreen(true)
   f:Hide()
@@ -200,35 +223,6 @@ end
 
 local function OpenConfigPanel()
   HistoryPanel.ShowConfig("Detection")
-end
-
-local function CreateHeaderBar(parent)
-  local header = CreateFrame("Frame", nil, parent)
-  header:SetHeight(28)
-  header:SetPoint("TOPLEFT",  parent, "TOPLEFT",   6, -6)
-  header:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -6, -6)
-  header:EnableMouse(true)
-  header:RegisterForDrag("LeftButton")
-  header:SetScript("OnDragStart", function() parent:StartMoving() end)
-  header:SetScript("OnDragStop",  function()
-    parent:StopMovingOrSizing()
-    SavePosition()
-  end)
-
-  local title = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-  title:SetPoint("LEFT", header, "LEFT", 4, 0)
-  title:SetText("BawrSpam — History")
-
-  header.statsText = header:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  header.statsText:SetPoint("RIGHT", header, "RIGHT", -30, 0)
-  header.statsText:SetJustifyH("RIGHT")
-
-  local close = CreateFrame("Button", nil, parent, "UIPanelCloseButton")
-  close:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 2, -2)
-  close:SetScript("OnClick", function() parent:Hide() end)
-
-  parent.headerBar = header
-  return header
 end
 
 local function CreateResizeHandle(parent)
@@ -290,18 +284,8 @@ local function GetHistoryStats()
 end
 
 local function UpdateHistoryStatsText()
-  if not frame or not frame.headerBar or not frame.headerBar.statsText then return end
-
-  local stats = GetHistoryStats()
-  local lifetime = stats and stats.lifetime or {}
-  local retained = stats and stats.retained or {}
-  frame.headerBar.statsText:SetText(string.format(
-    "Total: %d   Blocked: %d   Restored: %d   Retained: %d",
-    tonumber(lifetime.detections) or 0,
-    tonumber(lifetime.blocked) or 0,
-    tonumber(lifetime.restored) or 0,
-    tonumber(retained.detections) or 0
-  ))
+  -- BSP-008: stats text moves to detail pane (Commit 5); placeholder while chrome transitions.
+  return
 end
 
 local function CurrentEntries()
@@ -1393,6 +1377,81 @@ local function CreateHeaderFilters()
   strip.refresh = refresh
 end
 
+local pauseRow, pausePills
+
+local PAUSE_PILL_KEYS = { "chat", "whisper", "bn-whisper", "lfg-search", "lfg-applicant" }
+local PAUSE_PILL_LABELS = {
+  chat              = "Chat",
+  whisper           = "Whisp",
+  ["bn-whisper"]    = "Bnet",
+  ["lfg-search"]    = "LFG-s",
+  ["lfg-applicant"] = "LFG-a",
+}
+local PAUSE_STATE_COLOR = {
+  active = { 0.35, 0.82, 0.50 },  -- green
+  paused = { 0.83, 0.69, 0.28 },  -- yellow
+  off    = { 1.00, 0.33, 0.46 },  -- red
+}
+local PAUSE_STATE_GLYPH = { active = "●", paused = "⏸", off = "⊘" }
+
+local function CreatePauseRow(parent)
+  pauseRow = CreateFrame("Frame", nil, parent)
+  pauseRow:SetHeight(20)
+  if parent.TitleContainer then
+    pauseRow:SetPoint("TOPRIGHT", parent.TitleContainer, "BOTTOMRIGHT", -28, -2)
+  else
+    pauseRow:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -32, -32)
+  end
+
+  pausePills = {}
+  local previousPill
+  for i = #PAUSE_PILL_KEYS, 1, -1 do
+    local surfaceKey = PAUSE_PILL_KEYS[i]
+    local pill = CreateFrame("Button", nil, pauseRow)
+    pill:SetSize(60, 18)
+    if previousPill then
+      pill:SetPoint("RIGHT", previousPill, "LEFT", -4, 0)
+    else
+      pill:SetPoint("RIGHT", pauseRow, "RIGHT", 0, 0)
+    end
+    pill:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    pill.surfaceKey = surfaceKey
+
+    pill.bg = pill:CreateTexture(nil, "BACKGROUND")
+    pill.bg:SetAllPoints(pill)
+    pill.bg:SetColorTexture(0.13, 0.13, 0.16, 0.95)
+
+    pill.glyph = pill:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    pill.glyph:SetPoint("LEFT", pill, "LEFT", 4, 0)
+
+    pill.label = pill:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    pill.label:SetPoint("LEFT", pill.glyph, "RIGHT", 2, 0)
+    pill.label:SetText(L(PAUSE_PILL_LABELS[surfaceKey]))
+
+    -- BSP-008: stub OnClick — Commit 6 wires this to NS.PauseState.CycleSurface.
+    pill:SetScript("OnClick", function() end)
+
+    pausePills[surfaceKey] = pill
+    previousPill = pill
+  end
+
+  return pauseRow
+end
+
+-- Public API for the listener (wired in Commit 6).
+function HistoryPanel.RefreshPauseRow()
+  if not pausePills or not NS.PauseState then return end
+  for surfaceKey, pill in pairs(pausePills) do
+    local state = NS.PauseState.GetSurface(surfaceKey)
+    local color = PAUSE_STATE_COLOR[state]
+    local glyph = PAUSE_STATE_GLYPH[state] or "●"
+    pill.glyph:SetText(glyph)
+    if color then
+      pill.glyph:SetTextColor(color[1], color[2], color[3])
+    end
+  end
+end
+
 local function BuildFrame()
   if frame then return end
 
@@ -1403,8 +1462,20 @@ local function BuildFrame()
     frame:SetResizeBounds(MIN_PANEL_WIDTH, MIN_PANEL_HEIGHT)
   end
 
-  CreateHeaderBar(frame)
+  -- Title-bar drag — TitleContainer is the modern drag region.
+  if frame.TitleContainer then
+    frame.TitleContainer:EnableMouse(true)
+    frame.TitleContainer:RegisterForDrag("LeftButton")
+    frame.TitleContainer:SetScript("OnDragStart", function() frame:StartMoving() end)
+    frame.TitleContainer:SetScript("OnDragStop", function()
+      frame:StopMovingOrSizing()
+      SavePosition()
+    end)
+  end
+
   CreateResizeHandle(frame)
+  CreatePauseRow(frame)
+  if HistoryPanel.RefreshPauseRow then HistoryPanel.RefreshPauseRow() end
   listPane, detailPane = CreatePanes(frame)
   CreateListPane()
   CreateDetailPane()
