@@ -12,8 +12,8 @@ local CHAT_EVENTS = {
   "CHAT_MSG_AFK",
 }
 
--- luacheck: push ignore 211/EVENT_TO_SURFACE
--- Dormant in Commit 1 of BSP-008; consumed by the pause gate in Commit 2.
+-- BSP-008 Commit 2: surface taxonomy lookup, consumed by the pause gate
+-- in Pipeline() below and used to stamp record.surface on history writes.
 local EVENT_TO_SURFACE = {
   CHAT_MSG_SAY        = "chat",
   CHAT_MSG_YELL       = "chat",
@@ -24,7 +24,6 @@ local EVENT_TO_SURFACE = {
   CHAT_MSG_WHISPER    = "whisper",
   CHAT_MSG_BN_WHISPER = "bn-whisper",
 }
--- luacheck: pop
 
 local filterInstalled = {}
 local eventFrame = nil
@@ -78,11 +77,11 @@ local function BuildScoringOptions(settings)
   }
 end
 
-local function BuildHistoryRecord(event, message, sender, channelName, guid, analysis, settings, score, threshold, breakdown, reason)
+local function BuildHistoryRecord(event, message, sender, channelName, guid, analysis, settings, score, threshold, breakdown, reason, surface, outcome)
   local name, realm = SplitNameRealm(sender)
   local record = {
     ts = ServerTime(),
-    surface = "chat",
+    surface = surface or EVENT_TO_SURFACE[event] or "chat",
     channel = event,
     channelName = (type(channelName) == "string" and channelName ~= "") and channelName or nil,
     guid = guid,
@@ -93,7 +92,7 @@ local function BuildHistoryRecord(event, message, sender, channelName, guid, ana
     threshold = threshold,
     breakdown = breakdown,
     containsItemLinks = analysis.signals and analysis.signals.containsItemLinks == true,
-    outcome = "blocked",
+    outcome = outcome or "blocked",
     reason = reason,
   }
 
@@ -137,13 +136,53 @@ local function Pipeline(
     return false
   end
 
+  -- Surface state gate: off short-circuits the pipeline (no detection, no history).
+  -- paused lets detection run but flips outcome to pass-thru and skips bubble suppression.
+  local surface = EVENT_TO_SURFACE[event] or "chat"
+  local surfaceState = (NS.PauseState and NS.PauseState.GetSurface and NS.PauseState.GetSurface(surface)) or "active"
+  if surfaceState == "off" then
+    return false
+  end
+  local blockSuppressed = (surfaceState == "paused")
+
   local analysis = NS.Cleanse and NS.Cleanse.Analyze and NS.Cleanse.Analyze(message)
   if not analysis then
     return false
   end
 
   local settings = GetSettings()
+  local score = NS.Scoring and NS.Scoring.Score and NS.Scoring.Score(analysis, BuildScoringOptions(settings))
+  if not score or not score.blocked then
+    return false
+  end
+
+  -- Category state gate: find the dominant scoring category (excluding MixedScript meta).
+  -- off short-circuits; paused flips outcome to pass-thru.
+  local breakdown = score.breakdown
+  local dominantCategory
+  if type(breakdown) == "table" then
+    local bestVal
+    for cat, val in pairs(breakdown) do
+      if cat ~= "MixedScript" and (not bestVal or val > bestVal) then
+        dominantCategory, bestVal = cat, val
+      end
+    end
+  end
+  if dominantCategory then
+    local categoryState = (NS.PauseState and NS.PauseState.GetCategory and NS.PauseState.GetCategory(dominantCategory)) or "active"
+    if categoryState == "off" then
+      return false
+    end
+    if categoryState == "paused" then
+      blockSuppressed = true
+    end
+  end
+
+  -- Throttle runs ONLY on confirmed-spam (post-Score + post-category-gate). BSP-010 reorder
+  -- folded into BSP-008 Commit 2: previously ran before Score and could over-fire on
+  -- legitimate duplicates.
   if NS.Throttle and NS.Throttle.Check and NS.Throttle.Check(event, analysis.normalized, guid) then
+    local throttleOutcome = blockSuppressed and "pass-thru" or "blocked"
     AppendBlockedHistory(BuildHistoryRecord(
       event,
       message,
@@ -155,19 +194,23 @@ local function Pipeline(
       settings.threshold,
       settings.threshold,
       { Throttle = settings.threshold },
-      "throttle"
+      "throttle",
+      surface,
+      throttleOutcome
     ), counter)
-    if NS.BubbleSuppressor and NS.BubbleSuppressor.Engage then
-      NS.BubbleSuppressor.Engage(event, settings)
+    if NS.History and NS.History.IncrementThrottled then
+      NS.History.IncrementThrottled()
     end
-    return true
+    if not blockSuppressed and NS.BubbleSuppressor and NS.BubbleSuppressor.Engage then
+      local engaged = NS.BubbleSuppressor.Engage(event, settings)
+      if engaged and NS.History and NS.History.IncrementBubblesSuppressed then
+        NS.History.IncrementBubblesSuppressed()
+      end
+    end
+    return not blockSuppressed
   end
 
-  local score = NS.Scoring and NS.Scoring.Score and NS.Scoring.Score(analysis, BuildScoringOptions(settings))
-  if not score or not score.blocked then
-    return false
-  end
-
+  local outcome = blockSuppressed and "pass-thru" or "blocked"
   AppendBlockedHistory(BuildHistoryRecord(
     event,
     message,
@@ -179,14 +222,19 @@ local function Pipeline(
     score.score,
     score.threshold,
     score.breakdown,
-    "score"
+    "score",
+    surface,
+    outcome
   ), counter)
 
-  if NS.BubbleSuppressor and NS.BubbleSuppressor.Engage then
-    NS.BubbleSuppressor.Engage(event, settings)
+  if not blockSuppressed and NS.BubbleSuppressor and NS.BubbleSuppressor.Engage then
+    local engaged = NS.BubbleSuppressor.Engage(event, settings)
+    if engaged and NS.History and NS.History.IncrementBubblesSuppressed then
+      NS.History.IncrementBubblesSuppressed()
+    end
   end
 
-  return true
+  return not blockSuppressed
 end
 
 local function ErrorHandler(err)

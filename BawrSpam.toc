@@ -8,6 +8,7 @@
 
 embeds.xml
 DB.lua
+PauseState.lua
 Cleanse.lua
 PatternData.lua
 Patterns.lua
