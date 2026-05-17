@@ -40,6 +40,7 @@ read_globals = {
     "UIPanelButtonTemplate", "UIPanelCloseButton",
     "UIPanelScrollFrameTemplate",
     "CreateScrollBoxListLinearView",
+    "CreateDataProvider",
     "ScrollUtil",
     "EasyMenu",
     "StaticPopup_Show",

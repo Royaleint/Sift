@@ -987,6 +987,7 @@ local function CreateListPane()
   end)
 
   ScrollUtil.InitScrollBoxListWithScrollBar(scrollBox, scrollBar, view)
+  view:SetDataProvider(CreateDataProvider())
 
   listPane.scroll = scrollBox
 
