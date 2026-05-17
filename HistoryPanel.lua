@@ -769,6 +769,15 @@ local function RenderActions(entry)
   end
 
   if outcome == "pass-thru" then
+    if entry.surface == "lfg-applicant" then
+      -- No safe in-game applicant-report path: C_LFGList exposes only
+      -- ReportGroupAsAdvertisement(searchResultID) for listings, and
+      -- C_ReportSystem.SendReport is documented "Not allowed to be called
+      -- by addons." BSP-008 investigation closed without a callable API;
+      -- hide the action row for pass-thru applicant entries until a future
+      -- BSP- ticket re-investigates.
+      return
+    end
     actions.btn1:SetText(L("Block retroactively"))
     actions.btn1:SetScript("OnClick", function()
       PerformBlockRetroactively(entry)
