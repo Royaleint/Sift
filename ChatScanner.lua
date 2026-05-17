@@ -64,6 +64,39 @@ local function BuildScoringOptions(settings)
   }
 end
 
+local function BuildHistoryRecord(event, message, sender, channelName, guid, analysis, settings, score, threshold, breakdown, reason)
+  local name, realm = SplitNameRealm(sender)
+  local record = {
+    ts = ServerTime(),
+    surface = "chat",
+    channel = event,
+    channelName = (type(channelName) == "string" and channelName ~= "") and channelName or nil,
+    guid = guid,
+    name = name,
+    realm = realm,
+    original = message,
+    score = score,
+    threshold = threshold,
+    breakdown = breakdown,
+    containsItemLinks = analysis.signals and analysis.signals.containsItemLinks == true,
+    outcome = "blocked",
+    reason = reason,
+  }
+
+  if settings.devMode == true then
+    record.cleansed = analysis.normalized
+  end
+
+  return record
+end
+
+local function AppendBlockedHistory(record, counter)
+  local entryID = NS.History and NS.History.Append and NS.History.Append(record)
+  if NS.Suppression and NS.Suppression.MarkChatLine then
+    NS.Suppression.MarkChatLine(counter, entryID)
+  end
+end
+
 local function Pipeline(
   event,
   message,
@@ -93,37 +126,41 @@ local function Pipeline(
   end
 
   local settings = GetSettings()
+  if NS.Throttle and NS.Throttle.Check and NS.Throttle.Check(event, analysis.normalized, guid) then
+    AppendBlockedHistory(BuildHistoryRecord(
+      event,
+      message,
+      sender,
+      channelName,
+      guid,
+      analysis,
+      settings,
+      settings.threshold,
+      settings.threshold,
+      { Throttle = settings.threshold },
+      "throttle"
+    ), counter)
+    return true
+  end
+
   local score = NS.Scoring and NS.Scoring.Score and NS.Scoring.Score(analysis, BuildScoringOptions(settings))
   if not score or not score.blocked then
     return false
   end
 
-  local name, realm = SplitNameRealm(sender)
-  local record = {
-    ts = ServerTime(),
-    surface = "chat",
-    channel = event,
-    channelName = (type(channelName) == "string" and channelName ~= "") and channelName or nil,
-    guid = guid,
-    name = name,
-    realm = realm,
-    original = message,
-    score = score.score,
-    threshold = score.threshold,
-    breakdown = score.breakdown,
-    containsItemLinks = analysis.signals and analysis.signals.containsItemLinks == true,
-    outcome = "blocked",
-    reason = "score",
-  }
-
-  if settings.devMode == true then
-    record.cleansed = analysis.normalized
-  end
-
-  local entryID = NS.History and NS.History.Append and NS.History.Append(record)
-  if NS.Suppression and NS.Suppression.MarkChatLine then
-    NS.Suppression.MarkChatLine(counter, entryID)
-  end
+  AppendBlockedHistory(BuildHistoryRecord(
+    event,
+    message,
+    sender,
+    channelName,
+    guid,
+    analysis,
+    settings,
+    score.score,
+    score.threshold,
+    score.breakdown,
+    "score"
+  ), counter)
 
   return true
 end
