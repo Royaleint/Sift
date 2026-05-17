@@ -119,6 +119,26 @@ local function GetChar()
   return db and db.char
 end
 
+local function GetHistoryStats()
+  if NS.History and NS.History.GetStats then
+    return NS.History.GetStats()
+  end
+
+  local entries = NS.History and NS.History.GetAll and NS.History.GetAll() or {}
+  return {
+    lifetime = {
+      detections = #entries,
+      blocked = #entries,
+      restored = 0,
+    },
+    retained = {
+      detections = #entries,
+      blocked = #entries,
+      restored = 0,
+    },
+  }
+end
+
 local function CopyTable(tbl)
   local out = {}
   if type(tbl) == "table" then
@@ -1411,9 +1431,16 @@ end
 
 RenderHistory = function()
   local entries = NS.History and NS.History.GetAll and NS.History.GetAll() or {}
+  local stats = GetHistoryStats()
+  local lifetime = stats and stats.lifetime or {}
+  local retained = stats and stats.retained or {}
   local y = AddSectionTitle("History", "Control retained block history.")
   y = AddStatus(y, sectionStatus.History)
-  AddText("Current entries: " .. tostring(#entries), "GameFontNormalSmall", CONTENT_PAD, y)
+  y = AddDisabledRow("Lifetime detections", tostring(tonumber(lifetime.detections) or 0), y)
+  y = AddDisabledRow("Lifetime blocks", tostring(tonumber(lifetime.blocked) or 0), y)
+  y = AddDisabledRow("Lifetime restores", tostring(tonumber(lifetime.restored) or 0), y)
+  AddText("Retained entries: " .. tostring(tonumber(retained.detections) or #entries),
+    "GameFontNormalSmall", CONTENT_PAD, y)
   y = y - 28
 
   local slider = AddAceWidget("Slider", CONTENT_PAD, y, 360)

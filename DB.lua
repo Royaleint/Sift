@@ -32,6 +32,13 @@ local defaults = {
   char = {
     history = {},
     historyCursor = 0,
+    stats = {
+      initialized = false,
+      detections = 0,
+      blocked = 0,
+      restored = 0,
+      bySurface = {},
+    },
     lastSeenVersion = ADDON_VERSION,
   },
 }
@@ -102,6 +109,12 @@ local function RepairShape(db)
   db.global.settings = db.global.settings or {}
   db.char.history = db.char.history or {}
   db.char.historyCursor = db.char.historyCursor or 0
+  db.char.stats = db.char.stats or {}
+  db.char.stats.initialized = db.char.stats.initialized == true
+  db.char.stats.detections = tonumber(db.char.stats.detections) or 0
+  db.char.stats.blocked = tonumber(db.char.stats.blocked) or 0
+  db.char.stats.restored = tonumber(db.char.stats.restored) or 0
+  db.char.stats.bySurface = type(db.char.stats.bySurface) == "table" and db.char.stats.bySurface or {}
   db.char.lastSeenVersion = db.char.lastSeenVersion or ADDON_VERSION
   RepairSettings(db.global.settings)
 end
