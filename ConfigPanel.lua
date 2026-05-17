@@ -1436,9 +1436,9 @@ RenderHistory = function()
   local retained = stats and stats.retained or {}
   local y = AddSectionTitle("History", "Control retained block history.")
   y = AddStatus(y, sectionStatus.History)
-  y = AddDisabledRow("Lifetime detections", tostring(tonumber(lifetime.detections) or 0), y)
-  y = AddDisabledRow("Lifetime blocks", tostring(tonumber(lifetime.blocked) or 0), y)
-  y = AddDisabledRow("Lifetime restores", tostring(tonumber(lifetime.restored) or 0), y)
+  y = AddDisabledRow("Total detections", tostring(tonumber(lifetime.detections) or 0), y)
+  y = AddDisabledRow("Total blocks", tostring(tonumber(lifetime.blocked) or 0), y)
+  y = AddDisabledRow("Total restores", tostring(tonumber(lifetime.restored) or 0), y)
   AddText("Retained entries: " .. tostring(tonumber(retained.detections) or #entries),
     "GameFontNormalSmall", CONTENT_PAD, y)
   y = y - 28

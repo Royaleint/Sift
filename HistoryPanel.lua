@@ -295,7 +295,7 @@ local function UpdateHistoryStatsText()
   local lifetime = stats and stats.lifetime or {}
   local retained = stats and stats.retained or {}
   frame.headerBar.statsText:SetText(string.format(
-    "Detected: %d   Blocked: %d   Restored: %d   Retained: %d",
+    "Total: %d   Blocked: %d   Restored: %d   Retained: %d",
     tonumber(lifetime.detections) or 0,
     tonumber(lifetime.blocked) or 0,
     tonumber(lifetime.restored) or 0,
