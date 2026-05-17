@@ -92,6 +92,9 @@ end
 
 local function AppendBlockedHistory(record, counter)
   local entryID = NS.History and NS.History.Append and NS.History.Append(record)
+  if entryID and NS.ReportFlow and NS.ReportFlow.QueueChatReport then
+    NS.ReportFlow.QueueChatReport(entryID, counter, record.name)
+  end
   if NS.Suppression and NS.Suppression.MarkChatLine then
     NS.Suppression.MarkChatLine(counter, entryID)
   end

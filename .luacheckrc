@@ -48,6 +48,7 @@ read_globals = {
     "StaticPopup_Show",
     "CLOSE",
     "MenuUtil",
+    "PlayerLocation",
     "Settings",
     "InterfaceOptions_AddCategory",
     "InterfaceOptionsFrame",
@@ -59,6 +60,8 @@ read_globals = {
     "C_BattleNet",
     "C_CVar",
     "C_FriendList",
+    "C_LFGList",
+    "C_ReportSystem",
     "C_Timer",
 
     -- WoW API (functions)
@@ -75,6 +78,7 @@ read_globals = {
     "UnitInRaid",
     "geterrorhandler",
     "GetScreenWidth", "GetScreenHeight",
+    "PLAYER_REPORT_TYPE_SPAM",
 
     -- Ace3 / Libraries
     "LibStub",

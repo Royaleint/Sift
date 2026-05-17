@@ -16,6 +16,7 @@ Throttle.lua
 BubbleSuppressor.lua
 Suppression.lua
 History.lua
+ReportFlow.lua
 ChatScanner.lua
 HistoryPanel.lua
 ConfigPanel.lua
