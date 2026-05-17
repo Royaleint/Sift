@@ -28,6 +28,82 @@ local function ShallowCopy(record)
   return copy
 end
 
+local function CountRetained(history)
+  local retained = {
+    detections = 0,
+    blocked = 0,
+    restored = 0,
+    bySurface = {},
+  }
+
+  for index = 1, #history do
+    local record = history[index]
+    if type(record) == "table" then
+      local surface = record.surface or "chat"
+      retained.detections = retained.detections + 1
+      retained.bySurface[surface] = (retained.bySurface[surface] or 0) + 1
+      if record.outcome == "restored" then
+        retained.restored = retained.restored + 1
+      else
+        retained.blocked = retained.blocked + 1
+      end
+    end
+  end
+
+  return retained
+end
+
+local function CopyStats(stats)
+  local copy = {
+    detections = tonumber(stats and stats.detections) or 0,
+    blocked = tonumber(stats and stats.blocked) or 0,
+    restored = tonumber(stats and stats.restored) or 0,
+    bySurface = {},
+  }
+
+  if stats and type(stats.bySurface) == "table" then
+    for surface, count in pairs(stats.bySurface) do
+      copy.bySurface[surface] = tonumber(count) or 0
+    end
+  end
+
+  return copy
+end
+
+local function EnsureStats(char)
+  char.stats = char.stats or {}
+  local stats = char.stats
+  stats.bySurface = type(stats.bySurface) == "table" and stats.bySurface or {}
+
+  if stats.initialized ~= true then
+    local retained = CountRetained(char.history or {})
+    stats.detections = retained.detections
+    stats.blocked = retained.blocked
+    stats.restored = retained.restored
+    stats.bySurface = retained.bySurface
+    stats.initialized = true
+  else
+    stats.detections = tonumber(stats.detections) or 0
+    stats.blocked = tonumber(stats.blocked) or 0
+    stats.restored = tonumber(stats.restored) or 0
+  end
+
+  return stats
+end
+
+local function IncrementStats(char, record)
+  local stats = EnsureStats(char)
+  local surface = record.surface or "chat"
+
+  stats.detections = (tonumber(stats.detections) or 0) + 1
+  if record.outcome == "restored" then
+    stats.restored = (tonumber(stats.restored) or 0) + 1
+  else
+    stats.blocked = (tonumber(stats.blocked) or 0) + 1
+  end
+  stats.bySurface[surface] = (tonumber(stats.bySurface[surface]) or 0) + 1
+end
+
 function History.Append(record)
   local char = GetChar()
   if not char or type(record) ~= "table" then
@@ -41,6 +117,7 @@ function History.Append(record)
   record.surface = record.surface or "chat"
   record.outcome = record.outcome or "blocked"
   record.reason = record.reason or "score"
+  IncrementStats(char, record)
 
   char.history[#char.history + 1] = record
 
@@ -83,10 +160,26 @@ function History.MarkRestored(id)
   for index = 1, #history do
     local record = history[index]
     if record.id == id then
-      record.outcome = "restored"
+      if record.outcome ~= "restored" then
+        record.outcome = "restored"
+        local stats = EnsureStats(char)
+        stats.restored = (tonumber(stats.restored) or 0) + 1
+      end
       return
     end
   end
+end
+
+function History.GetStats()
+  local char = GetChar()
+  local history = char and char.history or {}
+  local lifetime = char and CopyStats(EnsureStats(char)) or CopyStats(nil)
+  local retained = CountRetained(history)
+
+  return {
+    lifetime = lifetime,
+    retained = retained,
+  }
 end
 
 function History.Clear()
