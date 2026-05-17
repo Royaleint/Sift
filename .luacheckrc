@@ -48,6 +48,8 @@ read_globals = {
     "StaticPopup_Show",
     "CLOSE",
     "MenuUtil",
+    "TooltipDataProcessor",
+    "Enum",
     "Settings",
     "InterfaceOptions_AddCategory",
     "InterfaceOptionsFrame",
