@@ -1,6 +1,9 @@
 local _, NS = ...
 local ConfigPanel = {}
 
+-- BSP-008: i18n hook. Identity today; future Locale ticket retrofits L.
+local function L(s) return s end
+
 local DEFAULT_WIDTH = 700
 local DEFAULT_HEIGHT = 500
 local MIN_WIDTH = 600
@@ -22,6 +25,15 @@ local SECTIONS = {
 }
 
 local CATEGORY_KEYS = { "RMT", "Boosting", "Casino", "Phishing", "Commercial", "Anti" }
+
+local SURFACE_KEYS = { "chat", "whisper", "bn-whisper", "lfg-search", "lfg-applicant" }
+local SURFACE_LABELS = {
+  chat              = "Chat",
+  whisper           = "Whisper",
+  ["bn-whisper"]    = "Bnet whisper",
+  ["lfg-search"]    = "LFG search",
+  ["lfg-applicant"] = "LFG applicant",
+}
 
 local DEFAULT_SETTINGS = {
   threshold = 4,
@@ -184,20 +196,6 @@ local function SetLFGScanEnabled(value)
   if NS.LFGScanner and NS.LFGScanner.SetEnabled then
     NS.LFGScanner.SetEnabled(value)
   end
-end
-
-local function SetCategoryEnabled(category, value)
-  if NS.DB and NS.DB.SetCategoryEnabled then
-    return NS.DB.SetCategoryEnabled(category, value) ~= nil
-  end
-
-  local settings = GetSettings()
-  if settings then
-    settings.enabledCategories = settings.enabledCategories or CopyTable(DEFAULT_SETTINGS.enabledCategories)
-    settings.enabledCategories[category] = value == true
-    return true
-  end
-  return false
 end
 
 local function ResetSettings()
@@ -446,22 +444,6 @@ local function AddCheckbox(label, key, y, onChanged)
     end
   end)
   return y - 32
-end
-
-local function AddCategoryCheckbox(category, y)
-  local checkbox = AddAceWidget("CheckBox", CONTENT_PAD, y, 220)
-  if not checkbox then
-    return AddDisabledRow(category, "AceGUI unavailable", y)
-  end
-
-  local settings = GetSettings()
-  local enabled = settings and settings.enabledCategories or DEFAULT_SETTINGS.enabledCategories
-  checkbox:SetLabel(category)
-  checkbox:SetValue(enabled and enabled[category] ~= "off" and enabled[category] ~= false)
-  checkbox:SetCallback("OnValueChanged", function(_, _, value)
-    SetCategoryEnabled(category, value)
-  end)
-  return y - 30
 end
 
 local function SectionExists(section)
@@ -1217,6 +1199,70 @@ local function RegisterInterfaceOptions()
   DevLog("Interface options registration unavailable.")
 end
 
+-- BSP-008 Commit 6: shared 3-state pause-pill row for Categories and Surfaces.
+-- Glyphs: U+25CF BLACK CIRCLE, U+23F8 DOUBLE VERTICAL BAR, U+2298 CIRCLED DIVISION SLASH.
+local PAUSE_ROW_GLYPH = { active = "\226\151\143", paused = "\226\143\184", off = "\226\138\152" }
+local PAUSE_ROW_COLOR = {
+  active = "ff5ad080",  -- green
+  paused = "ffd4b048",  -- yellow
+  off    = "ffff5577",  -- red
+}
+
+local function AddAxisPauseRow(axis, key, displayLabel, y)
+  local row = TrackNative(CreateFrame("Frame", nil, content, "BackdropTemplate"))
+  row:SetHeight(28)
+  row:SetPoint("TOPLEFT", content, "TOPLEFT", CONTENT_PAD, y)
+  row:SetPoint("RIGHT",   content, "RIGHT",   -CONTENT_PAD, 0)
+  if row.SetBackdrop then
+    row:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
+    row:SetBackdropColor(0.10, 0.11, 0.13, 0.6)
+  end
+  row:Show()
+
+  local label = TrackNative(row:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+  label:SetPoint("LEFT", row, "LEFT", 8, 0)
+  label:SetText(L(displayLabel))
+  label:Show()
+
+  local pill = TrackNative(CreateFrame("Button", nil, row))
+  pill:SetSize(80, 20)
+  pill:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+  pill:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+  pill.bg = pill:CreateTexture(nil, "BACKGROUND")
+  pill.bg:SetAllPoints(pill)
+  pill.bg:SetColorTexture(0.13, 0.13, 0.16, 1)
+  pill.glyph = pill:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  pill.glyph:SetPoint("LEFT", pill, "LEFT", 6, 0)
+  pill.text = pill:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  pill.text:SetPoint("LEFT", pill.glyph, "RIGHT", 4, 0)
+
+  local function Refresh()
+    local state
+    if axis == "surface" then
+      state = NS.PauseState and NS.PauseState.GetSurface(key) or "active"
+    else
+      state = NS.PauseState and NS.PauseState.GetCategory(key) or "active"
+    end
+    local color = PAUSE_ROW_COLOR[state] or "ffffffff"
+    pill.glyph:SetText("|cff" .. color .. (PAUSE_ROW_GLYPH[state] or PAUSE_ROW_GLYPH.active) .. "|r")
+    pill.text:SetText(L(state))
+  end
+
+  pill:SetScript("OnClick", function(self, mouseButton)
+    if not NS.PauseState then return end
+    local direction = (mouseButton == "RightButton") and "backward" or "forward"
+    if axis == "surface" then
+      NS.PauseState.CycleSurface(key, direction)
+    else
+      NS.PauseState.CycleCategory(key, direction)
+    end
+    Refresh()
+  end)
+
+  Refresh()
+  return y - 34
+end
+
 local RenderDetection
 local RenderCategories
 local RenderSurfaces
@@ -1236,19 +1282,23 @@ RenderDetection = function()
 end
 
 RenderCategories = function()
-  local y = AddSectionTitle("Categories", "Enable or disable scoring categories without changing pattern data.")
+  local y = AddSectionTitle("Categories", "Three states per category: Active (block) / Paused (detect + log, don't hide) / Off (ignore).")
   y = AddStatus(y, sectionStatus.Categories)
   for _, category in ipairs(CATEGORY_KEYS) do
-    y = AddCategoryCheckbox(category, y)
+    y = AddAxisPauseRow("category", category, category, y)
   end
 end
 
 RenderSurfaces = function()
-  local y = AddSectionTitle("Surfaces", "Choose where BawrSpam can apply filtering.")
-  y = AddDisabledRow("Chat channels", "Active", y)
+  local y = AddSectionTitle("Surfaces", "Three states per surface: Active (block) / Paused (detect + log, don't hide) / Off (don't scan).")
+  y = AddStatus(y, sectionStatus.Surfaces)
+  for _, surface in ipairs(SURFACE_KEYS) do
+    local label = SURFACE_LABELS[surface] or surface
+    y = AddAxisPauseRow("surface", surface, label, y)
+  end
+  -- Preserved settings (live toggles, not part of the pause taxonomy).
   y = AddCheckbox("Filter bubbles", "filterBubbles", y, SetFilterBubblesEnabled)
-  y = AddCheckbox("LFG scanning", "lfgScanEnabled", y, SetLFGScanEnabled)
-  AddDisabledRow("EMOTE / DND / AFK", "Deferred", y)
+  AddCheckbox("LFG scanning", "lfgScanEnabled", y, SetLFGScanEnabled)
 end
 
 RenderAllowlist = function()

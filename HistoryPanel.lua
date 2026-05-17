@@ -1684,8 +1684,12 @@ local function CreatePauseRow(parent)
     pill.label:SetPoint("LEFT", pill.glyph, "RIGHT", 2, 0)
     pill.label:SetText(L(PAUSE_PILL_LABELS[surfaceKey]))
 
-    -- BSP-008: stub OnClick — Commit 6 wires this to NS.PauseState.CycleSurface.
-    pill:SetScript("OnClick", function() end)
+    -- BSP-008 Commit 6: left-click cycles forward, right-click cycles backward.
+    pill:SetScript("OnClick", function(self, mouseButton)
+      if not NS.PauseState then return end
+      local direction = (mouseButton == "RightButton") and "backward" or "forward"
+      NS.PauseState.CycleSurface(self.surfaceKey, direction)
+    end)
 
     pausePills[surfaceKey] = pill
     previousPill = pill
@@ -1767,9 +1771,31 @@ local function RegisterMinimap()
     type  = "launcher",
     text  = "BawrSpam",
     icon  = "Interface\\Icons\\INV_Misc_Note_03",
-    OnClick = function(_, button)
+    OnClick = function(self, button)
       if button == "RightButton" then
-        OpenConfigPanel()
+        if not MenuUtil or not MenuUtil.CreateContextMenu then
+          OpenConfigPanel()
+          return
+        end
+        MenuUtil.CreateContextMenu(self, function(_, root)
+          root:CreateTitle(L("BawrSpam"))
+          local submenu = root:CreateButton(L("Pause surface"))
+          local surfaceKeys = NS.PauseState and NS.PauseState.GetSurfaceKeys() or {}
+          for _, surfaceKey in ipairs(surfaceKeys) do
+            local labelText = SURFACE_LABELS[surfaceKey] or surfaceKey
+            local glyphFn = function()
+              local s = NS.PauseState and NS.PauseState.GetSurface(surfaceKey) or "active"
+              if s == "active" then return "|cff5ad080\226\151\143|r" end
+              if s == "paused" then return "|cffd4b048\226\143\184|r" end
+              return "|cffff5577\226\138\152|r"
+            end
+            submenu:CreateButton(L(labelText) .. "  " .. glyphFn(), function()
+              if NS.PauseState then NS.PauseState.CycleSurface(surfaceKey, "forward") end
+            end)
+          end
+          root:CreateDivider()
+          root:CreateButton(L("Open config"), function() OpenConfigPanel() end)
+        end)
       else
         HistoryPanel.Toggle()
       end
@@ -1792,6 +1818,16 @@ function HistoryPanel.Initialize()
   sortMode = "newest"
   RegisterStaticPopups()
   RegisterMinimap()
+
+  -- BSP-008 Commit 6: react to PauseState changes (header pills, ConfigPanel,
+  -- minimap submenu). RefreshPauseRow re-paints the header chrome; a
+  -- category-axis change additionally re-renders the BY CATEGORY detail row.
+  if NS.PauseState and NS.PauseState.RegisterListener then
+    NS.PauseState.RegisterListener(function(axis, key, state)
+      if HistoryPanel.RefreshPauseRow then HistoryPanel.RefreshPauseRow() end
+      if axis == "category" and RefreshDetail then RefreshDetail() end
+    end)
+  end
 end
 
 function HistoryPanel.Toggle()
