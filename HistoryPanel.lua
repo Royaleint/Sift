@@ -603,6 +603,34 @@ local function ContextEntryCanAllowlist(entry)
   return true
 end
 
+local function GetReportKind(entry)
+  if not entry or not entry.id or not NS.ReportFlow then return nil end
+  if not NS.ReportFlow.HasReport or not NS.ReportFlow.HasReport(entry.id) then return nil end
+  if NS.ReportFlow.GetReportKind then
+    return NS.ReportFlow.GetReportKind(entry.id)
+  end
+  return nil
+end
+
+local function GetReportLabel(kind)
+  if kind == "lfg-ad" then return "Report Listing" end
+  if kind == "chat" then return "Report Spam" end
+  return nil
+end
+
+local function PerformReport(entry)
+  local kind = GetReportKind(entry)
+  if not kind or not NS.ReportFlow then return end
+
+  if kind == "lfg-ad" and NS.ReportFlow.ReportLFGAdvertisementNow then
+    NS.ReportFlow.ReportLFGAdvertisementNow(entry.id)
+  elseif kind == "chat" and NS.ReportFlow.ReportChatNow then
+    NS.ReportFlow.ReportChatNow(entry.id)
+  end
+
+  if RefreshDetail then RefreshDetail() end
+end
+
 local function ShowCopySenderPopup(entry)
   if StaticPopup_Show then
     StaticPopup_Show("BAWRSPAM_COPY_SENDER", nil, nil, FormatSender(entry))
@@ -631,6 +659,13 @@ local function BuildContextMenuItems(entry)
       func = ClearSenderFilter }
   end
 
+  local reportKind = GetReportKind(entry)
+  local reportLabel = GetReportLabel(reportKind)
+  if reportLabel then
+    items[#items + 1] = { text = reportLabel, notCheckable = true,
+      func = function() PerformReport(entry) end }
+  end
+
   items[#items + 1] = { text = "Copy sender name", notCheckable = true,
     func = function() ShowCopySenderPopup(entry) end }
 
@@ -656,6 +691,11 @@ local function OpenRowContextMenu(anchor, entry)
       if filterState and filterState.senderFilter then
         root:CreateButton("Clear sender filter", ClearSenderFilter)
       end
+      local reportKind = GetReportKind(entry)
+      local reportLabel = GetReportLabel(reportKind)
+      if reportLabel then
+        root:CreateButton(reportLabel, function() PerformReport(entry) end)
+      end
       root:CreateButton("Copy sender name", function() ShowCopySenderPopup(entry) end)
     end)
     return
@@ -677,6 +717,8 @@ local function RenderActions(entry)
   actions.btn2:Hide()
   actions.btn1:Enable()
   actions.btn2:Enable()
+  actions.btn1:SetScript("OnClick", nil)
+  actions.btn2:SetScript("OnClick", nil)
 
   if not entry then return end
 
@@ -694,6 +736,19 @@ local function RenderActions(entry)
       actions.btn2:Disable()
       actions.btn2:Show()
     end
+    return
+  end
+
+  local reportKind = GetReportKind(entry)
+  local reportLabel = GetReportLabel(reportKind)
+
+  if reportLabel then
+    actions.btn1:SetText("Restore")
+    actions.btn1:SetScript("OnClick", function() PerformRestore(entry) end)
+    actions.btn1:Show()
+    actions.btn2:SetText(reportLabel)
+    actions.btn2:SetScript("OnClick", function() PerformReport(entry) end)
+    actions.btn2:Show()
     return
   end
 

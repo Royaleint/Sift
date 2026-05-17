@@ -150,6 +150,22 @@ local function SetSetting(key, value)
   return false
 end
 
+local function SetFilterBubblesEnabled(value)
+  value = value == true
+  SetSetting("filterBubbles", value)
+  if not value and NS.BubbleSuppressor and NS.BubbleSuppressor.MaybeRestore then
+    NS.BubbleSuppressor.MaybeRestore()
+  end
+end
+
+local function SetLFGScanEnabled(value)
+  value = value == true
+  SetSetting("lfgScanEnabled", value)
+  if NS.LFGScanner and NS.LFGScanner.SetEnabled then
+    NS.LFGScanner.SetEnabled(value)
+  end
+end
+
 local function SetCategoryEnabled(category, value)
   if NS.DB and NS.DB.SetCategoryEnabled then
     return NS.DB.SetCategoryEnabled(category, value) ~= nil
@@ -1208,10 +1224,10 @@ RenderCategories = function()
 end
 
 RenderSurfaces = function()
-  local y = AddSectionTitle("Surfaces", "These rows are status-only in BSP-004. Scanner behavior is unchanged.")
+  local y = AddSectionTitle("Surfaces", "Choose where BawrSpam can apply filtering.")
   y = AddDisabledRow("Chat channels", "Active", y)
-  y = AddDisabledRow("Filter bubbles", "Planned for BSP-005", y)
-  y = AddDisabledRow("LFG scanning", "Planned for BSP-005", y)
+  y = AddCheckbox("Filter bubbles", "filterBubbles", y, SetFilterBubblesEnabled)
+  y = AddCheckbox("LFG scanning", "lfgScanEnabled", y, SetLFGScanEnabled)
   AddDisabledRow("EMOTE / DND / AFK", "Deferred", y)
 end
 
