@@ -3,6 +3,7 @@
 ## Notes: Personal chat-spam filter with recoverable history.
 ## Author: Royaleint
 ## Version: 1.0.0
+## X-License: All Rights Reserved; personal addon use and contribution forks permitted. See LICENSE.
 ## SavedVariables: BawrSpamDB
 
 embeds.xml

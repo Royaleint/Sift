@@ -1,0 +1,43 @@
+BawrSpam License
+
+Copyright (c) Royaleint. All rights reserved.
+
+This license applies to the original BawrSpam source files, documentation, and
+project-specific data in this repository, except where a file or directory
+states otherwise.
+
+Explicit addon permissions:
+
+1. You may download, install, and run BawrSpam for personal, non-commercial use
+   with World of Warcraft.
+2. You may make private local modifications for your own personal use.
+3. You may fork this repository or create a branch for the purpose of reviewing
+   the code, proposing changes, or submitting contributions back to the original
+   project.
+4. You may quote small portions of the source as necessary for bug reports,
+   security reports, code review, or documentation of a proposed contribution.
+
+Restrictions:
+
+1. You may not redistribute, repackage, publish, mirror, or upload BawrSpam or a
+   modified version of BawrSpam without prior written permission from the
+   copyright holder.
+2. You may not sell, rent, sublicense, or commercially exploit BawrSpam.
+3. You may not incorporate BawrSpam source code, pattern data, generated pattern
+   tables, or project-specific assets into another addon, service, dataset, or
+   product without prior written permission.
+4. You may not remove or alter copyright, license, or attribution notices.
+5. You may not use the BawrSpam name, branding, or project identity to imply an
+   unofficial build is endorsed by the original project.
+
+Third-party libraries:
+
+Vendored third-party libraries under `Libs/` are not relicensed by this file.
+They remain under their respective upstream terms. See `Libs/ATTRIBUTION.md`
+for source and license details.
+
+No warranty:
+
+BawrSpam is provided "as is", without warranty of any kind, express or implied,
+including but not limited to warranties of merchantability, fitness for a
+particular purpose, and noninfringement. Use it at your own risk.
