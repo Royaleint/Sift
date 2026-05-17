@@ -218,10 +218,15 @@ local function CreateHeaderBar(parent)
   title:SetPoint("LEFT", header, "LEFT", 4, 0)
   title:SetText("BawrSpam — History")
 
+  header.statsText = header:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  header.statsText:SetPoint("RIGHT", header, "RIGHT", -30, 0)
+  header.statsText:SetJustifyH("RIGHT")
+
   local close = CreateFrame("Button", nil, parent, "UIPanelCloseButton")
   close:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 2, -2)
   close:SetScript("OnClick", function() parent:Hide() end)
 
+  parent.headerBar = header
   return header
 end
 
@@ -259,6 +264,43 @@ local function GetEntries()
   end
   local db = NS.DB and NS.DB.db
   return (db and db.char and db.char.history) or {}
+end
+
+local function GetHistoryStats()
+  if NS.History and NS.History.GetStats then
+    return NS.History.GetStats()
+  end
+
+  local entries = GetEntries()
+  return {
+    lifetime = {
+      detections = #entries,
+      blocked = #entries,
+      restored = 0,
+      bySurface = {},
+    },
+    retained = {
+      detections = #entries,
+      blocked = #entries,
+      restored = 0,
+      bySurface = {},
+    },
+  }
+end
+
+local function UpdateHistoryStatsText()
+  if not frame or not frame.headerBar or not frame.headerBar.statsText then return end
+
+  local stats = GetHistoryStats()
+  local lifetime = stats and stats.lifetime or {}
+  local retained = stats and stats.retained or {}
+  frame.headerBar.statsText:SetText(string.format(
+    "Detected: %d   Blocked: %d   Restored: %d   Retained: %d",
+    tonumber(lifetime.detections) or 0,
+    tonumber(lifetime.blocked) or 0,
+    tonumber(lifetime.restored) or 0,
+    tonumber(retained.detections) or 0
+  ))
 end
 
 local function CurrentEntries()
@@ -426,11 +468,15 @@ local function ShowEmptyState(show)
   if detailPane.empty then
     detailPane.empty:SetShown(show)
     if show and detailPane.empty.stats then
-      local total = NS.History and NS.History.GetAll and #NS.History.GetAll() or 0
-      if total > 0 then
-        detailPane.empty.stats:SetText(tostring(total) .. " entries filtered out.")
+      local stats = GetHistoryStats()
+      local retained = stats and stats.retained and stats.retained.detections or 0
+      local detected = stats and stats.lifetime and stats.lifetime.detections or retained
+      if retained > 0 then
+        detailPane.empty.stats:SetText(tostring(retained) .. " entries filtered out.")
+      elseif detected > 0 then
+        detailPane.empty.stats:SetText(tostring(detected) .. " lifetime detections; retained history is empty.")
       else
-        detailPane.empty.stats:SetText("0 blocks recorded.")
+        detailPane.empty.stats:SetText("0 detections recorded.")
       end
     end
   end
@@ -826,6 +872,7 @@ RefreshList = function()
 
   local allEntries = GetEntries() or {}
   currentEntriesSnapshot = allEntries
+  UpdateHistoryStatsText()
   local entries = ApplyFilterAndSort(allEntries) or {}
   local visibleRows = VisibleRowCount(scroll)
   -- 11th positional `alwaysShowScrollBar = true` keeps the ScrollFrame visible
