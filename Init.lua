@@ -180,6 +180,15 @@ local function ConfirmClearBlocked()
 	end
 end
 
+local function RebuildStats()
+	if not NS.History or not NS.History.RebuildByCategory then
+		Print("rebuild API unavailable.")
+		return
+	end
+	local total = NS.History.RebuildByCategory()
+	Print("byCategory rebuilt from retained history: " .. tostring(total) .. " entries categorized. Reload or reopen History panel to refresh stats display.")
+end
+
 local COMMANDS = {
 	[""] = function() ToggleHistory() end,
 	history = function() ToggleHistory() end,
@@ -190,11 +199,12 @@ local COMMANDS = {
 	import = OpenImport,
 	clearhistory = ConfirmClearHistory,
 	clearblocked = ConfirmClearBlocked,
+	rebuildstats = RebuildStats,
 	test = RunSyntheticTest,
 }
 
 local function PrintUsage()
-	Print("usage: /bawrspam [history|config|options|allow|export|import|clearhistory|clearblocked|test]")
+	Print("usage: /bawrspam [history|config|options|allow|export|import|clearhistory|clearblocked|rebuildstats|test]")
 end
 
 local function SlashHandler(msg)

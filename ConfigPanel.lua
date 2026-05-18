@@ -1200,12 +1200,14 @@ local function RegisterInterfaceOptions()
 end
 
 -- BSP-008 Commit 6: shared 3-state pause-pill row for Categories and Surfaces.
--- Glyphs: U+25CF BLACK CIRCLE, U+23F8 DOUBLE VERTICAL BAR, U+2298 CIRCLED DIVISION SLASH.
-local PAUSE_ROW_GLYPH = { active = "\226\151\143", paused = "\226\143\184", off = "\226\138\152" }
-local PAUSE_ROW_COLOR = {
-  active = "ff5ad080",  -- green
-  paused = "ffd4b048",  -- yellow
-  off    = "ffff5577",  -- red
+-- Blizzard atlas icons (self-colored, always render reliably).
+-- LevelUp-Dot-Green                  -> green dot
+-- CreditsScreen-Assets-Buttons-Pause -> media pause icon
+-- communities-icon-redx              -> red X
+local PAUSE_ROW_ATLAS = {
+  active = "LevelUp-Dot-Green",
+  paused = "CreditsScreen-Assets-Buttons-Pause",
+  off    = "communities-icon-redx",
 }
 
 local function AddAxisPauseRow(axis, key, displayLabel, y)
@@ -1231,7 +1233,8 @@ local function AddAxisPauseRow(axis, key, displayLabel, y)
   pill.bg = pill:CreateTexture(nil, "BACKGROUND")
   pill.bg:SetAllPoints(pill)
   pill.bg:SetColorTexture(0.13, 0.13, 0.16, 1)
-  pill.glyph = pill:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  pill.glyph = pill:CreateTexture(nil, "ARTWORK")
+  pill.glyph:SetSize(14, 14)
   pill.glyph:SetPoint("LEFT", pill, "LEFT", 6, 0)
   pill.text = pill:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   pill.text:SetPoint("LEFT", pill.glyph, "RIGHT", 4, 0)
@@ -1243,8 +1246,10 @@ local function AddAxisPauseRow(axis, key, displayLabel, y)
     else
       state = NS.PauseState and NS.PauseState.GetCategory(key) or "active"
     end
-    local color = PAUSE_ROW_COLOR[state] or "ffffffff"
-    pill.glyph:SetText("|cff" .. color .. (PAUSE_ROW_GLYPH[state] or PAUSE_ROW_GLYPH.active) .. "|r")
+    local atlas = PAUSE_ROW_ATLAS[state] or PAUSE_ROW_ATLAS.active
+    if atlas and pill.glyph and pill.glyph.SetAtlas then
+      pill.glyph:SetAtlas(atlas, false)
+    end
     pill.text:SetText(L(state))
   end
 

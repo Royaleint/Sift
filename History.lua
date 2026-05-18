@@ -296,5 +296,18 @@ function History.RetroactiveBlock(id)
   return false
 end
 
+function History.RebuildByCategory()
+  local char = GetChar()
+  if not char then return 0 end
+  local retained = CountRetained(char.history or {})
+  local stats = EnsureStats(char)
+  stats.byCategory = retained.byCategory or {}
+  local total = 0
+  for _, count in pairs(stats.byCategory) do
+    total = total + (tonumber(count) or 0)
+  end
+  return total
+end
+
 NS.History = History
 return History

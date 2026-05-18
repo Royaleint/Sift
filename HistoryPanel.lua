@@ -127,6 +127,8 @@ end
 local frame
 local listPane
 local detailPane
+local pauseRow
+local pausePills
 local sizeDirty
 local minimapLDB
 local minimapOptions
@@ -278,12 +280,12 @@ local function CreatePanes(parent)
   local listWidth = GetStoredListPaneWidth()
 
   local list = CreateFrame("Frame", nil, parent)
-  list:SetPoint("TOPLEFT",    parent, "TOPLEFT",    6, -64)
+  list:SetPoint("TOPLEFT",    parent, "TOPLEFT",    6, -86)
   list:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 6,   40)
   list:SetWidth(listWidth)
 
   local detail = CreateFrame("Frame", nil, parent)
-  detail:SetPoint("TOPLEFT",     parent, "TOPLEFT",     6 + listWidth + SPLITTER_WIDTH + 4, -64)
+  detail:SetPoint("TOPLEFT",     parent, "TOPLEFT",     6 + listWidth + SPLITTER_WIDTH + 4, -86)
   detail:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -6, 40)
 
   return list, detail
@@ -1060,59 +1062,58 @@ local function InitListRow(button)
 
   button.senderText = button:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   button.senderText:SetPoint("LEFT",  button.timeText, "RIGHT",  4, 0)
-  button.senderText:SetPoint("RIGHT", button,          "RIGHT", -94, 0)
+  button.senderText:SetPoint("RIGHT", button,          "RIGHT", -130, 0)
   button.senderText:SetJustifyH("LEFT")
 
   button.badgeText = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-  button.badgeText:SetPoint("RIGHT", button, "RIGHT", -34, 0)
+  button.badgeText:SetPoint("RIGHT", button, "RIGHT", -69, 0)
   button.badgeText:SetWidth(54)
   button.badgeText:SetJustifyH("CENTER")
 
   button.scoreText = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-  button.scoreText:SetPoint("RIGHT", button, "RIGHT", -4, 0)
-  button.scoreText:SetWidth(30)
+  button.scoreText:SetPoint("RIGHT", button, "RIGHT", -16, 0)
+  button.scoreText:SetWidth(40)
   button.scoreText:SetJustifyH("RIGHT")
 
   button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 end
 
 local function CreateListPane()
-  local FILTER_STRIP_HEIGHT = 54
-  -- listPane.filterStrip is created by CreateHeaderFilters; anchor below it.
-  -- Column-header strip below the filter strip. Right anchor subtracts
-  -- SCROLLBAR_GUTTER so headers align with row column positions.
+  -- Filter chips/dropdowns are anchored to the parent frame (see
+  -- CreateHeaderFilters), not nested inside listPane. Column header sits at
+  -- listPane's TOPLEFT; ScrollBox starts 18 px below it.
   local header = CreateFrame("Frame", nil, listPane)
   header:SetHeight(18)
-  header:SetPoint("TOPLEFT",  listPane, "TOPLEFT",  0, -FILTER_STRIP_HEIGHT)
-  header:SetPoint("TOPRIGHT", listPane, "TOPRIGHT", -SCROLLBAR_GUTTER, -FILTER_STRIP_HEIGHT)
+  header:SetPoint("TOPLEFT",  listPane, "TOPLEFT",  0, 0)
+  header:SetPoint("TOPRIGHT", listPane, "TOPRIGHT", -SCROLLBAR_GUTTER, 0)
   listPane.columnHeader = header
 
   header.timeLabel = header:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   header.timeLabel:SetPoint("LEFT", header, "LEFT", 10, 0)
   header.timeLabel:SetWidth(36)
-  header.timeLabel:SetJustifyH("CENTER")
+  header.timeLabel:SetJustifyH("LEFT")
   header.timeLabel:SetText("Time")
 
   header.senderLabel = header:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   header.senderLabel:SetPoint("LEFT",  header.timeLabel, "RIGHT",  4, 0)
-  header.senderLabel:SetPoint("RIGHT", header,           "RIGHT", -94, 0)
-  header.senderLabel:SetJustifyH("CENTER")
+  header.senderLabel:SetPoint("RIGHT", header,           "RIGHT", -130, 0)
+  header.senderLabel:SetJustifyH("LEFT")
   header.senderLabel:SetText("Sender")
 
   header.badgeLabel = header:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  header.badgeLabel:SetPoint("RIGHT", header, "RIGHT", -34, 0)
+  header.badgeLabel:SetPoint("RIGHT", header, "RIGHT", -69, 0)
   header.badgeLabel:SetWidth(54)
   header.badgeLabel:SetJustifyH("CENTER")
   header.badgeLabel:SetText("Category")
 
   header.scoreLabel = header:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  header.scoreLabel:SetPoint("RIGHT", header, "RIGHT", -4, 0)
-  header.scoreLabel:SetWidth(30)
-  header.scoreLabel:SetJustifyH("CENTER")
+  header.scoreLabel:SetPoint("RIGHT", header, "RIGHT", -16, 0)
+  header.scoreLabel:SetWidth(40)
+  header.scoreLabel:SetJustifyH("RIGHT")
   header.scoreLabel:SetText("Score")
 
   local scrollBox = CreateFrame("Frame", nil, listPane, "WowScrollBoxList")
-  scrollBox:SetPoint("TOPLEFT",     listPane, "TOPLEFT",     0, -(FILTER_STRIP_HEIGHT + 18))
+  scrollBox:SetPoint("TOPLEFT",     listPane, "TOPLEFT",     0, -18)
   scrollBox:SetPoint("BOTTOMRIGHT", listPane, "BOTTOMRIGHT", -SCROLLBAR_GUTTER, 18)
 
   local scrollBar = CreateFrame("EventFrame", nil, listPane, "MinimalScrollBar")
@@ -1201,7 +1202,7 @@ local function PlaceStatsTiles(stats)
 end
 
 local function BuildStatsArea(parent)
-  parent.titleLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  parent.titleLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   parent.titleLabel:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, -6)
   parent.titleLabel:SetText(L("DETECTION STATS"))
 
@@ -1219,7 +1220,7 @@ local function BuildStatsArea(parent)
     end
     tile.valueText = tile:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     tile.valueText:SetPoint("TOP", tile, "TOP", 0, -2)
-    tile.labelText = tile:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    tile.labelText = tile:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     tile.labelText:SetPoint("BOTTOM", tile, "BOTTOM", 0, 4)
     tile.labelText:SetText(L(STATS_TILE_LABELS[key]))
     parent.tiles[key] = tile
@@ -1227,7 +1228,7 @@ local function BuildStatsArea(parent)
   parent.tilesRow:SetScript("OnSizeChanged", function() PlaceStatsTiles(parent) end)
   PlaceStatsTiles(parent)
 
-  parent.bySurfaceLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  parent.bySurfaceLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   parent.bySurfaceLabel:SetPoint("TOPLEFT", parent.tilesRow, "BOTTOMLEFT", 0, -8)
   parent.bySurfaceLabel:SetText(L("BY SURFACE"))
 
@@ -1237,7 +1238,7 @@ local function BuildStatsArea(parent)
   parent.bySurfaceText:SetJustifyH("LEFT")
   parent.bySurfaceText:SetWordWrap(true)
 
-  parent.byCategoryLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  parent.byCategoryLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   parent.byCategoryLabel:SetPoint("TOPLEFT", parent.bySurfaceText, "BOTTOMLEFT", 0, -8)
   parent.byCategoryLabel:SetText(L("BY CATEGORY"))
 
@@ -1247,7 +1248,7 @@ local function BuildStatsArea(parent)
   parent.byCategoryText:SetJustifyH("LEFT")
   parent.byCategoryText:SetWordWrap(true)
 
-  parent.pipelineLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  parent.pipelineLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   parent.pipelineLabel:SetPoint("TOPLEFT", parent.byCategoryText, "BOTTOMLEFT", 0, -8)
   parent.pipelineLabel:SetText(L("PIPELINE"))
 
@@ -1289,13 +1290,16 @@ local function CreateDetailPane()
     hdr:SetBackdropColor(0.16, 0.16, 0.20, 1)
   end
 
-  hdr.senderText = hdr:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-  hdr.senderText:SetPoint("TOPLEFT", hdr, "TOPLEFT", 10, -6)
-
   hdr.statusText = hdr:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   hdr.statusText:SetPoint("TOPRIGHT", hdr, "TOPRIGHT", -10, -6)
 
-  hdr.metaText = hdr:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  hdr.senderText = hdr:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+  hdr.senderText:SetPoint("TOPLEFT",  hdr, "TOPLEFT", 10, -6)
+  hdr.senderText:SetPoint("TOPRIGHT", hdr.statusText, "TOPLEFT", -10, 0)
+  hdr.senderText:SetJustifyH("LEFT")
+  hdr.senderText:SetWordWrap(false)
+
+  hdr.metaText = hdr:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   hdr.metaText:SetPoint("BOTTOMLEFT",  hdr, "BOTTOMLEFT",  10, 6)
   hdr.metaText:SetPoint("BOTTOMRIGHT", hdr, "BOTTOMRIGHT", -10, 6)
   hdr.metaText:SetJustifyH("LEFT")
@@ -1336,7 +1340,7 @@ local function CreateDetailPane()
   footer.breakdownRow:SetPoint("TOPRIGHT", footer, "TOPRIGHT", -8, -6)
   footer.breakdownRow.chips = {}
 
-  footer.senderHistory = footer:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  footer.senderHistory = footer:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   footer.senderHistory:SetPoint("TOPLEFT",  footer.breakdownRow, "BOTTOMLEFT",  0, -4)
   footer.senderHistory:SetPoint("TOPRIGHT", footer.breakdownRow, "BOTTOMRIGHT", 0, -4)
   footer.senderHistory:SetJustifyH("LEFT")
@@ -1381,24 +1385,46 @@ local function UpdateChipVisual(chip, cat)
   end
 end
 
-local CHIP_WIDTHS = {
-  RMT        = 50,
-  Boosting   = 72,
-  Casino     = 60,
-  Phishing   = 72,
-  Commercial = 86,
-  Anti       = 50,
+local CHIP_GAP = 3
+local CHIP_MIN_WIDTH = 38
+
+local CHIP_LABELS = {
+  RMT        = "RMT",
+  Boosting   = "Boosting",
+  Casino     = "Casino",
+  Phishing   = "Phishing",
+  Commercial = "Comm",  -- abbreviated to fit narrow chip widths
+  Anti       = "Anti",
 }
+
+local function PlaceCategoryChips(strip)
+  if not strip or not strip.chips then return end
+  local stripWidth = strip:GetWidth()
+  if not stripWidth or stripWidth <= 0 then return end
+
+  local count = #CATEGORIES
+  local totalGap = CHIP_GAP * (count - 1)
+  local perChip = math.floor((stripWidth - totalGap) / count)
+  if perChip < CHIP_MIN_WIDTH then perChip = CHIP_MIN_WIDTH end
+
+  local x = 0
+  for _, cat in ipairs(CATEGORIES) do
+    local chip = strip.chips[cat]
+    if chip then
+      chip:SetSize(perChip, 22)
+      chip:ClearAllPoints()
+      chip:SetPoint("TOPLEFT", strip, "TOPLEFT", x, 0)
+      x = x + perChip + CHIP_GAP
+    end
+  end
+end
 
 local function BuildCategoryChips(strip)
   local chips = {}
-  local x = 0
   for _, cat in ipairs(CATEGORIES) do
     local chip = CreateFrame("Button", nil, strip, "UIPanelButtonTemplate")
-    local w = CHIP_WIDTHS[cat] or 60
-    chip:SetSize(w, 22)
-    chip:SetPoint("TOPLEFT", strip, "TOPLEFT", x, 0)
-    chip:SetText(cat)
+    chip:SetSize(CHIP_MIN_WIDTH, 22)
+    chip:SetText(L(CHIP_LABELS[cat] or cat))
     chip:SetScript("OnClick", function()
       filterState.categories[cat] = (filterState.categories[cat] == false)
       UpdateChipVisual(chip, cat)
@@ -1406,10 +1432,10 @@ local function BuildCategoryChips(strip)
     end)
     UpdateChipVisual(chip, cat)
     chips[cat] = chip
-    x = x + w + 4
   end
   strip.chips = chips
-  return x
+  PlaceCategoryChips(strip)
+  strip:SetScript("OnSizeChanged", function() PlaceCategoryChips(strip) end)
 end
 
 local function CreateModernDropdown(parent, labelText, values, labels, getValue, setValue)
@@ -1481,6 +1507,7 @@ local function ShowHistoryContent()
   if listPane then listPane:Show() end
   if detailPane then detailPane:Show() end
   if frame and frame.filterStrip then frame.filterStrip:Show() end
+  if frame and frame.filterChipsBand then frame.filterChipsBand:Show() end
   UpdateSenderFilterChip()
   SetTabHighlight()
 end
@@ -1489,6 +1516,7 @@ local function ShowConfigContent(section)
   activeMode = "Config"
   activeConfigSection = section or activeConfigSection or "Detection"
   if frame and frame.filterStrip then frame.filterStrip:Hide() end
+  if frame and frame.filterChipsBand then frame.filterChipsBand:Hide() end
   if frame and frame.senderChip then frame.senderChip:Hide() end
   if listPane then listPane:Hide() end
   if detailPane then detailPane:Hide() end
@@ -1528,54 +1556,61 @@ local function CreateTabStrip(parent)
 end
 
 local function CreateHeaderFilters()
-  local strip = CreateFrame("Frame", nil, listPane)
-  strip:SetHeight(54)
-  strip:SetPoint("TOPLEFT",  listPane, "TOPLEFT",  0, 0)
-  strip:SetPoint("TOPRIGHT", listPane, "TOPRIGHT", 0, 0)
-  listPane.filterStrip = strip
-  frame.filterStrip = strip -- preserved for legacy callers that reference frame.filterStrip
+  -- Chips band: upper-left, right-bound by the pause-pill row so the chips
+  -- get more horizontal room than they had when nested inside listPane.
+  local chipsBand = CreateFrame("Frame", nil, frame)
+  chipsBand:SetHeight(24)
+  chipsBand:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, -28)
+  if pauseRow then
+    chipsBand:SetPoint("TOPRIGHT", pauseRow, "LEFT", -8, 0)
+  else
+    chipsBand:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -360, -28)
+  end
+  BuildCategoryChips(chipsBand)
 
-  -- Row 1: category chips
-  local chipsRow = CreateFrame("Frame", nil, strip)
-  chipsRow:SetHeight(24)
-  chipsRow:SetPoint("TOPLEFT",  strip, "TOPLEFT",  4, -2)
-  chipsRow:SetPoint("TOPRIGHT", strip, "TOPRIGHT", -4, -2)
-  BuildCategoryChips(chipsRow)
+  -- Dropdowns band: full panel width, below chips band. Hosts dropdowns +
+  -- Refresh. Anchoring to frame (not listPane) means the dropdown row width
+  -- is bounded by the panel, not by the splitter.
+  local ddBand = CreateFrame("Frame", nil, frame)
+  ddBand:SetHeight(24)
+  ddBand:SetPoint("TOPLEFT",  frame, "TOPLEFT",  6, -56)
+  ddBand:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, -56)
 
-  -- Row 2: dropdowns + Refresh
-  local ddRow = CreateFrame("Frame", nil, strip)
-  ddRow:SetHeight(24)
-  ddRow:SetPoint("TOPLEFT",  chipsRow, "BOTTOMLEFT",  0, -4)
-  ddRow:SetPoint("TOPRIGHT", chipsRow, "BOTTOMRIGHT", 0, -4)
-
-  strip.surfaceDD = CreateModernDropdown(ddRow, "Surface", SURFACE_VALUES, SURFACE_LABELS,
+  ddBand.surfaceDD = CreateModernDropdown(ddBand, "Surface", SURFACE_VALUES, SURFACE_LABELS,
     function() return filterState.surface end,
     function(v) filterState.surface = v; if RefreshList then RefreshList() end end)
-  strip.surfaceDD:SetPoint("LEFT", ddRow, "LEFT", 0, 0)
+  ddBand.surfaceDD:SetPoint("LEFT", ddBand, "LEFT", 0, 0)
 
-  strip.timeDD = CreateModernDropdown(ddRow, "Time", TIME_WINDOW_VALUES, nil,
+  ddBand.timeDD = CreateModernDropdown(ddBand, "Time", TIME_WINDOW_VALUES, nil,
     function() return filterState.timeWindow end,
     function(v) filterState.timeWindow = v; if RefreshList then RefreshList() end end)
-  strip.timeDD:SetPoint("LEFT", strip.surfaceDD, "RIGHT", 4, 0)
+  ddBand.timeDD:SetPoint("LEFT", ddBand.surfaceDD, "RIGHT", 4, 0)
 
-  strip.outcomeDD = CreateModernDropdown(ddRow, "Outcome", OUTCOME_VALUES, nil,
+  ddBand.outcomeDD = CreateModernDropdown(ddBand, "Outcome", OUTCOME_VALUES, nil,
     function() return filterState.outcome end,
     function(v) filterState.outcome = v; if RefreshList then RefreshList() end end)
-  strip.outcomeDD:SetPoint("LEFT", strip.timeDD, "RIGHT", 4, 0)
+  ddBand.outcomeDD:SetPoint("LEFT", ddBand.timeDD, "RIGHT", 4, 0)
 
-  strip.sortDD = CreateModernDropdown(ddRow, "Sort", SORT_VALUES, SORT_LABELS,
+  ddBand.sortDD = CreateModernDropdown(ddBand, "Sort", SORT_VALUES, SORT_LABELS,
     function() return sortMode end,
     function(v) sortMode = v; if RefreshList then RefreshList() end end)
-  strip.sortDD:SetPoint("LEFT", strip.outcomeDD, "RIGHT", 4, 0)
+  ddBand.sortDD:SetPoint("LEFT", ddBand.outcomeDD, "RIGHT", 4, 0)
 
-  local refresh = CreateFrame("Button", nil, ddRow, "UIPanelButtonTemplate")
+  local refresh = CreateFrame("Button", nil, ddBand, "UIPanelButtonTemplate")
   refresh:SetSize(60, 22)
-  refresh:SetPoint("RIGHT", ddRow, "RIGHT", 0, 0)
+  refresh:SetPoint("RIGHT", ddBand, "RIGHT", 0, 0)
   refresh:SetText(L("Refresh"))
   refresh:SetScript("OnClick", function()
     if RefreshList then RefreshList() end
   end)
-  strip.refresh = refresh
+  ddBand.refresh = refresh
+
+  -- Preserve legacy lookup keys. Show/Hide on frame.filterStrip is used by
+  -- ShowHistoryContent / ShowConfigContent; pointing at ddBand keeps that
+  -- working for the dropdowns row. Chips band is toggled alongside.
+  listPane.filterStrip = ddBand
+  frame.filterStrip = ddBand
+  frame.filterChipsBand = chipsBand
 end
 
 local function ClampPanes(parent)
@@ -1593,7 +1628,7 @@ local function ClampPanes(parent)
     listPane:SetWidth(clamped)
   end
   detailPane:ClearAllPoints()
-  detailPane:SetPoint("TOPLEFT",     parent, "TOPLEFT",     6 + clamped + SPLITTER_WIDTH + 4, -64)
+  detailPane:SetPoint("TOPLEFT",     parent, "TOPLEFT",     6 + clamped + SPLITTER_WIDTH + 4, -86)
   detailPane:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -6, 40)
 end
 
@@ -1634,15 +1669,13 @@ local function CreateSplitter(parent)
     if localX > maxList then localX = maxList end
     listPane:SetWidth(localX)
     detailPane:ClearAllPoints()
-    detailPane:SetPoint("TOPLEFT",     parent, "TOPLEFT",     6 + localX + SPLITTER_WIDTH + 4, -64)
+    detailPane:SetPoint("TOPLEFT",     parent, "TOPLEFT",     6 + localX + SPLITTER_WIDTH + 4, -86)
     detailPane:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -6, 40)
   end)
 
   parent.splitter = splitter
   return splitter
 end
-
-local pauseRow, pausePills
 
 local PAUSE_PILL_KEYS = { "chat", "whisper", "bn-whisper", "lfg-search", "lfg-applicant" }
 local PAUSE_PILL_LABELS = {
@@ -1652,21 +1685,29 @@ local PAUSE_PILL_LABELS = {
   ["lfg-search"]    = "LFG-s",
   ["lfg-applicant"] = "LFG-a",
 }
-local PAUSE_STATE_COLOR = {
-  active = { 0.35, 0.82, 0.50 },  -- green
-  paused = { 0.83, 0.69, 0.28 },  -- yellow
-  off    = { 1.00, 0.33, 0.46 },  -- red
+-- BSP-008: Blizzard atlas icons (self-colored, always render reliably).
+-- LevelUp-Dot-Green                  -> green dot
+-- CreditsScreen-Assets-Buttons-Pause -> media pause icon
+-- communities-icon-redx              -> red X
+local PAUSE_STATE_ATLAS = {
+  active = "LevelUp-Dot-Green",
+  paused = "CreditsScreen-Assets-Buttons-Pause",
+  off    = "communities-icon-redx",
 }
-local PAUSE_STATE_GLYPH = { active = "●", paused = "⏸", off = "⊘" }
 
 local function CreatePauseRow(parent)
   pauseRow = CreateFrame("Frame", nil, parent)
   pauseRow:SetHeight(20)
+  pauseRow:SetWidth(320)  -- 5 pills * 60 + 4 gaps * 4 = 316; round up to 320
   if parent.TitleContainer then
     pauseRow:SetPoint("TOPRIGHT", parent.TitleContainer, "BOTTOMRIGHT", -28, -2)
   else
     pauseRow:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -32, -32)
   end
+
+  -- BSP-008: NineSlice border is at base+500, TitleContainer at base+510.
+  -- Pills must render above the NineSlice to avoid being drawn over.
+  pauseRow:SetFrameLevel((parent:GetFrameLevel() or 1) + 520)
 
   pausePills = {}
   local previousPill
@@ -1686,7 +1727,8 @@ local function CreatePauseRow(parent)
     pill.bg:SetAllPoints(pill)
     pill.bg:SetColorTexture(0.13, 0.13, 0.16, 0.95)
 
-    pill.glyph = pill:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    pill.glyph = pill:CreateTexture(nil, "ARTWORK")
+    pill.glyph:SetSize(14, 14)
     pill.glyph:SetPoint("LEFT", pill, "LEFT", 4, 0)
 
     pill.label = pill:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -1712,11 +1754,9 @@ function HistoryPanel.RefreshPauseRow()
   if not pausePills or not NS.PauseState then return end
   for surfaceKey, pill in pairs(pausePills) do
     local state = NS.PauseState.GetSurface(surfaceKey)
-    local color = PAUSE_STATE_COLOR[state]
-    local glyph = PAUSE_STATE_GLYPH[state] or "●"
-    pill.glyph:SetText(glyph)
-    if color then
-      pill.glyph:SetTextColor(color[1], color[2], color[3])
+    local atlas = PAUSE_STATE_ATLAS[state] or PAUSE_STATE_ATLAS.active
+    if atlas and pill.glyph and pill.glyph.SetAtlas then
+      pill.glyph:SetAtlas(atlas, false)  -- false = don't auto-resize
     end
   end
 end
@@ -1794,9 +1834,8 @@ local function RegisterMinimap()
             local labelText = SURFACE_LABELS[surfaceKey] or surfaceKey
             local glyphFn = function()
               local s = NS.PauseState and NS.PauseState.GetSurface(surfaceKey) or "active"
-              if s == "active" then return "|cff5ad080\226\151\143|r" end
-              if s == "paused" then return "|cffd4b048\226\143\184|r" end
-              return "|cffff5577\226\138\152|r"
+              local atlas = PAUSE_STATE_ATLAS[s] or PAUSE_STATE_ATLAS.active
+              return "|A:" .. atlas .. ":14:14|a"
             end
             submenu:CreateButton(L(labelText) .. "  " .. glyphFn(), function()
               if NS.PauseState then NS.PauseState.CycleSurface(surfaceKey, "forward") end
