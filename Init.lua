@@ -203,6 +203,21 @@ local function RebuildStats()
 	Print("byCategory rebuilt from retained history: " .. tostring(total) .. " entries categorized. Reload or reopen History panel to refresh stats display.")
 end
 
+-- BSP-018: /bdev fpx — invoke FP-export dialog. Numeric arg limits to last N
+-- restored History entries. devMode gate handled by BdevSlashHandler below.
+-- BSP-018 polish (post-Argus): extract first whitespace-delimited token via
+-- string.match so "/bdev fpx 20 garbage" honors the 20 instead of silently
+-- dropping the limit (tonumber on the full rest string would return nil).
+local function ExportFP(rest)
+  local firstToken = string.match(rest or "", "^(%S+)")
+  local limit = firstToken and tonumber(firstToken) or nil
+  if NS.ConfigPanel and NS.ConfigPanel.OpenFPExportDialog then
+    NS.ConfigPanel.OpenFPExportDialog(limit)
+  else
+    Print("FP export unavailable (ConfigPanel not loaded).")
+  end
+end
+
 local COMMANDS = {
 	[""] = function() ToggleHistory() end,
 	history = function() ToggleHistory() end,
@@ -214,11 +229,17 @@ local COMMANDS = {
 	clearhistory = ConfirmClearHistory,
 	clearblocked = ConfirmClearBlocked,
 	rebuildstats = RebuildStats,
-	test = RunSyntheticTest,
+	-- BSP-018 polish (post-Argus): transitional discoverability hint after
+	-- /bawrspam test → /bdev test migration. Remove this entry in a future
+	-- cleanup once muscle memory has migrated; for now it's a one-line aid
+	-- so a stale habit doesn't fall through to a generic usage line.
+	test = function()
+		Print("/bawrspam test moved to /bdev test (requires devMode).")
+	end,
 }
 
 local function PrintUsage()
-	Print("usage: /bawrspam [history|config|options|allow|export|import|clearhistory|clearblocked|rebuildstats|test]")
+	Print("usage: /bawrspam [history|config|options|allow|export|import|clearhistory|clearblocked|rebuildstats]")
 end
 
 local function SlashHandler(msg)
@@ -231,6 +252,40 @@ local function SlashHandler(msg)
 		handler(rest)
 	else
 		PrintUsage()
+	end
+end
+
+-- BSP-018: /bdev <subcommand> — namespace for devMode-gated commands.
+-- Universal gate at the dispatcher level; individual handlers may still
+-- defense-in-depth check IsDevMode() (e.g. RunSyntheticTest does).
+local DEV_COMMANDS = {
+	test = RunSyntheticTest,
+	fpx  = ExportFP,
+}
+
+local function PrintDevUsage()
+	Print("usage: /bdev [test|fpx [N]]")
+end
+
+local function BdevSlashHandler(msg)
+	if not NS.DB or not NS.DB.IsDevMode or not NS.DB.IsDevMode() then
+		Print("/bdev commands require devMode. Enable in Config \194\187 Dev.")
+		return
+	end
+	msg = msg or ""
+	local command, rest = string.match(msg, "^(%S*)%s*(.-)%s*$")
+	command = string.lower(command or "")
+
+	if command == "" then
+		PrintDevUsage()
+		return
+	end
+
+	local handler = DEV_COMMANDS[command]
+	if handler then
+		handler(rest)
+	else
+		PrintDevUsage()
 	end
 end
 
@@ -253,3 +308,10 @@ end)
 
 SLASH_BAWRSPAM1 = "/bawrspam"
 SlashCmdList.BAWRSPAM = SlashHandler
+
+SLASH_BDEV1 = "/bdev"
+-- BSP-018 polish (post-Argus): defensive fallback alias against silent
+-- collision if another addon registers /bdev — last-loader-wins in
+-- SlashCmdList. /bawrspamdev is verbose enough to be effectively unique.
+SLASH_BDEV2 = "/bawrspamdev"
+SlashCmdList.BDEV = BdevSlashHandler
