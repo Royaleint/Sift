@@ -20,6 +20,20 @@ local function Initialize()
     return
   end
 
+  -- BSP-010: push SavedVariables throttle settings into the runtime module
+  -- so the first chat event uses the persisted values, not Throttle.lua's
+  -- module-local defaults. DB.Initialize's RepairSettings pass guarantees
+  -- settings.throttle is well-shaped by the time we read it here.
+  local throttleSettings = NS.DB.GetSettings()
+  if throttleSettings and throttleSettings.throttle and NS.Throttle then
+    if NS.Throttle.SetEnabled then
+      NS.Throttle.SetEnabled(throttleSettings.throttle.enabled)
+    end
+    if NS.Throttle.SetBufferSize then
+      NS.Throttle.SetBufferSize(throttleSettings.throttle.bufferSize)
+    end
+  end
+
   if NS.Patterns and NS.Patterns.LoadOnInit then
     local loaded = NS.Patterns:LoadOnInit()
     if loaded == false and NS.DB and NS.DB.DevLog then

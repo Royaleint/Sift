@@ -34,6 +34,13 @@ local defaults = {
       showMinimapButton = true,
       historyMaxEntries = 300,
       devMode = false,
+      -- BSP-010: confirmed-spam-repeat dedupe. Additive — AceDB copyDefaults
+      -- backfills this subtree into existing player SVs on first db.global
+      -- access. Module-level defaults in Throttle.lua mirror these values.
+      throttle = {
+        enabled = true,
+        bufferSize = 20,
+      },
     },
   },
   char = {
@@ -146,6 +153,12 @@ local function RepairSettings(settings)
       settings.surfaces[surface] = defaultState
     end
   end
+  -- BSP-010: repair the throttle subtree. Junk values (string, negative,
+  -- out-of-range) clamp back to safe defaults; missing fields backfill.
+  settings.throttle = type(settings.throttle) == "table" and settings.throttle or {}
+  settings.throttle.enabled = settings.throttle.enabled ~= false
+  settings.throttle.bufferSize = ClampNumber(settings.throttle.bufferSize, 5, 50,
+    defaultSettings.throttle.bufferSize)
 end
 
 local function RepairShape(db)
@@ -305,6 +318,37 @@ function DB.SetCategoryState(category, state)
   settings.enabledCategories = settings.enabledCategories or {}
   settings.enabledCategories[category] = state
   return state
+end
+
+-- BSP-010: throttle setters. Mirror the SetSurfaceState / SetCategoryState
+-- convention (per-setter validation, returns canonical value or nil on
+-- failure) and also push the new value into NS.Throttle's runtime state so
+-- ConfigPanel slider/checkbox changes take effect without /reload.
+function DB.SetThrottleEnabled(value)
+  local settings = DB.GetSettings()
+  if not settings then
+    return nil
+  end
+  settings.throttle = settings.throttle or {}
+  settings.throttle.enabled = value == true
+  if NS.Throttle and NS.Throttle.SetEnabled then
+    NS.Throttle.SetEnabled(settings.throttle.enabled)
+  end
+  return settings.throttle.enabled
+end
+
+function DB.SetThrottleBufferSize(value)
+  local settings = DB.GetSettings()
+  if not settings then
+    return nil
+  end
+  settings.throttle = settings.throttle or {}
+  settings.throttle.bufferSize = ClampNumber(value, 5, 50,
+    defaults.global.settings.throttle.bufferSize)
+  if NS.Throttle and NS.Throttle.SetBufferSize then
+    NS.Throttle.SetBufferSize(settings.throttle.bufferSize)
+  end
+  return settings.throttle.bufferSize
 end
 
 function DB.ResetSettings()
