@@ -14,6 +14,7 @@ globals = {
     "SlashCmdList",
     "SLASH_BAWRSPAM1",
     "SLASH_BDEV1",
+    "SLASH_BDEV2",
     -- StaticPopupDialogs is read-only at the table level but addons mutate it
     -- to register their own dialog tables.
     "StaticPopupDialogs",

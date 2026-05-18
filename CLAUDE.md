@@ -163,12 +163,16 @@ additions will be Tier 1.
 # Dev-only slash commands (/bdev) — require devMode (Config > Dev)
 # BSP-018: /bdev is the namespace for all BawrSpam devMode-gated commands.
 # Universal devMode gate at the dispatcher level (Init.lua BdevSlashHandler).
+# /bawrspamdev is a defensive fallback alias if another addon also claims /bdev.
 /bdev                    # print usage
 /bdev test [message]     # synthetic ChatScanner.Filter smoke test
 /bdev fpx [N]            # FP-export dialog — paste-ready Lua negatives
                          # block for fixtures.lua. Optional N limits to
                          # the last N restored entries. Also available
                          # via Config > Dev > "Export FP fixtures" button.
+
+# /bawrspam test prints a migration hint pointing at /bdev test (transitional;
+# removed in a future cleanup once muscle memory has migrated).
 ```
 
 ```bash

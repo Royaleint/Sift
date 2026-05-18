@@ -205,8 +205,12 @@ end
 
 -- BSP-018: /bdev fpx — invoke FP-export dialog. Numeric arg limits to last N
 -- restored History entries. devMode gate handled by BdevSlashHandler below.
+-- BSP-018 polish (post-Argus): extract first whitespace-delimited token via
+-- string.match so "/bdev fpx 20 garbage" honors the 20 instead of silently
+-- dropping the limit (tonumber on the full rest string would return nil).
 local function ExportFP(rest)
-  local limit = tonumber(rest)
+  local firstToken = string.match(rest or "", "^(%S+)")
+  local limit = firstToken and tonumber(firstToken) or nil
   if NS.ConfigPanel and NS.ConfigPanel.OpenFPExportDialog then
     NS.ConfigPanel.OpenFPExportDialog(limit)
   else
@@ -225,6 +229,13 @@ local COMMANDS = {
 	clearhistory = ConfirmClearHistory,
 	clearblocked = ConfirmClearBlocked,
 	rebuildstats = RebuildStats,
+	-- BSP-018 polish (post-Argus): transitional discoverability hint after
+	-- /bawrspam test → /bdev test migration. Remove this entry in a future
+	-- cleanup once muscle memory has migrated; for now it's a one-line aid
+	-- so a stale habit doesn't fall through to a generic usage line.
+	test = function()
+		Print("/bawrspam test moved to /bdev test (requires devMode).")
+	end,
 }
 
 local function PrintUsage()
@@ -299,4 +310,8 @@ SLASH_BAWRSPAM1 = "/bawrspam"
 SlashCmdList.BAWRSPAM = SlashHandler
 
 SLASH_BDEV1 = "/bdev"
+-- BSP-018 polish (post-Argus): defensive fallback alias against silent
+-- collision if another addon registers /bdev — last-loader-wins in
+-- SlashCmdList. /bawrspamdev is verbose enough to be effectively unique.
+SLASH_BDEV2 = "/bawrspamdev"
 SlashCmdList.BDEV = BdevSlashHandler

@@ -1968,15 +1968,24 @@ function ConfigPanel.ShowSection(section)
 end
 
 -- BSP-018: escape a string as a Lua double-quoted literal payload.
--- Handles backslash, double-quote, newline, carriage-return. Anything else
--- (including UTF-8 multibyte) passes through verbatim — Lua's string parser
--- treats those bytes as literal.
+-- Order matters: backslash MUST come first, otherwise the subsequent escape
+-- replacements would re-double their own leading backslashes. UTF-8 multibyte
+-- sequences pass through verbatim — Lua's string parser treats those bytes
+-- as literal. Low-ASCII control bytes (\0 + 0x01-0x08 + \v + \f + 0x0E-0x1F)
+-- emit as decimal `\NNN` escapes — they're vanishingly rare in chat input but
+-- the paste-into-fixtures.lua use case demands a clean source file.
+-- BSP-018 polish (post-Argus): added \t escape and the low-ASCII catch-all
+-- so a stray tab character in a chat line doesn't break fixtures.lua indent.
 local function EscapeLuaString(value)
   value = tostring(value or "")
   value = string.gsub(value, "\\", "\\\\")
   value = string.gsub(value, "\"", "\\\"")
   value = string.gsub(value, "\n", "\\n")
   value = string.gsub(value, "\r", "\\r")
+  value = string.gsub(value, "\t", "\\t")
+  value = string.gsub(value, "[%z\1-\8\11\12\14-\31]", function(c)
+    return string.format("\\%d", string.byte(c))
+  end)
   return value
 end
 
@@ -1985,6 +1994,11 @@ end
 -- Optional `limit` clamps to the first N restored entries (also newest-first
 -- since the source is already sorted that way).
 local function BuildFPExportText(limit)
+  -- BSP-018 polish (post-Argus): clamp non-positive limit to nil so the
+  -- "no-limit" path is reached explicitly rather than via the > 0 side
+  -- effect. Matches AC #6's "N is a positive integer" intent.
+  if limit and limit <= 0 then limit = nil end
+
   local entries = NS.History and NS.History.GetAll and NS.History.GetAll() or {}
   local restored = {}
   for i = 1, #entries do
@@ -1992,7 +2006,7 @@ local function BuildFPExportText(limit)
       restored[#restored + 1] = entries[i]
     end
   end
-  if limit and limit > 0 and #restored > limit then
+  if limit and #restored > limit then
     local trimmed = {}
     for i = 1, limit do trimmed[i] = restored[i] end
     restored = trimmed
@@ -2034,12 +2048,15 @@ function ConfigPanel.OpenFPExportDialog(limit)
     Print("/bdev commands require devMode. Enable in Config \194\187 Dev.")
     return
   end
+  -- BSP-018 polish (post-Argus): match BuildFPExportText's clamp so the
+  -- title count is consistent with the body content.
+  if limit and limit <= 0 then limit = nil end
   local count = 0
   local entries = NS.History and NS.History.GetAll and NS.History.GetAll() or {}
   for i = 1, #entries do
     if entries[i].outcome == "restored" then count = count + 1 end
   end
-  if limit and limit > 0 and count > limit then count = limit end
+  if limit and count > limit then count = limit end
   ShowTextDialog(
     "BawrSpam FP Fixture Export (" .. tostring(count) .. " entries)",
     BuildFPExportText(limit),
