@@ -5,6 +5,29 @@ local HistoryPanel = {}
 -- swaps to NS.L or a string table without touching call sites.
 local function L(s) return s end
 
+-- BSP-009: GameTooltip helper for widget hover help. Static title/body/hint
+-- variant. For state-aware widgets (pause pills, detail-pane action buttons)
+-- the OnEnter handler is wired inline so the tooltip can read live state.
+-- Both Frames and AceGUI widgets are supported via .frame unwrap. EnableMouse
+-- is asserted because layout-only BackdropTemplate frames default off.
+local function AttachTooltip(widget, title, body, hint)
+  if not widget then return end
+  local host = widget.frame or widget
+  if not host.HookScript then return end
+  if host.EnableMouse then host:EnableMouse(true) end
+  host:HookScript("OnEnter", function(self)
+    if not GameTooltip then return end
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    if title then GameTooltip:AddLine(L(title)) end
+    if body  then GameTooltip:AddLine(L(body),  1.00, 1.00, 1.00, true) end
+    if hint  then GameTooltip:AddLine(L(hint),  0.70, 0.70, 0.70, true) end
+    GameTooltip:Show()
+  end)
+  host:HookScript("OnLeave", function()
+    if GameTooltip then GameTooltip:Hide() end
+  end)
+end
+
 local DEFAULT_PANEL_WIDTH  = 820
 local DEFAULT_PANEL_HEIGHT = 540
 local MIN_PANEL_WIDTH      = 720
@@ -90,6 +113,34 @@ local STATS_TILE_LABELS = {
   passThru       = "PASS-THRU",
   restored       = "RESTORED",
   falsePositives = "FALSE POSITIVES",
+}
+-- BSP-009: tooltip bodies for the lifetime-stats tiles.
+local STATS_TILE_TOOLTIPS = {
+  detected = {
+    title = "Detected",
+    body  = "Lifetime count of messages BawrSpam scored as spam. " ..
+            "Includes blocked, pass-thru, and restored entries.",
+  },
+  blocked = {
+    title = "Blocked",
+    body  = "Lifetime count of spam messages hidden from chat or LFG. " ..
+            "Does not include pass-thru (paused surface/category) detections.",
+  },
+  passThru = {
+    title = "Pass-thru",
+    body  = "Scored as spam but left visible because the surface or category " ..
+            "was set to Paused. Still logged to History for review.",
+  },
+  restored = {
+    title = "Restored",
+    body  = "Blocks you have manually undone via the action panel. " ..
+            "These count against the false-positive rate.",
+  },
+  falsePositives = {
+    title = "False positives",
+    body  = "Restored \195\183 Blocked. A rough false-positive rate. " ..
+            "Lower is better.",
+  },
 }
 local STATS_TILE_COLORS = {
   detected       = { 1.00, 1.00, 1.00 },
@@ -273,6 +324,9 @@ local function CreateResizeHandle(parent)
     parent:StopMovingOrSizing()
     sizeDirty = true
   end)
+  AttachTooltip(handle, "Resize panel",
+    "Drag to resize the History panel.",
+    "Minimum size: 720 \195\151 500.")
   return handle
 end
 
@@ -752,6 +806,10 @@ local function RenderActions(entry)
   actions.btn2:Enable()
   actions.btn1:SetScript("OnClick", nil)
   actions.btn2:SetScript("OnClick", nil)
+  -- BSP-009: clear tip strings so a stale tooltip never shows on a hidden /
+  -- repurposed button.
+  actions.btn1.tipTitle, actions.btn1.tipBody = nil, nil
+  actions.btn2.tipTitle, actions.btn2.tipBody = nil, nil
 
   if not entry then return end
 
@@ -761,11 +819,15 @@ local function RenderActions(entry)
     actions.btn1:SetText(L("\226\156\147 Restored"))
     actions.btn1:Disable()
     actions.btn1:Show()
+    actions.btn1.tipTitle = "Restored"
+    actions.btn1.tipBody  = "This block has already been undone. No further action needed."
     if NS.Trust and NS.Trust.IsAllowlisted and entry.guid and entry.guid ~= ""
        and NS.Trust.IsAllowlisted(entry.guid) then
       actions.btn2:SetText(L("Allowlisted"))
       actions.btn2:Disable()
       actions.btn2:Show()
+      actions.btn2.tipTitle = "Allowlisted"
+      actions.btn2.tipBody  = "This sender is on the allowlist. Future messages from them bypass scanning."
     end
     return
   end
@@ -785,12 +847,17 @@ local function RenderActions(entry)
       PerformBlockRetroactively(entry)
     end)
     actions.btn1:Show()
+    actions.btn1.tipTitle = "Block retroactively"
+    actions.btn1.tipBody  = "Mark this pass-thru as blocked. The original message stays in chat " ..
+      "(can't un-print), but the entry is reclassified and a Blizzard report is sent if applicable."
     local allowable = (entry.surface == "chat" or entry.surface == "whisper" or entry.surface == "bn-whisper")
       and entry.guid and entry.guid ~= ""
     if allowable and not (NS.Trust and NS.Trust.IsAllowlisted and NS.Trust.IsAllowlisted(entry.guid)) then
       actions.btn2:SetText(L("Always allow"))
       actions.btn2:SetScript("OnClick", function() PerformAlwaysAllow(entry) end)
       actions.btn2:Show()
+      actions.btn2.tipTitle = "Always allow"
+      actions.btn2.tipBody  = "Add this sender to the allowlist. Future messages from them bypass scanning."
     end
     return
   end
@@ -804,9 +871,16 @@ local function RenderActions(entry)
     actions.btn1:SetText(L("Restore"))
     actions.btn1:SetScript("OnClick", function() PerformRestore(entry) end)
     actions.btn1:Show()
+    actions.btn1.tipTitle = "Restore"
+    actions.btn1.tipBody  = "Un-block this message. Note: the original chat text was never injected, " ..
+      "so it stays out of the chat scroll \194\151 restored entries appear here only."
     actions.btn2:SetText(L(reportLabel))
     actions.btn2:SetScript("OnClick", function() PerformReport(entry) end)
     actions.btn2:Show()
+    actions.btn2.tipTitle = reportLabel
+    actions.btn2.tipBody  = (reportKind == "lfg-ad")
+      and "Send a Blizzard report for this LFG listing as advertisement spam."
+      or  "Send a Blizzard spam report for this message."
     return
   end
 
@@ -818,6 +892,8 @@ local function RenderActions(entry)
       actions.btn1:SetText(L("Restore"))
       actions.btn1:SetScript("OnClick", function() PerformRestore(entry) end)
       actions.btn1:Show()
+      actions.btn1.tipTitle = "Restore"
+      actions.btn1.tipBody  = "Un-block this message. Sender is already on the allowlist."
     else
       actions.btn1:SetText(L("Restore + Always allow"))
       actions.btn1:SetScript("OnClick", function()
@@ -825,14 +901,21 @@ local function RenderActions(entry)
         PerformAlwaysAllow(entry)
       end)
       actions.btn1:Show()
+      actions.btn1.tipTitle = "Restore + Always allow"
+      actions.btn1.tipBody  = "Un-block this message and add the sender to the allowlist " ..
+        "so future messages from them bypass scanning."
       actions.btn2:SetText(L("Restore only"))
       actions.btn2:SetScript("OnClick", function() PerformRestore(entry) end)
       actions.btn2:Show()
+      actions.btn2.tipTitle = "Restore only"
+      actions.btn2.tipBody  = "Un-block this message without changing the allowlist."
     end
   else
     actions.btn1:SetText(L("Restore"))
     actions.btn1:SetScript("OnClick", function() PerformRestore(entry) end)
     actions.btn1:Show()
+    actions.btn1.tipTitle = "Restore"
+    actions.btn1.tipBody  = "Un-block this message. This surface cannot be allowlisted."
   end
 end
 
@@ -1223,6 +1306,9 @@ local function BuildStatsArea(parent)
     tile.labelText = tile:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     tile.labelText:SetPoint("BOTTOM", tile, "BOTTOM", 0, 4)
     tile.labelText:SetText(L(STATS_TILE_LABELS[key]))
+    -- BSP-009: tiles are layout-only Frames, need EnableMouse for tooltips.
+    local meta = STATS_TILE_TOOLTIPS[key]
+    if meta then AttachTooltip(tile, meta.title, meta.body) end
     parent.tiles[key] = tile
   end
   parent.tilesRow:SetScript("OnSizeChanged", function() PlaceStatsTiles(parent) end)
@@ -1355,6 +1441,25 @@ local function CreateDetailPane()
   footer.btn2:SetPoint("RIGHT", footer.btn1, "LEFT", -4, 0)
   footer.btn2:Hide()
 
+  -- BSP-009: shared OnEnter reads .tipTitle / .tipBody refreshed each time
+  -- RenderActions reshapes the button text. Hide path is unconditional.
+  local function ActionOnEnter(self)
+    if not GameTooltip or not self.tipTitle then return end
+    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
+    GameTooltip:AddLine(L(self.tipTitle))
+    if self.tipBody then
+      GameTooltip:AddLine(L(self.tipBody), 1.00, 1.00, 1.00, true)
+    end
+    GameTooltip:Show()
+  end
+  local function ActionOnLeave()
+    if GameTooltip then GameTooltip:Hide() end
+  end
+  footer.btn1:HookScript("OnEnter", ActionOnEnter)
+  footer.btn1:HookScript("OnLeave", ActionOnLeave)
+  footer.btn2:HookScript("OnEnter", ActionOnEnter)
+  footer.btn2:HookScript("OnLeave", ActionOnLeave)
+
   detailPane.footer = footer
   detailPane.actions = { btn1 = footer.btn1, btn2 = footer.btn2 }
   detailPane.sections.footer = footer
@@ -1397,6 +1502,18 @@ local CHIP_LABELS = {
   Anti       = "Anti",
 }
 
+-- BSP-009: chip tooltip bodies. Keep the chip label terse and rely on the
+-- tooltip to spell out what the category covers. "Comm" → "Commercial" is
+-- the load-bearing case for that abbreviation.
+local CHIP_FULL_NAMES = {
+  RMT        = "RMT (real-money trading)",
+  Boosting   = "Boosting (paid carry ads)",
+  Casino     = "Casino / gambling",
+  Phishing   = "Phishing / scam links",
+  Commercial = "Commercial (ad / sale spam)",
+  Anti       = "Anti-signal (trusted indicators)",
+}
+
 local function PlaceCategoryChips(strip)
   if not strip or not strip.chips then return end
   local stripWidth = strip:GetWidth()
@@ -1429,6 +1546,23 @@ local function BuildCategoryChips(strip)
       filterState.categories[cat] = (filterState.categories[cat] == false)
       UpdateChipVisual(chip, cat)
       if RefreshList then RefreshList() end
+    end)
+    -- BSP-009: state-aware tooltip — read current filter state on every hover.
+    chip:HookScript("OnEnter", function(self)
+      if not GameTooltip then return end
+      local fullName = CHIP_FULL_NAMES[cat] or cat
+      local active = filterState and filterState.categories
+        and filterState.categories[cat] ~= false
+      local body = active
+        and "Currently included in the list. Click to hide entries in this category."
+        or  "Currently hidden from the list. Click to show entries in this category."
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:AddLine(L(fullName))
+      GameTooltip:AddLine(L(body), 1.00, 1.00, 1.00, true)
+      GameTooltip:Show()
+    end)
+    chip:HookScript("OnLeave", function()
+      if GameTooltip then GameTooltip:Hide() end
     end)
     UpdateChipVisual(chip, cat)
     chips[cat] = chip
@@ -1471,6 +1605,8 @@ local function CreateSenderFilterChip()
   chip.clear:SetSize(18, 18)
   chip.clear:SetPoint("LEFT", chip.label, "RIGHT", 2, 0)
   chip.clear:SetScript("OnClick", ClearSenderFilter)
+  AttachTooltip(chip.clear, "Clear sender filter",
+    "Remove the active sender filter and show entries from all senders again.")
 
   frame.senderChip = chip
 end
@@ -1542,6 +1678,8 @@ local function CreateTabStrip(parent)
   history:SetScript("OnClick", function()
     HistoryPanel.Show()
   end)
+  AttachTooltip(history, "History",
+    "View blocked, restored, and pass-thru detections.")
   tabButtons.History = history
 
   local config = CreateFrame("Button", nil, strip, "UIPanelButtonTemplate")
@@ -1551,6 +1689,8 @@ local function CreateTabStrip(parent)
   config:SetScript("OnClick", function()
     HistoryPanel.ShowConfig(activeConfigSection)
   end)
+  AttachTooltip(config, "Config",
+    "Adjust thresholds, categories, surfaces, allowlist, and history settings.")
   tabButtons.Config = config
   parent.tabStrip = strip
 end
@@ -1580,21 +1720,30 @@ local function CreateHeaderFilters()
     function() return filterState.surface end,
     function(v) filterState.surface = v; if RefreshList then RefreshList() end end)
   ddBand.surfaceDD:SetPoint("LEFT", ddBand, "LEFT", 0, 0)
+  AttachTooltip(ddBand.surfaceDD, "Surface filter",
+    "Restrict the list to detections from one chat or LFG surface. \"All\" clears the filter.")
 
   ddBand.timeDD = CreateModernDropdown(ddBand, "Time", TIME_WINDOW_VALUES, nil,
     function() return filterState.timeWindow end,
     function(v) filterState.timeWindow = v; if RefreshList then RefreshList() end end)
   ddBand.timeDD:SetPoint("LEFT", ddBand.surfaceDD, "RIGHT", 4, 0)
+  AttachTooltip(ddBand.timeDD, "Time window",
+    "Restrict the list to detections inside a recent time window.")
 
   ddBand.outcomeDD = CreateModernDropdown(ddBand, "Outcome", OUTCOME_VALUES, nil,
     function() return filterState.outcome end,
     function(v) filterState.outcome = v; if RefreshList then RefreshList() end end)
   ddBand.outcomeDD:SetPoint("LEFT", ddBand.timeDD, "RIGHT", 4, 0)
+  AttachTooltip(ddBand.outcomeDD, "Outcome filter",
+    "Blocked = hidden from chat. Restored = un-blocked via the action panel. " ..
+    "Pass-thru = scored as spam but logged-only because the surface or category was paused.")
 
   ddBand.sortDD = CreateModernDropdown(ddBand, "Sort", SORT_VALUES, SORT_LABELS,
     function() return sortMode end,
     function(v) sortMode = v; if RefreshList then RefreshList() end end)
   ddBand.sortDD:SetPoint("LEFT", ddBand.outcomeDD, "RIGHT", 4, 0)
+  AttachTooltip(ddBand.sortDD, "Sort order",
+    "Newest first \194\183 by Score (highest first) \194\183 by Sender (groups repeat offenders).")
 
   local refresh = CreateFrame("Button", nil, ddBand, "UIPanelButtonTemplate")
   refresh:SetSize(60, 22)
@@ -1603,6 +1752,8 @@ local function CreateHeaderFilters()
   refresh:SetScript("OnClick", function()
     if RefreshList then RefreshList() end
   end)
+  AttachTooltip(refresh, "Refresh list",
+    "Reload entries from history. Use after a Clear, Import, or external SavedVariables edit.")
   ddBand.refresh = refresh
 
   -- Preserve legacy lookup keys. Show/Hide on frame.filterStrip is used by
@@ -1673,6 +1824,10 @@ local function CreateSplitter(parent)
     detailPane:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -6, 40)
   end)
 
+  AttachTooltip(splitter, "Adjust list / detail split",
+    "Drag horizontally to resize the list pane.",
+    "Width is saved per character.")
+
   parent.splitter = splitter
   return splitter
 end
@@ -1740,6 +1895,31 @@ local function CreatePauseRow(parent)
       if not NS.PauseState then return end
       local direction = (mouseButton == "RightButton") and "backward" or "forward"
       NS.PauseState.CycleSurface(self.surfaceKey, direction)
+    end)
+
+    -- BSP-009: state-aware tooltip. Body reads current PauseState every hover
+    -- so cycling the pill doesn't leave a stale tooltip behind.
+    pill:HookScript("OnEnter", function(self)
+      if not GameTooltip then return end
+      local fullName = SURFACE_LABELS[self.surfaceKey] or self.surfaceKey
+      local state = NS.PauseState and NS.PauseState.GetSurface(self.surfaceKey) or "active"
+      local stateBody
+      if state == "active" then
+        stateBody = "Active \194\183 detected spam is blocked from chat."
+      elseif state == "paused" then
+        stateBody = "Paused \194\183 detected spam is logged to History but stays in chat."
+      else
+        stateBody = "Off \194\183 this surface is not scanned."
+      end
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:AddLine(L(fullName))
+      GameTooltip:AddLine(L(stateBody), 1.00, 1.00, 1.00, true)
+      GameTooltip:AddLine(L("Left-click cycles forward \194\183 Right-click cycles back."),
+        0.70, 0.70, 0.70, true)
+      GameTooltip:Show()
+    end)
+    pill:HookScript("OnLeave", function()
+      if GameTooltip then GameTooltip:Hide() end
     end)
 
     pausePills[surfaceKey] = pill
@@ -1850,8 +2030,8 @@ local function RegisterMinimap()
     end,
     OnTooltipShow = function(tooltip)
       tooltip:AddLine("BawrSpam")
-      tooltip:AddLine("Left-click to toggle history.", 1, 1, 1)
-      tooltip:AddLine("Right-click to open config.", 1, 1, 1)
+      tooltip:AddLine("Left-click to toggle the History panel.", 1, 1, 1)
+      tooltip:AddLine("Right-click for the Pause-surface menu and config.", 1, 1, 1)
     end,
   })
 

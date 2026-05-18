@@ -4,6 +4,30 @@ local ConfigPanel = {}
 -- BSP-008: i18n hook. Identity today; future Locale ticket retrofits L.
 local function L(s) return s end
 
+-- BSP-009: GameTooltip helper for widget hover help. Mirrors HistoryPanel's
+-- AttachTooltip; duplicated locally because the two files are independent
+-- and a single shared module would require .toc load-order plumbing for
+-- minor gain. Supports both native Frames/Buttons and AceGUI widgets via
+-- .frame unwrap. EnableMouse is asserted because BackdropTemplate hosts
+-- default mouse-disabled.
+local function AttachTooltip(widget, title, body, hint)
+  if not widget then return end
+  local host = widget.frame or widget
+  if not host.HookScript then return end
+  if host.EnableMouse then host:EnableMouse(true) end
+  host:HookScript("OnEnter", function(self)
+    if not GameTooltip then return end
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    if title then GameTooltip:AddLine(L(title)) end
+    if body  then GameTooltip:AddLine(L(body),  1.00, 1.00, 1.00, true) end
+    if hint  then GameTooltip:AddLine(L(hint),  0.70, 0.70, 0.70, true) end
+    GameTooltip:Show()
+  end)
+  host:HookScript("OnLeave", function()
+    if GameTooltip then GameTooltip:Hide() end
+  end)
+end
+
 local DEFAULT_WIDTH = 700
 local DEFAULT_HEIGHT = 500
 local MIN_WIDTH = 600
@@ -342,22 +366,24 @@ local function AddStatus(y, message, good)
   return y - 22
 end
 
-local function AddNativeButton(label, x, y, width, onClick)
+local function AddNativeButton(label, x, y, width, onClick, tooltipBody)
   local button = TrackNative(CreateFrame("Button", nil, content, "UIPanelButtonTemplate"))
   button:SetSize(width or 120, 24)
   button:SetPoint("TOPLEFT", content, "TOPLEFT", x, y)
   button:SetText(label)
   button:SetScript("OnClick", onClick)
+  if tooltipBody then AttachTooltip(button, label, tooltipBody) end
   button:Show()
   return button
 end
 
-local function AddEditBox(x, y, width, initialText)
+local function AddEditBox(x, y, width, initialText, tooltipTitle, tooltipBody)
   local editBox = TrackNative(CreateFrame("EditBox", nil, content, "InputBoxTemplate"))
   editBox:SetSize(width or 180, 24)
   editBox:SetPoint("TOPLEFT", content, "TOPLEFT", x, y)
   editBox:SetAutoFocus(false)
   editBox:SetText(initialText or "")
+  if tooltipTitle then AttachTooltip(editBox, tooltipTitle, tooltipBody) end
   editBox:Show()
   return editBox
 end
@@ -408,7 +434,7 @@ local function AddAceWidget(widgetType, x, y, width)
   return widget
 end
 
-local function AddSlider(label, key, minValue, maxValue, step, y)
+local function AddSlider(label, key, minValue, maxValue, step, y, tooltipBody)
   local slider = AddAceWidget("Slider", CONTENT_PAD, y, 330)
   if not slider then
     return AddDisabledRow(label, "AceGUI unavailable", y)
@@ -424,10 +450,11 @@ local function AddSlider(label, key, minValue, maxValue, step, y)
     end
     SetSetting(key, value)
   end)
+  if tooltipBody then AttachTooltip(slider, label, tooltipBody) end
   return y - 48
 end
 
-local function AddCheckbox(label, key, y, onChanged)
+local function AddCheckbox(label, key, y, onChanged, tooltipBody)
   local checkbox = AddAceWidget("CheckBox", CONTENT_PAD, y, 360)
   if not checkbox then
     return AddDisabledRow(label, "AceGUI unavailable", y)
@@ -443,6 +470,7 @@ local function AddCheckbox(label, key, y, onChanged)
       SetSetting(key, value)
     end
   end)
+  if tooltipBody then AttachTooltip(checkbox, label, tooltipBody) end
   return y - 32
 end
 
@@ -1264,6 +1292,40 @@ local function AddAxisPauseRow(axis, key, displayLabel, y)
     Refresh()
   end)
 
+  -- BSP-009: state-aware tooltip on each pause pill. Body reads live state
+  -- from PauseState every hover, so cycling the pill never leaves a stale
+  -- tooltip behind.
+  pill:HookScript("OnEnter", function(self)
+    if not GameTooltip then return end
+    local state
+    if axis == "surface" then
+      state = NS.PauseState and NS.PauseState.GetSurface(key) or "active"
+    else
+      state = NS.PauseState and NS.PauseState.GetCategory(key) or "active"
+    end
+    local stateBody
+    if state == "active" then
+      stateBody = (axis == "surface")
+        and "Active \194\183 detected spam on this surface is blocked from chat."
+        or  "Active \194\183 messages in this category are blocked."
+    elseif state == "paused" then
+      stateBody = "Paused \194\183 detected spam is logged to History but stays visible."
+    else
+      stateBody = (axis == "surface")
+        and "Off \194\183 this surface is not scanned at all."
+        or  "Off \194\183 this category is not scored against messages."
+    end
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:AddLine(L(displayLabel))
+    GameTooltip:AddLine(L(stateBody), 1.00, 1.00, 1.00, true)
+    GameTooltip:AddLine(L("Left-click cycles forward \194\183 Right-click cycles back."),
+      0.70, 0.70, 0.70, true)
+    GameTooltip:Show()
+  end)
+  pill:HookScript("OnLeave", function()
+    if GameTooltip then GameTooltip:Hide() end
+  end)
+
   Refresh()
   return y - 34
 end
@@ -1280,10 +1342,16 @@ local RenderDev
 RenderDetection = function()
   local y = AddSectionTitle("Detection", "Tune the score threshold and mixed-script signal weight.")
   y = AddStatus(y, sectionStatus.Detection)
-  y = AddSlider("Block threshold", "threshold", 1, 10, 1, y)
-  y = AddSlider("Anti-signal cap", "antiSignalCap", -10, -1, 1, y)
-  y = AddSlider("Mixed-script weight", "mixedScriptWeight", 0, 3, 1, y)
-  AddCheckbox("Use mixed-script detection", "mixedScriptEnabled", y)
+  y = AddSlider("Block threshold", "threshold", 1, 10, 1, y,
+    "Messages scoring at or above this value are blocked. Higher = stricter.")
+  y = AddSlider("Anti-signal cap", "antiSignalCap", -10, -1, 1, y,
+    "Maximum negative score one anti-signal (e.g. guild affiliation) can contribute. " ..
+    "Limits how much a single trusted indicator offsets spam weight.")
+  y = AddSlider("Mixed-script weight", "mixedScriptWeight", 0, 3, 1, y,
+    "Score weight added when a message mixes Latin with another script (Cyrillic, etc.) \194\151 " ..
+    "the classic Unicode-confusable pattern. Set 0 to disable.")
+  AddCheckbox("Use mixed-script detection", "mixedScriptEnabled", y, nil,
+    "Enable Unicode-confusable script-mixing as a signal in scoring.")
 end
 
 RenderCategories = function()
@@ -1302,8 +1370,12 @@ RenderSurfaces = function()
     y = AddAxisPauseRow("surface", surface, label, y)
   end
   -- Preserved settings (live toggles, not part of the pause taxonomy).
-  y = AddCheckbox("Filter bubbles", "filterBubbles", y, SetFilterBubblesEnabled)
-  AddCheckbox("LFG scanning", "lfgScanEnabled", y, SetLFGScanEnabled)
+  y = AddCheckbox("Filter bubbles", "filterBubbles", y, SetFilterBubblesEnabled,
+    "Hide blocked Say / Yell text from chat bubbles via a Blizzard cvar toggle. " ..
+    "Auto-restores after each suppressed message and on logout.")
+  AddCheckbox("LFG scanning", "lfgScanEnabled", y, SetLFGScanEnabled,
+    "Scan LFG listings and applicants. Required for LFG render-hide (the visual blocking " ..
+    "of spam rows in the Group Finder window).")
 end
 
 RenderAllowlist = function()
@@ -1311,30 +1383,38 @@ RenderAllowlist = function()
   y = AddStatus(y, sectionStatus.Allowlist)
 
   AddText("Search", "GameFontNormalSmall", CONTENT_PAD, y + 2, 48)
-  local search = AddEditBox(CONTENT_PAD + 54, y + 5, 160, listState.allowlistSearch)
+  local search = AddEditBox(CONTENT_PAD + 54, y + 5, 160, listState.allowlistSearch,
+    "Search allowlist",
+    "Type to match by sender name, realm, GUID, or source. Click Apply to filter the list below.")
   AddNativeButton("Apply", CONTENT_PAD + 222, y + 6, 70, function()
     listState.allowlistSearch = search:GetText() or ""
     listState.allowlistPage = 1
     ConfigPanel.ShowSection("Allowlist")
-  end)
+  end, "Apply the search box to the allowlist below and reset to page 1.")
   y = y - 34
 
-  AddNativeButton("Export", CONTENT_PAD, y + 6, 72, ConfigPanel.OpenExportDialog)
-  AddNativeButton("Import", CONTENT_PAD + 82, y + 6, 72, ConfigPanel.OpenImportDialog)
+  AddNativeButton("Export", CONTENT_PAD, y + 6, 72, ConfigPanel.OpenExportDialog,
+    "Export the entire allowlist to a text blob you can copy from a dialog.")
+  AddNativeButton("Import", CONTENT_PAD + 82, y + 6, 72, ConfigPanel.OpenImportDialog,
+    "Paste a previously exported allowlist blob to merge entries into your current set.")
   y = y - 34
 
   AddText("Add from History", "GameFontNormalSmall", CONTENT_PAD, y + 2, 104)
-  local addBox = AddEditBox(CONTENT_PAD + 112, y + 5, 180, listState.allowlistAddText)
+  local addBox = AddEditBox(CONTENT_PAD + 112, y + 5, 180, listState.allowlistAddText,
+    "Add from History",
+    "Enter as Name-Realm. The sender must already appear in your History \194\151 you can't " ..
+    "allowlist arbitrary names, only ones BawrSpam has actually seen.")
   AddNativeButton("Add", CONTENT_PAD + 300, y + 6, 72, function()
     listState.allowlistAddText = addBox:GetText() or ""
     AddAllowlistFromText(listState.allowlistAddText)
     ConfigPanel.ShowSection("Allowlist")
-  end)
+  end, "Add the Name-Realm in the box to the allowlist.")
   y = y - 34
 
   if removedAllowlistEntry then
     AddText("Removed " .. SenderLabel(removedAllowlistEntry.entry) .. ".", "GameFontHighlightSmall", CONTENT_PAD, y)
-    AddNativeButton("Undo", CONTENT_PAD + 210, y + 4, 70, UndoAllowlistRemove)
+    AddNativeButton("Undo", CONTENT_PAD + 210, y + 4, 70, UndoAllowlistRemove,
+      "Restore the entry you just removed.")
     y = y - 30
   end
 
@@ -1382,6 +1462,8 @@ RenderAllowlist = function()
     remove:SetScript("OnClick", function()
       RemoveAllowlist(rowData.guid, rowData.entry)
     end)
+    AttachTooltip(remove, "Remove from allowlist",
+      "Take " .. SenderLabel(rowData.entry) .. " off the allowlist. Use Undo above to revert.")
     remove:Show()
 
     y = y - (ROW_HEIGHT + 4)
@@ -1394,13 +1476,13 @@ RenderAllowlist = function()
       listState.allowlistPage = listState.allowlistPage - 1
       ConfigPanel.ShowSection("Allowlist")
     end
-  end)
+  end, "Show the previous page of allowlist entries.")
   AddNativeButton("Next", CONTENT_PAD + 236, y + 4, 60, function()
     if listState.allowlistPage < maxPage then
       listState.allowlistPage = listState.allowlistPage + 1
       ConfigPanel.ShowSection("Allowlist")
     end
-  end)
+  end, "Show the next page of allowlist entries.")
 end
 
 RenderBlocked = function()
@@ -1408,13 +1490,16 @@ RenderBlocked = function()
   y = AddStatus(y, sectionStatus.Blocked)
 
   AddText("Search", "GameFontNormalSmall", CONTENT_PAD, y + 2, 48)
-  local search = AddEditBox(CONTENT_PAD + 54, y + 5, 160, listState.blockedSearch)
+  local search = AddEditBox(CONTENT_PAD + 54, y + 5, 160, listState.blockedSearch,
+    "Search blocked actors",
+    "Type to match by sender label or key. Click Apply to filter the list below.")
   AddNativeButton("Apply", CONTENT_PAD + 222, y + 6, 70, function()
     listState.blockedSearch = search:GetText() or ""
     listState.blockedPage = 1
     ConfigPanel.ShowSection("Blocked")
-  end)
-  AddNativeButton("Clear All", CONTENT_PAD + 300, y + 6, 90, ConfigPanel.ConfirmClearBlocked)
+  end, "Apply the search box to the blocked-actors list and reset to page 1.")
+  AddNativeButton("Clear All", CONTENT_PAD + 300, y + 6, 90, ConfigPanel.ConfirmClearBlocked,
+    "Remove every blocked actor. Confirmation required.")
   y = y - 34
 
   y = AddDisabledRow("Manual blocked add", "Deferred until scanner consumption exists", y)
@@ -1463,6 +1548,8 @@ RenderBlocked = function()
     remove:SetScript("OnClick", function()
       RemoveBlocked(rowData.key)
     end)
+    AttachTooltip(remove, "Remove blocked actor",
+      "Take " .. rowData.label .. " off the blocked-actors list.")
     remove:Show()
 
     y = y - (ROW_HEIGHT + 4)
@@ -1475,13 +1562,13 @@ RenderBlocked = function()
       listState.blockedPage = listState.blockedPage - 1
       ConfigPanel.ShowSection("Blocked")
     end
-  end)
+  end, "Show the previous page of blocked actors.")
   AddNativeButton("Next", CONTENT_PAD + 236, y + 4, 60, function()
     if listState.blockedPage < maxPage then
       listState.blockedPage = listState.blockedPage + 1
       ConfigPanel.ShowSection("Blocked")
     end
-  end)
+  end, "Show the next page of blocked actors.")
 end
 
 RenderHistory = function()
@@ -1515,12 +1602,16 @@ RenderHistory = function()
         SetSetting("historyMaxEntries", value)
       end
     end)
+    AttachTooltip(slider, "Maximum history entries",
+      "Cap retained History at this many entries. Oldest entries are trimmed first. " ..
+      "Lifetime stats counters are unaffected.")
     y = y - 52
   else
     y = AddDisabledRow("Maximum history entries", "AceGUI unavailable", y)
   end
 
-  AddNativeButton("Clear History", CONTENT_PAD, y, 120, ConfigPanel.ConfirmClearHistory)
+  AddNativeButton("Clear History", CONTENT_PAD, y, 120, ConfigPanel.ConfirmClearHistory,
+    "Delete all retained History entries. Lifetime stats counters are preserved. Confirmation required.")
 end
 
 RenderUI = function()
@@ -1529,7 +1620,7 @@ RenderUI = function()
   y = AddCheckbox("Show minimap button", "showMinimapButton", y, function(value)
     SetSetting("showMinimapButton", value)
     SetHistoryPanelMinimapShown(value)
-  end)
+  end, "Toggle the BawrSpam launcher icon on the minimap.")
 
   AddNativeButton("Reset History Panel", CONTENT_PAD, y, 150, function()
     if NS.HistoryPanel and NS.HistoryPanel.ResetPosition then
@@ -1539,23 +1630,25 @@ RenderUI = function()
       sectionStatus.UI = "History panel reset API is unavailable."
     end
     ConfigPanel.ShowSection("UI")
-  end)
+  end, "Reset the History panel size and position to defaults (centered, 820 \195\151 540).")
   AddNativeButton("Reset Config Panel", CONTENT_PAD + 160, y, 150, function()
     ConfigPanel.ResetPosition()
     sectionStatus.UI = "Config panel position reset."
     ConfigPanel.ShowSection("UI")
-  end)
+  end, "Reset the Config panel size and position to defaults (centered, 700 \195\151 500).")
 end
 
 RenderDev = function()
   local y = AddSectionTitle("Dev", "Developer-only diagnostics and reset controls.")
   y = AddStatus(y, sectionStatus.Dev)
-  y = AddCheckbox("Enable dev mode", "devMode", y)
+  y = AddCheckbox("Enable dev mode", "devMode", y, nil,
+    "Enable developer-only diagnostics: extra logging, devMode-gated error reporting, " ..
+    "test slash commands, and other diagnostic affordances.")
   AddNativeButton("Reset Settings", CONTENT_PAD, y, 120, function()
     if StaticPopup_Show then
       StaticPopup_Show("BAWRSPAM_RESET_SETTINGS")
     end
-  end)
+  end, "Reset ALL settings to defaults. Does not touch History, Allowlist, or Blocked. Confirmation required.")
 end
 
 local RENDERERS = {
@@ -1629,7 +1722,22 @@ local function CreateResizeHandle(parent)
     parent:StopMovingOrSizing()
     sizeDirty = true
   end)
+  AttachTooltip(handle, "Resize panel",
+    "Drag to resize the Config panel.",
+    "Minimum size: 600 \195\151 400.")
 end
+
+-- BSP-009: per-section hover help for the left nav.
+local NAV_TOOLTIPS = {
+  Detection  = "Score threshold, mixed-script signal weight, anti-signal cap.",
+  Categories = "Toggle each spam category between Active (block), Paused (log only), and Off (ignore).",
+  Surfaces   = "Toggle each chat / LFG surface between Active, Paused, and Off. Also: filter bubbles, LFG scanning.",
+  Allowlist  = "Senders BawrSpam will always trust. Add from History or import a saved list.",
+  Blocked    = "Recently blocked actors. Manage repeat offenders.",
+  History    = "Retained-history limit and clear control.",
+  UI         = "Minimap launcher and panel-position resets.",
+  Dev        = "Developer-only diagnostics and full settings reset.",
+}
 
 local function CreateNav(parent)
   local nav = CreateFrame("Frame", nil, parent)
@@ -1650,6 +1758,7 @@ local function CreateNav(parent)
     button:SetScript("OnClick", function()
       ConfigPanel.ShowSection(section)
     end)
+    AttachTooltip(button, section, NAV_TOOLTIPS[section])
     navButtons[section] = button
     previous = button
   end
