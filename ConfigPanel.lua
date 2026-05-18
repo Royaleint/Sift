@@ -1958,6 +1958,85 @@ function ConfigPanel.ShowSection(section)
   end
 end
 
+-- BSP-018: escape a string as a Lua double-quoted literal payload.
+-- Handles backslash, double-quote, newline, carriage-return. Anything else
+-- (including UTF-8 multibyte) passes through verbatim — Lua's string parser
+-- treats those bytes as literal.
+local function EscapeLuaString(value)
+  value = tostring(value or "")
+  value = string.gsub(value, "\\", "\\\\")
+  value = string.gsub(value, "\"", "\\\"")
+  value = string.gsub(value, "\n", "\\n")
+  value = string.gsub(value, "\r", "\\r")
+  return value
+end
+
+-- BSP-018: build a paste-ready Lua negatives block from History entries
+-- where outcome == "restored". Newest-first per History.GetAll convention.
+-- Optional `limit` clamps to the first N restored entries (also newest-first
+-- since the source is already sorted that way).
+local function BuildFPExportText(limit)
+  local entries = NS.History and NS.History.GetAll and NS.History.GetAll() or {}
+  local restored = {}
+  for i = 1, #entries do
+    if entries[i].outcome == "restored" then
+      restored[#restored + 1] = entries[i]
+    end
+  end
+  if limit and limit > 0 and #restored > limit then
+    local trimmed = {}
+    for i = 1, limit do trimmed[i] = restored[i] end
+    restored = trimmed
+  end
+
+  local lines = {
+    "-- BawrSpam FP-export (negative fixtures for BawrSpam_Dev/patterns/fixtures.lua)",
+    "-- Exported: " .. (date and date("%Y-%m-%d %H:%M:%S") or "?"),
+    "-- Entries:  " .. tostring(#restored)
+      .. (limit and (" (limited to last " .. tostring(limit) .. ")") or ""),
+    "",
+  }
+
+  if #restored == 0 then
+    lines[#lines + 1] = "-- No restored entries in History. Use the Restore button on false-positive blocks first."
+  end
+
+  for i = 1, #restored do
+    local entry = restored[i]
+    local senderLabel = entry.name or "?"
+    if entry.realm and entry.realm ~= "" then
+      senderLabel = senderLabel .. "-" .. entry.realm
+    end
+    local dateStr = (entry.ts and date) and date("%Y-%m-%d", entry.ts) or "?"
+    lines[#lines + 1] = string.format("  -- [%s] %s  score=%s  %s",
+      tostring(entry.surface or "?"),
+      senderLabel,
+      tostring(entry.score or "?"),
+      dateStr)
+    lines[#lines + 1] = string.format("  \"%s\",", EscapeLuaString(entry.original))
+  end
+
+  return table.concat(lines, "\n")
+end
+
+function ConfigPanel.OpenFPExportDialog(limit)
+  ConfigPanel.Initialize()
+  if NS.DB and NS.DB.IsDevMode and not NS.DB.IsDevMode() then
+    Print("/bdev commands require devMode. Enable in Config \194\187 Dev.")
+    return
+  end
+  local count = 0
+  local entries = NS.History and NS.History.GetAll and NS.History.GetAll() or {}
+  for i = 1, #entries do
+    if entries[i].outcome == "restored" then count = count + 1 end
+  end
+  if limit and limit > 0 and count > limit then count = limit end
+  ShowTextDialog(
+    "BawrSpam FP Fixture Export (" .. tostring(count) .. " entries)",
+    BuildFPExportText(limit),
+    "Close", nil)
+end
+
 function ConfigPanel.OpenExportDialog()
   ConfigPanel.Initialize()
   ShowTextDialog("BawrSpam Allowlist Export", ExportAllowlistText(), "Close", nil)
