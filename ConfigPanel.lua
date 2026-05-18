@@ -1687,12 +1687,21 @@ RenderDev = function()
   y = AddStatus(y, sectionStatus.Dev)
   y = AddCheckbox("Enable dev mode", "devMode", y, nil,
     "Enable developer-only diagnostics: extra logging, devMode-gated error reporting, " ..
-    "test slash commands, and other diagnostic affordances.")
+    "/bdev slash commands, and other diagnostic affordances.")
   AddNativeButton("Reset Settings", CONTENT_PAD, y, 120, function()
     if StaticPopup_Show then
       StaticPopup_Show("BAWRSPAM_RESET_SETTINGS")
     end
   end, "Reset ALL settings to defaults. Does not touch History, Allowlist, or Blocked. Confirmation required.")
+  -- BSP-018: FP-export tool. Same gating semantics as /bdev fpx — the
+  -- OpenFPExportDialog function checks devMode and prints a status message
+  -- if off, so the button is visible always (discoverability) but only
+  -- functional when devMode is enabled.
+  AddNativeButton("Export FP fixtures", CONTENT_PAD + 130, y, 150, function()
+    ConfigPanel.OpenFPExportDialog(nil)
+  end, "Export false-positive entries from History as a paste-ready Lua " ..
+    "negatives block for fixtures.lua. Equivalent to /bdev fpx. " ..
+    "Requires devMode to be enabled.")
 end
 
 local RENDERERS = {
@@ -1956,6 +1965,102 @@ function ConfigPanel.ShowSection(section)
   if renderer then
     renderer()
   end
+end
+
+-- BSP-018: escape a string as a Lua double-quoted literal payload.
+-- Order matters: backslash MUST come first, otherwise the subsequent escape
+-- replacements would re-double their own leading backslashes. UTF-8 multibyte
+-- sequences pass through verbatim — Lua's string parser treats those bytes
+-- as literal. Low-ASCII control bytes (\0 + 0x01-0x08 + \v + \f + 0x0E-0x1F)
+-- emit as decimal `\NNN` escapes — they're vanishingly rare in chat input but
+-- the paste-into-fixtures.lua use case demands a clean source file.
+-- BSP-018 polish (post-Argus): added \t escape and the low-ASCII catch-all
+-- so a stray tab character in a chat line doesn't break fixtures.lua indent.
+local function EscapeLuaString(value)
+  value = tostring(value or "")
+  value = string.gsub(value, "\\", "\\\\")
+  value = string.gsub(value, "\"", "\\\"")
+  value = string.gsub(value, "\n", "\\n")
+  value = string.gsub(value, "\r", "\\r")
+  value = string.gsub(value, "\t", "\\t")
+  value = string.gsub(value, "[%z\1-\8\11\12\14-\31]", function(c)
+    return string.format("\\%d", string.byte(c))
+  end)
+  return value
+end
+
+-- BSP-018: build a paste-ready Lua negatives block from History entries
+-- where outcome == "restored". Newest-first per History.GetAll convention.
+-- Optional `limit` clamps to the first N restored entries (also newest-first
+-- since the source is already sorted that way).
+local function BuildFPExportText(limit)
+  -- BSP-018 polish (post-Argus): clamp non-positive limit to nil so the
+  -- "no-limit" path is reached explicitly rather than via the > 0 side
+  -- effect. Matches AC #6's "N is a positive integer" intent.
+  if limit and limit <= 0 then limit = nil end
+
+  local entries = NS.History and NS.History.GetAll and NS.History.GetAll() or {}
+  local restored = {}
+  for i = 1, #entries do
+    if entries[i].outcome == "restored" then
+      restored[#restored + 1] = entries[i]
+    end
+  end
+  if limit and #restored > limit then
+    local trimmed = {}
+    for i = 1, limit do trimmed[i] = restored[i] end
+    restored = trimmed
+  end
+
+  local lines = {
+    "-- BawrSpam FP-export (negative fixtures for BawrSpam_Dev/patterns/fixtures.lua)",
+    "-- Exported: " .. (date and date("%Y-%m-%d %H:%M:%S") or "?"),
+    "-- Entries:  " .. tostring(#restored)
+      .. (limit and (" (limited to last " .. tostring(limit) .. ")") or ""),
+    "",
+  }
+
+  if #restored == 0 then
+    lines[#lines + 1] = "-- No restored entries in History. Use the Restore button on false-positive blocks first."
+  end
+
+  for i = 1, #restored do
+    local entry = restored[i]
+    local senderLabel = entry.name or "?"
+    if entry.realm and entry.realm ~= "" then
+      senderLabel = senderLabel .. "-" .. entry.realm
+    end
+    local dateStr = (entry.ts and date) and date("%Y-%m-%d", entry.ts) or "?"
+    lines[#lines + 1] = string.format("  -- [%s] %s  score=%s  %s",
+      tostring(entry.surface or "?"),
+      senderLabel,
+      tostring(entry.score or "?"),
+      dateStr)
+    lines[#lines + 1] = string.format("  \"%s\",", EscapeLuaString(entry.original))
+  end
+
+  return table.concat(lines, "\n")
+end
+
+function ConfigPanel.OpenFPExportDialog(limit)
+  ConfigPanel.Initialize()
+  if NS.DB and NS.DB.IsDevMode and not NS.DB.IsDevMode() then
+    Print("/bdev commands require devMode. Enable in Config \194\187 Dev.")
+    return
+  end
+  -- BSP-018 polish (post-Argus): match BuildFPExportText's clamp so the
+  -- title count is consistent with the body content.
+  if limit and limit <= 0 then limit = nil end
+  local count = 0
+  local entries = NS.History and NS.History.GetAll and NS.History.GetAll() or {}
+  for i = 1, #entries do
+    if entries[i].outcome == "restored" then count = count + 1 end
+  end
+  if limit and count > limit then count = limit end
+  ShowTextDialog(
+    "BawrSpam FP Fixture Export (" .. tostring(count) .. " entries)",
+    BuildFPExportText(limit),
+    "Close", nil)
 end
 
 function ConfigPanel.OpenExportDialog()

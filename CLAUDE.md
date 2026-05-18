@@ -149,7 +149,7 @@ additions will be Tier 1.
 ## Quick reference
 
 ```
-# Slash commands (per spec §8.11; none exist yet, listed for design reference)
+# User-facing slash commands (/bawrspam)
 /bawrspam                # toggle History panel
 /bawrspam config         # open Config panel
 /bawrspam allow <Name-Realm>     # restricted to senders we've seen in History
@@ -157,8 +157,22 @@ additions will be Tier 1.
 /bawrspam import                  # allowlist import blob (paste dialog)
 /bawrspam clearhistory            # confirmation popup
 /bawrspam clearblocked            # confirmation popup
-/bawrspam test                    # devMode-gated smoke tests
+/bawrspam rebuildstats            # rebuild byCategory stats from retained history
 /reload                  # reload UI (Blizzard built-in)
+
+# Dev-only slash commands (/bdev) — require devMode (Config > Dev)
+# BSP-018: /bdev is the namespace for all BawrSpam devMode-gated commands.
+# Universal devMode gate at the dispatcher level (Init.lua BdevSlashHandler).
+# /bawrspamdev is a defensive fallback alias if another addon also claims /bdev.
+/bdev                    # print usage
+/bdev test [message]     # synthetic ChatScanner.Filter smoke test
+/bdev fpx [N]            # FP-export dialog — paste-ready Lua negatives
+                         # block for fixtures.lua. Optional N limits to
+                         # the last N restored entries. Also available
+                         # via Config > Dev > "Export FP fixtures" button.
+
+# /bawrspam test prints a migration hint pointing at /bdev test (transitional;
+# removed in a future cleanup once muscle memory has migrated).
 ```
 
 ```bash
