@@ -1,13 +1,10 @@
 local _, NS = ...
 local Suppression = {}
 
-local MAX_CHAT_LINES = 64
 local SEARCH_RESULT_TTL = 300
 local APPLICANT_TTL = 120
 local SWEEP_INTERVAL = 60
 
-local blockedLines = {}
-local lineOrder = {}
 local blockedSearchResults = {}
 local blockedApplicants = {}
 local lfgSweepTickerStarted = false
@@ -57,27 +54,6 @@ local function IsTransientBlocked(map, transientID)
   end
 
   return true
-end
-
-function Suppression.MarkChatLine(chatLineID, entryID)
-  if chatLineID == nil then
-    return
-  end
-
-  if blockedLines[chatLineID] == nil then
-    lineOrder[#lineOrder + 1] = chatLineID
-  end
-
-  blockedLines[chatLineID] = entryID or true
-
-  while #lineOrder > MAX_CHAT_LINES do
-    local oldest = table.remove(lineOrder, 1)
-    blockedLines[oldest] = nil
-  end
-end
-
-function Suppression.IsChatLineBlocked(chatLineID)
-  return chatLineID ~= nil and blockedLines[chatLineID] ~= nil
 end
 
 function Suppression.MarkLFGSearchResult(searchResultID)
