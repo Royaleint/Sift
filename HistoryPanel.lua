@@ -160,9 +160,9 @@ local function RegisterStaticPopups()
       hasEditBox = true,
       editBoxWidth = 250,
       OnShow = function(self, data)
-        self.editBox:SetText(tostring(data or ""))
-        self.editBox:HighlightText()
-        self.editBox:SetFocus()
+        self.EditBox:SetText(tostring(data or ""))
+        self.EditBox:HighlightText()
+        self.EditBox:SetFocus()
       end,
       EditBoxOnEscapePressed = function(self)
         self:GetParent():Hide()
