@@ -20,14 +20,6 @@ local function MaxEntries()
   return value
 end
 
-local function ShallowCopy(record)
-  local copy = {}
-  for key, value in pairs(record) do
-    copy[key] = value
-  end
-  return copy
-end
-
 local function CountRetained(history)
   local retained = {
     detections = 0,
@@ -179,6 +171,12 @@ function History.Append(record)
   return record.id
 end
 
+-- BSP-023: returns references to the live records, not copies. Each call
+-- previously allocated a fresh shallow-copy table per entry; with a 1000-
+-- entry cap that's ~500 KB of per-call churn driving HistoryPanel's 2-3 MB
+-- per Show/Hide cycle. All callers iterate read-only; mutations route through
+-- MarkRestored / RetroactiveBlock / Append by id. Do not mutate returned
+-- records.
 function History.GetRecent(limit)
   local char = GetChar()
   local history = char and char.history or {}
@@ -188,7 +186,7 @@ function History.GetRecent(limit)
 
   local out = {}
   for index = #history, 1, -1 do
-    out[#out + 1] = ShallowCopy(history[index])
+    out[#out + 1] = history[index]
     if #out >= count then break end
   end
   return out
@@ -199,7 +197,7 @@ function History.GetAll()
   local history = char and char.history or {}
   local out = {}
   for index = #history, 1, -1 do
-    out[#out + 1] = ShallowCopy(history[index])
+    out[#out + 1] = history[index]
   end
   return out
 end
