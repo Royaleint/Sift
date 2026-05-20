@@ -16,6 +16,10 @@ local renderSweepFrame = nil
 local renderSweepElapsed = 0
 
 local RENDER_SWEEP_INTERVAL = 0.2
+local IGNORED_BREAKDOWN_KEYS = {
+  MixedScript = true,
+  BlockedActor = true,
+}
 
 local function DevLog(message)
   if NS.DB and NS.DB.DevLog then
@@ -42,6 +46,48 @@ local function BuildScoringOptions(settings)
     antiSignalCap = settings.antiSignalCap,
     patterns = NS.Patterns,
   }
+end
+
+local function DominantCategory(breakdown)
+  if type(breakdown) ~= "table" then
+    return nil
+  end
+
+  local bestCat, bestVal
+  for cat, val in pairs(breakdown) do
+    local numeric = tonumber(val) or 0
+    if not IGNORED_BREAKDOWN_KEYS[cat] and numeric > 0
+       and (not bestVal or numeric > bestVal) then
+      bestCat, bestVal = cat, numeric
+    end
+  end
+  return bestCat
+end
+
+local function ResolveOutcome(surface, score)
+  local surfaceState = (NS.PauseState and NS.PauseState.GetSurface and NS.PauseState.GetSurface(surface)) or "active"
+  if surfaceState == "off" then
+    return nil
+  end
+
+  local outcome = surfaceState == "paused" and "pass-thru" or "blocked"
+  local dominantCategory = DominantCategory(score and score.breakdown)
+  if dominantCategory then
+    local categoryState = (NS.PauseState and NS.PauseState.GetCategory and NS.PauseState.GetCategory(dominantCategory)) or "active"
+    if categoryState == "off" then
+      return nil
+    end
+    if categoryState == "paused" then
+      outcome = "pass-thru"
+    end
+  end
+
+  return outcome
+end
+
+local function ShouldScanSurface(surface)
+  local surfaceState = (NS.PauseState and NS.PauseState.GetSurface and NS.PauseState.GetSurface(surface)) or "active"
+  return surfaceState ~= "off"
 end
 
 local function IsSecret(value)
@@ -227,14 +273,14 @@ local function AppendBlockedHistory(record, transientID, kind, displayName)
   end
 
   if kind == "lfg-search" then
-    if NS.Suppression and NS.Suppression.MarkLFGSearchResult then
+    if record.outcome == "blocked" and NS.Suppression and NS.Suppression.MarkLFGSearchResult then
       NS.Suppression.MarkLFGSearchResult(transientID)
     end
     if NS.ReportFlow and NS.ReportFlow.QueueLFGAdvertisementReport then
       NS.ReportFlow.QueueLFGAdvertisementReport(entryID, transientID, displayName)
     end
   elseif kind == "lfg-applicant" then
-    if NS.Suppression and NS.Suppression.MarkLFGApplicant then
+    if record.outcome == "blocked" and NS.Suppression and NS.Suppression.MarkLFGApplicant then
       NS.Suppression.MarkLFGApplicant(transientID)
     end
     if NS.ReportFlow and NS.ReportFlow.QueueLFGApplicantReport then
@@ -243,11 +289,11 @@ local function AppendBlockedHistory(record, transientID, kind, displayName)
   end
 end
 
-local function BuildHistoryRecord(surface, original, analysis, settings, score, transientKey, transientID, displayKey, displayName)
+local function BuildHistoryRecord(surface, original, analysis, settings, score, transientKey, transientID, displayKey, displayName, outcome)
   local record = {
     ts = ServerTime(),
     surface = surface,
-    outcome = "blocked",
+    outcome = outcome or "blocked",
     reason = "score",
     original = original,
     score = score.score,
@@ -284,6 +330,10 @@ local function ScoreText(text)
 end
 
 local function ScanSearchResult(searchResultID)
+  if not ShouldScanSurface("lfg-search") then
+    return
+  end
+
   if not C_LFGList or type(C_LFGList.HasSearchResultInfo) ~= "function"
       or type(C_LFGList.GetSearchResultInfo) ~= "function" then
     return
@@ -316,6 +366,10 @@ local function ScanSearchResult(searchResultID)
   if not analysis then
     return
   end
+  local outcome = ResolveOutcome("lfg-search", score)
+  if not outcome then
+    return
+  end
 
   local record = BuildHistoryRecord(
     "lfg-search",
@@ -326,7 +380,8 @@ local function ScanSearchResult(searchResultID)
     "searchResultID",
     searchResultID,
     "listingName",
-    name ~= "" and name or nil
+    name ~= "" and name or nil,
+    outcome
   )
   AppendBlockedHistory(record, searchResultID, "lfg-search", record.listingName)
 end
@@ -366,6 +421,10 @@ local function GetApplicantDisplayName(applicantID)
 end
 
 local function ScanApplicant(applicantID)
+  if not ShouldScanSurface("lfg-applicant") then
+    return
+  end
+
   local info = GetApplicantInfo(applicantID)
   if not info or IsSecret(info.comment) then
     return
@@ -378,6 +437,10 @@ local function ScanApplicant(applicantID)
 
   local analysis, settings, score = ScoreText(comment)
   if not analysis then
+    return
+  end
+  local outcome = ResolveOutcome("lfg-applicant", score)
+  if not outcome then
     return
   end
 
@@ -395,7 +458,8 @@ local function ScanApplicant(applicantID)
     "applicantID",
     applicantID,
     "memberName",
-    memberName
+    memberName,
+    outcome
   )
   AppendBlockedHistory(record, applicantID, "lfg-applicant", memberName)
 end
@@ -521,6 +585,18 @@ end
 function LFGScanner.RefreshEnabled()
   local settings = GetSettings()
   return LFGScanner.SetEnabled(settings.lfgScanEnabled ~= false)
+end
+
+function LFGScanner.RefreshVisibleRows()
+  SweepVisibleRows()
+end
+
+function LFGScanner._ResolveOutcomeForTest(surface, score)
+  return ResolveOutcome(surface, score)
+end
+
+function LFGScanner._ShouldScanSurfaceForTest(surface)
+  return ShouldScanSurface(surface)
 end
 
 NS.LFGScanner = LFGScanner

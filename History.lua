@@ -3,6 +3,10 @@ local History = {}
 
 local DEFAULT_RECENT_LIMIT = 10
 local MAX_PRINT_LIMIT = 25
+local IGNORED_BREAKDOWN_KEYS = {
+  MixedScript = true,
+  BlockedActor = true,
+}
 
 local function GetChar()
   return NS.DB and NS.DB.GetChar and NS.DB.GetChar()
@@ -48,8 +52,10 @@ local function CountRetained(history)
       if type(breakdown) == "table" then
         local bestCat, bestVal
         for cat, val in pairs(breakdown) do
-          if cat ~= "MixedScript" and (not bestVal or val > bestVal) then
-            bestCat, bestVal = cat, val
+          local numeric = tonumber(val) or 0
+          if not IGNORED_BREAKDOWN_KEYS[cat] and numeric > 0
+             and (not bestVal or numeric > bestVal) then
+            bestCat, bestVal = cat, numeric
           end
         end
         if bestCat then
@@ -132,14 +138,16 @@ local function IncrementStats(char, record)
   end
   stats.bySurface[surface] = (tonumber(stats.bySurface[surface]) or 0) + 1
 
-  local breakdown = record.breakdown
-  if type(breakdown) == "table" then
-    local bestCat, bestVal
-    for cat, val in pairs(breakdown) do
-      if cat ~= "MixedScript" and (not bestVal or val > bestVal) then
-        bestCat, bestVal = cat, val
+    local breakdown = record.breakdown
+    if type(breakdown) == "table" then
+      local bestCat, bestVal
+      for cat, val in pairs(breakdown) do
+        local numeric = tonumber(val) or 0
+        if not IGNORED_BREAKDOWN_KEYS[cat] and numeric > 0
+           and (not bestVal or numeric > bestVal) then
+          bestCat, bestVal = cat, numeric
+        end
       end
-    end
     if bestCat then
       stats.byCategory[bestCat] = (tonumber(stats.byCategory[bestCat]) or 0) + 1
     end

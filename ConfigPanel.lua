@@ -680,6 +680,11 @@ local function UndoAllowlistRemove()
 end
 
 local function RemoveBlocked(key)
+  if NS.DB and NS.DB.RemoveBlockedActor and NS.DB.RemoveBlockedActor(key) then
+    sectionStatus.Blocked = "Removed blocked actor."
+    ConfigPanel.ShowSection("Blocked")
+    return
+  end
   local blocked = GetBlockedActors()
   blocked[key] = nil
   sectionStatus.Blocked = "Removed blocked actor."
@@ -1546,7 +1551,7 @@ RenderBlocked = function()
     "Remove every blocked actor. Confirmation required.")
   y = y - 34
 
-  y = AddDisabledRow("Manual blocked add", "Deferred until scanner consumption exists", y)
+  y = AddDisabledRow("Manual blocked add", "Not supported; scanners add actors after confirmed blocks.", y)
 
   local entries = SortedBlockedActors()
   local maxPage = MaxPage(#entries)

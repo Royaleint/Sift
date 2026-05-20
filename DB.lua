@@ -3,6 +3,7 @@ local DB = {}
 
 local CURRENT_SCHEMA_VERSION = 2
 local ADDON_VERSION = "1.1.0"
+local BLOCKED_ACTOR_CAP = 5000
 
 local defaults = {
   global = {
@@ -123,6 +124,40 @@ local function ClampNumber(value, minValue, maxValue, fallback)
   if value < minValue then value = minValue end
   if value > maxValue then value = maxValue end
   return value
+end
+
+local function Now()
+  if type(GetServerTime) == "function" then
+    return GetServerTime()
+  end
+  return time()
+end
+
+local function UsableString(value)
+  return type(value) == "string" and value ~= ""
+end
+
+local function CountTable(tbl)
+  local count = 0
+  for _ in pairs(tbl or {}) do
+    count = count + 1
+  end
+  return count
+end
+
+local function EvictOldestBlockedActor(blockedActors)
+  local oldestKey
+  local oldestSeen
+  for key, entry in pairs(blockedActors or {}) do
+    local seen = type(entry) == "table" and tonumber(entry.lastBlockedAt) or nil
+    if not oldestSeen or (seen or 0) < oldestSeen then
+      oldestKey = key
+      oldestSeen = seen or 0
+    end
+  end
+  if oldestKey then
+    blockedActors[oldestKey] = nil
+  end
 end
 
 local function RepairSettings(settings)
@@ -349,6 +384,69 @@ function DB.SetThrottleBufferSize(value)
     NS.Throttle.SetBufferSize(settings.throttle.bufferSize)
   end
   return settings.throttle.bufferSize
+end
+
+function DB.GetBlockedActor(guid)
+  local global = DB.GetGlobal()
+  if not global or not UsableString(guid) then
+    return nil
+  end
+  local blockedActors = global.blockedActors
+  return type(blockedActors) == "table" and blockedActors[guid] or nil
+end
+
+function DB.RecordBlockedActor(record, category)
+  local global = DB.GetGlobal()
+  if not global or type(record) ~= "table" or not UsableString(record.guid) then
+    return false
+  end
+
+  global.blockedActors = type(global.blockedActors) == "table" and global.blockedActors or {}
+  local blockedActors = global.blockedActors
+  local guid = record.guid
+  local entry = blockedActors[guid]
+  if type(entry) ~= "table" then
+    entry = {
+      guid = guid,
+      firstBlockedAt = tonumber(record.ts) or Now(),
+      count = 0,
+      surfaces = {},
+      categories = {},
+    }
+    blockedActors[guid] = entry
+  end
+
+  entry.name = UsableString(record.name) and record.name or entry.name
+  entry.realm = UsableString(record.realm) and record.realm or entry.realm
+  entry.lastBlockedAt = tonumber(record.ts) or Now()
+  entry.count = (tonumber(entry.count) or 0) + 1
+  entry.surfaces = type(entry.surfaces) == "table" and entry.surfaces or {}
+  entry.categories = type(entry.categories) == "table" and entry.categories or {}
+
+  local surface = UsableString(record.surface) and record.surface or "chat"
+  entry.surfaces[surface] = (tonumber(entry.surfaces[surface]) or 0) + 1
+
+  if UsableString(category) then
+    entry.categories[category] = (tonumber(entry.categories[category]) or 0) + 1
+  end
+
+  while CountTable(blockedActors) > BLOCKED_ACTOR_CAP do
+    EvictOldestBlockedActor(blockedActors)
+  end
+
+  return true
+end
+
+function DB.RemoveBlockedActor(guid)
+  local global = DB.GetGlobal()
+  if not global or not UsableString(guid) or type(global.blockedActors) ~= "table" then
+    return false
+  end
+  if global.blockedActors[guid] == nil then
+    return false
+  end
+  global.blockedActors[guid] = nil
+  return true
 end
 
 function DB.ResetSettings()

@@ -49,6 +49,10 @@ local CATEGORY_COLORS = {
   Commercial = "5a7",
   Anti       = "888",
 }
+local IGNORED_BREAKDOWN_KEYS = {
+  MixedScript = true,
+  BlockedActor = true,
+}
 
 local CATEGORIES         = { "RMT", "Boosting", "Casino", "Phishing", "Commercial", "Anti" }
 
@@ -395,8 +399,10 @@ local function EntryDominantCategory(entry)
   if type(entry.breakdown) ~= "table" then return nil end
   local bestCat, bestVal
   for c, v in pairs(entry.breakdown) do
-    if c ~= "MixedScript" and (not bestVal or v > bestVal) then
-      bestCat, bestVal = c, v
+    local numeric = tonumber(v) or 0
+    if not IGNORED_BREAKDOWN_KEYS[c] and numeric > 0
+       and (not bestVal or numeric > bestVal) then
+      bestCat, bestVal = c, numeric
     end
   end
   return bestCat
@@ -480,8 +486,10 @@ local function DominantCategory(breakdown)
   if type(breakdown) ~= "table" then return nil end
   local bestCat, bestVal
   for cat, val in pairs(breakdown) do
-    if cat ~= "MixedScript" and (not bestVal or val > bestVal) then
-      bestCat, bestVal = cat, val
+    local numeric = tonumber(val) or 0
+    if not IGNORED_BREAKDOWN_KEYS[cat] and numeric > 0
+       and (not bestVal or numeric > bestVal) then
+      bestCat, bestVal = cat, numeric
     end
   end
   return bestCat
@@ -604,6 +612,19 @@ local function PerformRestore(entry)
   if not entry or entry.outcome == "restored" then return end
   if NS.History and NS.History.MarkRestored then
     NS.History.MarkRestored(entry.id)
+  end
+  if NS.Suppression then
+    if entry.surface == "lfg-search" and NS.Suppression.ClearLFGSearchResult then
+      NS.Suppression.ClearLFGSearchResult(entry.searchResultID)
+    elseif entry.surface == "lfg-applicant" and NS.Suppression.ClearLFGApplicant then
+      NS.Suppression.ClearLFGApplicant(entry.applicantID)
+    end
+  end
+  if NS.ReportFlow and NS.ReportFlow.Clear then
+    NS.ReportFlow.Clear(entry.id)
+  end
+  if NS.LFGScanner and NS.LFGScanner.RefreshVisibleRows then
+    NS.LFGScanner.RefreshVisibleRows()
   end
   -- Keep the just-restored entry visible: when the default Outcome filter is
   -- "Blocked", a Restore would immediately filter the row out. Promote the
