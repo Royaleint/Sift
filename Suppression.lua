@@ -64,12 +64,28 @@ function Suppression.IsLFGSearchResultBlocked(searchResultID)
   return IsTransientBlocked(blockedSearchResults, searchResultID)
 end
 
+function Suppression.ClearLFGSearchResult(searchResultID)
+  if searchResultID == nil or blockedSearchResults[searchResultID] == nil then
+    return false
+  end
+  blockedSearchResults[searchResultID] = nil
+  return true
+end
+
 function Suppression.MarkLFGApplicant(applicantID)
   MarkTransient(blockedApplicants, applicantID, APPLICANT_TTL)
 end
 
 function Suppression.IsLFGApplicantBlocked(applicantID)
   return IsTransientBlocked(blockedApplicants, applicantID)
+end
+
+function Suppression.ClearLFGApplicant(applicantID)
+  if applicantID == nil or blockedApplicants[applicantID] == nil then
+    return false
+  end
+  blockedApplicants[applicantID] = nil
+  return true
 end
 
 function Suppression.SweepLFG()

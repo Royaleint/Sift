@@ -28,6 +28,11 @@ local EVENT_TO_SURFACE = {
 local filterInstalled = {}
 local eventFrame = nil
 local filterAdd = nil
+local BLOCKED_ACTOR_BOOST = 2
+local IGNORED_BREAKDOWN_KEYS = {
+  MixedScript = true,
+  BlockedActor = true,
+}
 
 local function DevLog(message)
   if NS.DB and NS.DB.DevLog then
@@ -103,8 +108,46 @@ local function BuildHistoryRecord(event, message, sender, channelName, guid, ana
   return record
 end
 
+local function DominantCategory(breakdown)
+  if type(breakdown) ~= "table" then
+    return nil
+  end
+
+  local bestCat, bestVal
+  for cat, val in pairs(breakdown) do
+    local numeric = tonumber(val) or 0
+    if not IGNORED_BREAKDOWN_KEYS[cat] and numeric > 0
+       and (not bestVal or numeric > bestVal) then
+      bestCat, bestVal = cat, numeric
+    end
+  end
+  return bestCat
+end
+
+local function HasPositiveSpamEvidence(breakdown)
+  return DominantCategory(breakdown) ~= nil
+end
+
+local function ApplyBlockedActorBoost(score, guid)
+  if not score or score.blocked or not NS.DB or not NS.DB.GetBlockedActor then
+    return
+  end
+  if not NS.DB.GetBlockedActor(guid) or not HasPositiveSpamEvidence(score.breakdown) then
+    return
+  end
+
+  score.breakdown = type(score.breakdown) == "table" and score.breakdown or {}
+  score.breakdown.BlockedActor = (tonumber(score.breakdown.BlockedActor) or 0) + BLOCKED_ACTOR_BOOST
+  score.score = (tonumber(score.score) or 0) + BLOCKED_ACTOR_BOOST
+  score.threshold = tonumber(score.threshold) or 4
+  score.blocked = score.score >= score.threshold
+end
+
 local function AppendBlockedHistory(record, counter)
   local entryID = NS.History and NS.History.Append and NS.History.Append(record)
+  if record and record.outcome == "blocked" and NS.DB and NS.DB.RecordBlockedActor then
+    NS.DB.RecordBlockedActor(record, DominantCategory(record.breakdown))
+  end
   if entryID and NS.ReportFlow and NS.ReportFlow.QueueChatReport then
     NS.ReportFlow.QueueChatReport(entryID, counter, record.name)
   end
@@ -149,6 +192,7 @@ local function Pipeline(
 
   local settings = GetSettings()
   local score = NS.Scoring and NS.Scoring.Score and NS.Scoring.Score(analysis, BuildScoringOptions(settings))
+  ApplyBlockedActorBoost(score, guid)
   if not score or not score.blocked then
     return false
   end
@@ -156,15 +200,7 @@ local function Pipeline(
   -- Category state gate: find the dominant scoring category (excluding MixedScript meta).
   -- off short-circuits; paused flips outcome to pass-thru.
   local breakdown = score.breakdown
-  local dominantCategory
-  if type(breakdown) == "table" then
-    local bestVal
-    for cat, val in pairs(breakdown) do
-      if cat ~= "MixedScript" and (not bestVal or val > bestVal) then
-        dominantCategory, bestVal = cat, val
-      end
-    end
-  end
+  local dominantCategory = DominantCategory(breakdown)
   if dominantCategory then
     local categoryState = (NS.PauseState and NS.PauseState.GetCategory and NS.PauseState.GetCategory(dominantCategory)) or "active"
     if categoryState == "off" then
