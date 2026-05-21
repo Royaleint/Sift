@@ -352,7 +352,7 @@ local function CreatePlainHistoryFrame(parent)
 end
 
 local function CreateHistoryFrame(parent)
-  if NS.Compat and NS.Compat.isClassicEra then
+  if NS.Compat and NS.Compat.isClassicFamily then
     return CreatePlainHistoryFrame(parent)
   end
   local template = "PortraitFrameTemplate"
@@ -2076,7 +2076,23 @@ local PAUSE_PILL_LABELS = {
   ["lfg-search"]    = "LFG-s",
   ["lfg-applicant"] = "LFG-a",
 }
--- BSP-008: Blizzard atlas icons (self-colored, always render reliably).
+
+local function IsLFGSurface(surface)
+  return surface == "lfg-search" or surface == "lfg-applicant"
+end
+
+local function VisiblePausePillKeys()
+  local keys = {}
+  for _, surface in ipairs(PAUSE_PILL_KEYS) do
+    if not (NS.Compat and NS.Compat.isClassicFamily and IsLFGSurface(surface)) then
+      keys[#keys + 1] = surface
+    end
+  end
+  return keys
+end
+
+-- BSP-008: Retail uses atlas icons; Classic-family clients use color textures
+-- because some Retail atlas names are absent and can leave stale glyphs behind.
 -- LevelUp-Dot-Green                  -> green dot
 -- CreditsScreen-Assets-Buttons-Pause -> media pause icon
 -- communities-icon-redx              -> red X
@@ -2086,10 +2102,51 @@ local PAUSE_STATE_ATLAS = {
   off    = "communities-icon-redx",
 }
 
+local PAUSE_STATE_COLOR = {
+  active = { 0.15, 0.85, 0.25, 1 },
+  paused = { 1.00, 0.82, 0.10, 1 },
+  off    = { 0.95, 0.12, 0.12, 1 },
+}
+
+local function ApplyPauseGlyph(glyph, state)
+  if not glyph then return end
+  state = (state == "paused" or state == "off") and state or "active"
+
+  if NS.Compat and NS.Compat.isClassicFamily and glyph.SetColorTexture then
+    local color = PAUSE_STATE_COLOR[state] or PAUSE_STATE_COLOR.active
+    if glyph.SetTexture then
+      glyph:SetTexture(nil)
+    end
+    if glyph.SetTexCoord then
+      glyph:SetTexCoord(0, 1, 0, 1)
+    end
+    glyph:SetColorTexture(color[1], color[2], color[3], color[4])
+    return
+  end
+
+  local atlas = PAUSE_STATE_ATLAS[state] or PAUSE_STATE_ATLAS.active
+  if atlas and glyph.SetAtlas then
+    glyph:SetAtlas(atlas, false)
+  elseif glyph.SetColorTexture then
+    local color = PAUSE_STATE_COLOR[state] or PAUSE_STATE_COLOR.active
+    glyph:SetColorTexture(color[1], color[2], color[3], color[4])
+  end
+end
+
+local function PauseStateMenuSuffix(state)
+  state = (state == "paused" or state == "off") and state or "active"
+  if NS.Compat and NS.Compat.isClassicFamily then
+    return "  [" .. L(state) .. "]"
+  end
+  local atlas = PAUSE_STATE_ATLAS[state] or PAUSE_STATE_ATLAS.active
+  return "  |A:" .. atlas .. ":14:14|a"
+end
+
 local function CreatePauseRow(parent)
   pauseRow = CreateFrame("Frame", nil, parent)
   pauseRow:SetHeight(20)
-  pauseRow:SetWidth(320)  -- 5 pills * 60 + 4 gaps * 4 = 316; round up to 320
+  local visibleKeys = VisiblePausePillKeys()
+  pauseRow:SetWidth((#visibleKeys * 60) + math.max(#visibleKeys - 1, 0) * 4)
   if parent.TitleContainer then
     pauseRow:SetPoint("TOPRIGHT", parent.TitleContainer, "BOTTOMRIGHT", -28, -2)
   else
@@ -2102,8 +2159,8 @@ local function CreatePauseRow(parent)
 
   pausePills = {}
   local previousPill
-  for i = #PAUSE_PILL_KEYS, 1, -1 do
-    local surfaceKey = PAUSE_PILL_KEYS[i]
+  for i = #visibleKeys, 1, -1 do
+    local surfaceKey = visibleKeys[i]
     local pill = CreateFrame("Button", nil, pauseRow)
     pill:SetSize(60, 18)
     if previousPill then
@@ -2170,10 +2227,7 @@ function HistoryPanel.RefreshPauseRow()
   if not pausePills or not NS.PauseState then return end
   for surfaceKey, pill in pairs(pausePills) do
     local state = NS.PauseState.GetSurface(surfaceKey)
-    local atlas = PAUSE_STATE_ATLAS[state] or PAUSE_STATE_ATLAS.active
-    if atlas and pill.glyph and pill.glyph.SetAtlas then
-      pill.glyph:SetAtlas(atlas, false)  -- false = don't auto-resize
-    end
+    ApplyPauseGlyph(pill.glyph, state)
   end
 end
 
@@ -2249,15 +2303,13 @@ local function RegisterMinimap()
         MenuUtil.CreateContextMenu(self, function(_, root)
           root:CreateTitle(L("BawrSpam"))
           local submenu = root:CreateButton(L("Pause surface"))
-          local surfaceKeys = NS.PauseState and NS.PauseState.GetSurfaceKeys() or {}
-          for _, surfaceKey in ipairs(surfaceKeys) do
+          for _, surfaceKey in ipairs(VisiblePausePillKeys()) do
             local labelText = SURFACE_LABELS[surfaceKey] or surfaceKey
-            local glyphFn = function()
+            local suffixFn = function()
               local s = NS.PauseState and NS.PauseState.GetSurface(surfaceKey) or "active"
-              local atlas = PAUSE_STATE_ATLAS[s] or PAUSE_STATE_ATLAS.active
-              return "|A:" .. atlas .. ":14:14|a"
+              return PauseStateMenuSuffix(s)
             end
-            submenu:CreateButton(L(labelText) .. "  " .. glyphFn(), function()
+            submenu:CreateButton(L(labelText) .. suffixFn(), function()
               if NS.PauseState then NS.PauseState.CycleSurface(surfaceKey, "forward") end
             end)
           end

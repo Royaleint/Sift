@@ -59,6 +59,20 @@ local SURFACE_LABELS = {
   ["lfg-applicant"] = "LFG applicant",
 }
 
+local function IsLFGSurface(surface)
+  return surface == "lfg-search" or surface == "lfg-applicant"
+end
+
+local function VisibleSurfaceKeys()
+  local keys = {}
+  for _, surface in ipairs(SURFACE_KEYS) do
+    if not (NS.Compat and NS.Compat.isClassicFamily and IsLFGSurface(surface)) then
+      keys[#keys + 1] = surface
+    end
+  end
+  return keys
+end
+
 local DEFAULT_SETTINGS = {
   threshold = 4,
   enabledCategories = {
@@ -316,6 +330,31 @@ local function TrackNative(child)
   return child
 end
 
+local function ReleaseNativeChild(child)
+  if not child then return end
+
+  if child.GetRegions then
+    for i = 1, select("#", child:GetRegions()) do
+      local region = select(i, child:GetRegions())
+      if region and region.Hide then
+        region:Hide()
+      end
+      if region and region.ClearAllPoints then
+        region:ClearAllPoints()
+      end
+    end
+  end
+
+  if child.GetChildren then
+    for i = 1, select("#", child:GetChildren()) do
+      ReleaseNativeChild(select(i, child:GetChildren()))
+    end
+  end
+
+  if child.Hide then child:Hide() end
+  if child.ClearAllPoints then child:ClearAllPoints() end
+end
+
 local function ReleaseContent()
   local AceGUI = EnsureAceGUI()
   if AceGUI then
@@ -326,8 +365,7 @@ local function ReleaseContent()
   aceWidgets = {}
 
   for _, child in ipairs(nativeChildren) do
-    if child.Hide then child:Hide() end
-    if child.ClearAllPoints then child:ClearAllPoints() end
+    ReleaseNativeChild(child)
   end
   nativeChildren = {}
 end
@@ -1233,7 +1271,8 @@ local function RegisterInterfaceOptions()
 end
 
 -- BSP-008 Commit 6: shared 3-state pause-pill row for Categories and Surfaces.
--- Blizzard atlas icons (self-colored, always render reliably).
+-- Retail uses atlas icons; Classic-family clients use color textures because
+-- some Retail atlas names are absent and can leave stale glyphs behind.
 -- LevelUp-Dot-Green                  -> green dot
 -- CreditsScreen-Assets-Buttons-Pause -> media pause icon
 -- communities-icon-redx              -> red X
@@ -1242,6 +1281,37 @@ local PAUSE_ROW_ATLAS = {
   paused = "CreditsScreen-Assets-Buttons-Pause",
   off    = "communities-icon-redx",
 }
+
+local PAUSE_ROW_COLOR = {
+  active = { 0.15, 0.85, 0.25, 1 },
+  paused = { 1.00, 0.82, 0.10, 1 },
+  off    = { 0.95, 0.12, 0.12, 1 },
+}
+
+local function ApplyPauseGlyph(glyph, state)
+  if not glyph then return end
+  state = (state == "paused" or state == "off") and state or "active"
+
+  if NS.Compat and NS.Compat.isClassicFamily and glyph.SetColorTexture then
+    local color = PAUSE_ROW_COLOR[state] or PAUSE_ROW_COLOR.active
+    if glyph.SetTexture then
+      glyph:SetTexture(nil)
+    end
+    if glyph.SetTexCoord then
+      glyph:SetTexCoord(0, 1, 0, 1)
+    end
+    glyph:SetColorTexture(color[1], color[2], color[3], color[4])
+    return
+  end
+
+  local atlas = PAUSE_ROW_ATLAS[state] or PAUSE_ROW_ATLAS.active
+  if atlas and glyph.SetAtlas then
+    glyph:SetAtlas(atlas, false)
+  elseif glyph.SetColorTexture then
+    local color = PAUSE_ROW_COLOR[state] or PAUSE_ROW_COLOR.active
+    glyph:SetColorTexture(color[1], color[2], color[3], color[4])
+  end
+end
 
 local function AddAxisPauseRow(axis, key, displayLabel, y)
   local row = TrackNative(CreateFrame("Frame", nil, content, "BackdropTemplate"))
@@ -1279,10 +1349,7 @@ local function AddAxisPauseRow(axis, key, displayLabel, y)
     else
       state = NS.PauseState and NS.PauseState.GetCategory(key) or "active"
     end
-    local atlas = PAUSE_ROW_ATLAS[state] or PAUSE_ROW_ATLAS.active
-    if atlas and pill.glyph and pill.glyph.SetAtlas then
-      pill.glyph:SetAtlas(atlas, false)
-    end
+    ApplyPauseGlyph(pill.glyph, state)
     pill.text:SetText(L(state))
   end
 
@@ -1414,7 +1481,7 @@ end
 RenderSurfaces = function()
   local y = AddSectionTitle("Surfaces", "Three states per surface: Active (block) / Paused (detect + log, don't hide) / Off (don't scan).")
   y = AddStatus(y, sectionStatus.Surfaces)
-  for _, surface in ipairs(SURFACE_KEYS) do
+  for _, surface in ipairs(VisibleSurfaceKeys()) do
     local label = SURFACE_LABELS[surface] or surface
     y = AddAxisPauseRow("surface", surface, label, y)
   end

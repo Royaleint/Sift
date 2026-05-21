@@ -7,6 +7,8 @@ local function Detect(env)
   local projectID = env.WOW_PROJECT_ID
   local isRetail = projectID ~= nil and projectID == env.WOW_PROJECT_MAINLINE
   local isClassicEra = projectID ~= nil and projectID == env.WOW_PROJECT_CLASSIC
+  local isTBCAnniversary = projectID ~= nil and projectID == env.WOW_PROJECT_BURNING_CRUSADE_CLASSIC
+  local isClassicFamily = isClassicEra or isTBCAnniversary
 
   local hasModernHistoryList =
     type(env.CreateScrollBoxListLinearView) == "function"
@@ -30,6 +32,8 @@ local function Detect(env)
     addonName = addonName,
     isRetail = isRetail,
     isClassicEra = isClassicEra,
+    isTBCAnniversary = isTBCAnniversary,
+    isClassicFamily = isClassicFamily,
     hasModernHistoryList = hasModernHistoryList,
     hasClassicHistoryList = hasClassicHistoryList,
     hasLFGRenderHide = isRetail and hasModernHistoryList,
