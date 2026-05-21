@@ -1,0 +1,62 @@
+name: Package and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v1.1.1). Leave empty to use the current ref.'
+        required: false
+        type: string
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Extract current version changelog
+        run: |
+          TAG="${{ inputs.tag }}"
+          [ -z "$TAG" ] && TAG="${{ github.ref_name }}"
+          echo "Extracting release notes for tag: $TAG"
+          # Extract the section whose heading matches the tag (## vX.Y.Z), stop
+          # at the next "## v" version heading. Fail loudly if absent.
+          awk -v tag="$TAG" \
+            'BEGIN{re="^## "tag"($| )"} \
+             $0 ~ re {found=1; print; next} \
+             /^## v/{if(found) exit} \
+             found' CHANGELOG.md > RELEASE_NOTES.md
+          if [ ! -s RELEASE_NOTES.md ]; then
+            echo "::error::No CHANGELOG.md section found for $TAG (expected a '## $TAG' heading)."
+            exit 1
+          fi
+          echo "--- Extracted markdown for $TAG ---"
+          cat RELEASE_NOTES.md
+          # CurseForge renders changelogType markdown as plain text; convert to
+          # HTML so CF + GitHub both render correctly. (See release-pipeline.md.)
+          if ! command -v pandoc &>/dev/null; then
+            echo "pandoc not preinstalled — installing"
+            sudo apt-get update -qq && sudo apt-get install -y pandoc
+          fi
+          pandoc --wrap=none -f commonmark -t html RELEASE_NOTES.md -o RELEASE_NOTES.html
+          echo "--- Converted HTML uploaded to CurseForge ---"
+          cat RELEASE_NOTES.html
+
+      # Single run, no -g: the multi-flavor "## Interface: 11508, 20505, 120005"
+      # line plus enable-toc-creation builds ONE combined zip with per-flavor
+      # TOCs, uploaded as a single CurseForge file tagged for all three clients
+      # (Retail, Classic Era, TBC). No Wago/WoWInterface yet — add the IDs +
+      # tokens to this step when that day comes (no rebuild needed).
+      - name: Package and Release
+        uses: BigWigsMods/packager@v2
+        env:
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
