@@ -28,3 +28,5 @@ jobs:
           name: bawrspam-devbuild
           path: .release/*.zip
           if-no-files-found: error
+          include-hidden-files: true   # the packager writes to .release/ (a dot-dir);
+                                       # upload-artifact@v4 skips hidden paths by default
