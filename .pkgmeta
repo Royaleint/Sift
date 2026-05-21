@@ -1,6 +1,7 @@
 package-as: BawrSpam
 
 enable-nolib-creation: no
+enable-toc-creation: yes
 
 # No `externals:` block — BawrSpam vendors its libraries directly in Libs/
 # (see .gitignore: "Libs/ is tracked … manual vendor pattern"). The packager
