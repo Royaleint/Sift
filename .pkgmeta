@@ -17,5 +17,4 @@ ignore:
   - .codex
   - AGENTS.md
   - BawrSpam_Dev
-  - "*.md"
-  - "!README.md"
+  - CLAUDE.md   # drop only the agent doc; README.md (+ generated CHANGELOG) ship
