@@ -1,0 +1,21 @@
+package-as: BawrSpam
+
+enable-nolib-creation: no
+
+# No `externals:` block — BawrSpam vendors its libraries directly in Libs/
+# (see .gitignore: "Libs/ is tracked … manual vendor pattern"). The packager
+# ships them as-is from the checkout rather than fetching them at build time.
+
+ignore:
+  - .git
+  - .gitignore
+  - .github
+  - .pkgmeta
+  - .release
+  - .worktrees
+  - .claude
+  - .codex
+  - AGENTS.md
+  - BawrSpam_Dev
+  - "*.md"
+  - "!README.md"

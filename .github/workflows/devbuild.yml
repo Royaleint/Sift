@@ -1,0 +1,30 @@
+name: Dev Build (no upload)
+
+# Manual build of the exact installable addon zip, WITHOUT publishing anywhere.
+# BawrSpam is not on CurseForge/Wago — this is how test builds reach friends.
+# Trigger from the Actions tab, pick a branch, then download the zip artifact
+# from the finished run. The -d flag skips all uploads; no API tokens are used.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # lets the packager derive the version via git describe
+
+      - name: Build package (no upload)
+        uses: BigWigsMods/packager@v2
+        with:
+          args: -d
+
+      - name: Upload zip as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bawrspam-devbuild
+          path: .release/*.zip
+          if-no-files-found: error

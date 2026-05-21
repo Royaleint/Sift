@@ -2,7 +2,7 @@
 ## Title: BawrSpam
 ## Notes: Personal chat-spam filter with recoverable history. Inspired by funkydude's BadBoy; original-work implementation.
 ## Author: Royaleint
-## Version: 1.1.0
+## Version: @project-version@
 ## X-License: All Rights Reserved; personal addon use and contribution forks permitted. See LICENSE.
 ## SavedVariables: BawrSpamDB
 
