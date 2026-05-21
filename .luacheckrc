@@ -57,6 +57,12 @@ read_globals = {
     "InterfaceOptionsFrame_OpenToCategory",
     "HideUIPanel",
     "ChatFontNormal",
+    "WOW_PROJECT_ID",
+    "WOW_PROJECT_MAINLINE",
+    "WOW_PROJECT_CLASSIC",
+    "FauxScrollFrame_Update",
+    "FauxScrollFrame_OnVerticalScroll",
+    "FauxScrollFrame_GetOffset",
 
     -- WoW API (C_ namespaces)
     "C_BattleNet",

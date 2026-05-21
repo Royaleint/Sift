@@ -35,6 +35,7 @@ local MIN_PANEL_HEIGHT     = 500
 
 local LIST_ROW_HEIGHT  = 26
 local SCROLLBAR_GUTTER = 22
+local LIST_MAX_ROWS    = 40
 
 local MIN_LIST_PANE_WIDTH   = 240
 local MIN_DETAIL_PANE_WIDTH = 360
@@ -482,6 +483,18 @@ local function ApplyFilterAndSort(entries)
   return out
 end
 
+local function VisibleRowCount(scroll)
+  local height = scroll and scroll.GetHeight and scroll:GetHeight() or 0
+  local count = math.floor(height / LIST_ROW_HEIGHT)
+  if count < 1 then
+    count = 1
+  end
+  if count > LIST_MAX_ROWS then
+    count = LIST_MAX_ROWS
+  end
+  return count
+end
+
 local function DominantCategory(breakdown)
   if type(breakdown) ~= "table" then return nil end
   local bestCat, bestVal
@@ -715,7 +728,11 @@ local function GetReportKind(entry)
   if not entry or not entry.id or not NS.ReportFlow then return nil end
   if not NS.ReportFlow.HasReport or not NS.ReportFlow.HasReport(entry.id) then return nil end
   if NS.ReportFlow.GetReportKind then
-    return NS.ReportFlow.GetReportKind(entry.id)
+    local kind = NS.ReportFlow.GetReportKind(entry.id)
+    if kind == "chat" and NS.ReportFlow.CanReportChat and not NS.ReportFlow.CanReportChat() then
+      return nil
+    end
+    return kind
   end
   return nil
 end
@@ -1123,9 +1140,35 @@ RefreshList = function()
   currentEntriesSnapshot = allEntries
   UpdateHistoryStatsText()
   local filtered = ApplyFilterAndSort(allEntries)
-  local provider = listPane.scroll:GetDataProvider()
-  provider:Flush()
-  provider:InsertTable(filtered)
+
+  if listPane.listBackend == "classic" then
+    local scroll = listPane.scroll
+    local visibleRows = VisibleRowCount(scroll)
+    -- Keep the FauxScrollFrame visible even when the list is shorter than the
+    -- viewport; otherwise Blizzard's template hides the frame and its rows.
+    FauxScrollFrame_Update(scroll, #filtered, visibleRows, LIST_ROW_HEIGHT,
+      nil, nil, nil, nil, nil, nil, true)
+    local offset = FauxScrollFrame_GetOffset(scroll)
+
+    for i = 1, LIST_MAX_ROWS do
+      local row = scroll.rows[i]
+      local entry = filtered[offset + i]
+      if row and entry and i <= visibleRows then
+        row.entry = entry
+        RenderRow(row, entry)
+        row.selection:SetShown(selectedEntryId == entry.id)
+        row:Show()
+      elseif row then
+        row.entry = nil
+        row:Hide()
+      end
+    end
+  else
+    local provider = listPane.scroll:GetDataProvider()
+    provider:Flush()
+    provider:InsertTable(filtered)
+  end
+
   RefreshDetail()
   currentEntriesSnapshot = nil
 end
@@ -1133,6 +1176,10 @@ end
 SelectEntry = function(id)
   selectedEntryId = id
   if RefreshDetail then RefreshDetail() end
+  if listPane and listPane.listBackend == "classic" and RefreshList then
+    RefreshList()
+    return
+  end
   -- Update the existing-selection visual on rendered rows without rebuilding
   -- the data provider (which would reset scroll). The ScrollBox's
   -- ForEachFrame iterates current visible rows.
@@ -1182,7 +1229,11 @@ local function InitListRow(button)
   button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 end
 
-local function CreateListPane()
+local function UseModernHistoryList()
+  return not NS.Compat or NS.Compat.hasModernHistoryList ~= false
+end
+
+local function CreateListHeader()
   -- Filter chips/dropdowns are anchored to the parent frame (see
   -- CreateHeaderFilters), not nested inside listPane. Column header sits at
   -- listPane's TOPLEFT; ScrollBox starts 18 px below it.
@@ -1215,7 +1266,10 @@ local function CreateListPane()
   header.scoreLabel:SetWidth(40)
   header.scoreLabel:SetJustifyH("RIGHT")
   header.scoreLabel:SetText("Score")
+end
 
+local function CreateModernListPane()
+  CreateListHeader()
   local scrollBox = CreateFrame("Frame", nil, listPane, "WowScrollBoxList")
   scrollBox:SetPoint("TOPLEFT",     listPane, "TOPLEFT",     0, -18)
   scrollBox:SetPoint("BOTTOMRIGHT", listPane, "BOTTOMRIGHT", -SCROLLBAR_GUTTER, 18)
@@ -1260,6 +1314,76 @@ local function CreateListPane()
   view:SetDataProvider(CreateDataProvider())
 
   listPane.scroll = scrollBox
+  listPane.listBackend = "modern"
+end
+
+local function CreateClassicListPane()
+  CreateListHeader()
+
+  local scroll = CreateFrame("ScrollFrame", "BawrSpamHistoryListScroll", listPane, "FauxScrollFrameTemplate")
+  scroll:SetPoint("TOPLEFT",     listPane, "TOPLEFT",     0, -18)
+  scroll:SetPoint("BOTTOMRIGHT", listPane, "BOTTOMRIGHT", -SCROLLBAR_GUTTER, 18)
+  scroll:SetScript("OnVerticalScroll", function(self, yOffset)
+    FauxScrollFrame_OnVerticalScroll(self, yOffset, LIST_ROW_HEIGHT, RefreshList)
+  end)
+
+  scroll.rows = {}
+  for i = 1, LIST_MAX_ROWS do
+    local row = CreateFrame("Button", nil, scroll)
+    row:SetHeight(LIST_ROW_HEIGHT)
+    row:SetPoint("LEFT",  scroll, "LEFT",  0, 0)
+    row:SetPoint("RIGHT", scroll, "RIGHT", 0, 0)
+    if i == 1 then
+      row:SetPoint("TOP", scroll, "TOP", 0, 0)
+    else
+      row:SetPoint("TOP", scroll.rows[i - 1], "BOTTOM", 0, 0)
+    end
+    InitListRow(row)
+    row:SetScript("OnClick", function(self, mouseButton)
+      local entry = self.entry
+      if not entry then
+        return
+      end
+      if mouseButton == "RightButton" then
+        self._lastClick = nil
+        OpenRowContextMenu(self, entry)
+        return
+      end
+      local now = GetTime()
+      if self._lastClick and (now - self._lastClick) < DOUBLE_CLICK_WINDOW then
+        self._lastClick = nil
+        PerformRestore(entry)
+        if ContextEntryCanAllowlist(entry) then
+          PerformAlwaysAllow(entry)
+        end
+      else
+        self._lastClick = now
+        SelectEntry(entry.id)
+      end
+    end)
+    row:Hide()
+    scroll.rows[i] = row
+  end
+
+  listPane.scroll = scroll
+  listPane.listBackend = "classic"
+end
+
+local function CreateUnavailableListPane()
+  local text = listPane:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  text:SetPoint("CENTER", listPane, "CENTER", 0, 0)
+  text:SetText(L("History list is unavailable in this client."))
+  listPane.listBackend = "unavailable"
+end
+
+local function CreateListPane()
+  if UseModernHistoryList() then
+    CreateModernListPane()
+  elseif NS.Compat and NS.Compat.hasClassicHistoryList then
+    CreateClassicListPane()
+  else
+    CreateUnavailableListPane()
+  end
 
   local legend = CreateFrame("Frame", nil, listPane)
   legend:SetHeight(18)
@@ -2002,7 +2126,11 @@ local function BuildFrame()
   frame:SetScript("OnSizeChanged", function()
     sizeDirty = true
     ClampPanes(frame)
-    if listPane and listPane.scroll then listPane.scroll:FullUpdate() end
+    if listPane and listPane.scroll and listPane.scroll.FullUpdate then
+      listPane.scroll:FullUpdate()
+    elseif RefreshList then
+      RefreshList()
+    end
   end)
   frame:SetScript("OnHide", function()
     if sizeDirty then SaveSize() end

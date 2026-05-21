@@ -556,6 +556,14 @@ function LFGScanner.SetEnabled(shouldEnable)
   shouldEnable = shouldEnable == true
 
   if shouldEnable then
+    if NS.Compat and NS.Compat.isClassicEra and not NS.Compat.hasLFGRenderHide then
+      DevLog("LFG scanner disabled on Classic until render-hide is verified.")
+      enabled = false
+      ClearTransientLFG()
+      SetRenderHideEnabled(false)
+      return false
+    end
+
     local frame = EnsureFrame()
     if not frame then
       DevLog("LFG scanner frame API unavailable; scanner not enabled.")

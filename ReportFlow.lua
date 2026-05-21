@@ -82,6 +82,10 @@ local function GetTarget(historyEntryID, expectedKind)
   return target
 end
 
+local function CanReportChat()
+  return not (NS.Compat and NS.Compat.hasChatReportDialog == false)
+end
+
 function ReportFlow.QueueLFGAdvertisementReport(historyEntryID, searchResultID, listingName)
   if searchResultID == nil then
     return false
@@ -107,7 +111,7 @@ function ReportFlow.QueueLFGApplicantReport(historyEntryID, applicantID, memberN
 end
 
 function ReportFlow.QueueChatReport(historyEntryID, lineID, senderName)
-  if lineID == nil then
+  if lineID == nil or not CanReportChat() then
     return false
   end
 
@@ -126,6 +130,10 @@ end
 function ReportFlow.GetReportKind(historyEntryID)
   local target = targetsByEntryID[historyEntryID]
   return target and target.kind or nil
+end
+
+function ReportFlow.CanReportChat()
+  return CanReportChat()
 end
 
 function ReportFlow.ReportLFGAdvertisementNow(historyEntryID)
@@ -164,6 +172,11 @@ end
 function ReportFlow.ReportChatNow(historyEntryID)
   local target = GetTarget(historyEntryID, "chat")
   if not target then
+    return false
+  end
+
+  if not ReportFlow.CanReportChat() then
+    DevLog("chat report dialog unavailable in this client.")
     return false
   end
 

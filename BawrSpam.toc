@@ -1,4 +1,4 @@
-## Interface: 120005
+## Interface: 11508, 120005
 ## Title: BawrSpam
 ## Notes: Personal chat-spam filter with recoverable history. Inspired by funkydude's BadBoy; original-work implementation.
 ## Author: Royaleint
@@ -8,6 +8,7 @@
 ## SavedVariables: BawrSpamDB
 
 embeds.xml
+Compat.lua
 DB.lua
 PauseState.lua
 Cleanse.lua
