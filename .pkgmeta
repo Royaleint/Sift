@@ -16,5 +16,7 @@ ignore:
   - .claude
   - .codex
   - AGENTS.md
+  # Drop only the agent doc; README.md (+ packager-generated CHANGELOG) ship.
+  # NOTE: no inline comments on ignore entries — the packager reads them literally.
   - BawrSpam_Dev
-  - CLAUDE.md   # drop only the agent doc; README.md (+ generated CHANGELOG) ship
+  - CLAUDE.md
