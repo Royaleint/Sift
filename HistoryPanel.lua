@@ -288,6 +288,28 @@ local function ClearStoredGeometry()
 	store.height = nil
 end
 
+local function HidePortraitChrome(f)
+  if not f then return end
+  local frameName = f.GetName and f:GetName() or nil
+  local pieces = {
+    f.PortraitContainer,
+    f.Portrait,
+    f.portrait,
+    f.portraitFrame,
+    frameName and _G[frameName .. "PortraitContainer"] or nil,
+    frameName and _G[frameName .. "Portrait"] or nil,
+    frameName and _G[frameName .. "PortraitFrame"] or nil,
+  }
+  for _, piece in ipairs(pieces) do
+    if piece and piece.Hide then
+      piece:Hide()
+      if piece.SetAlpha then
+        piece:SetAlpha(0)
+      end
+    end
+  end
+end
+
 local function CreateBackdropFrame(parent)
   local f = CreateFrame("Frame", "BawrSpamHistoryFrame", parent, "PortraitFrameTemplate")
   f.layoutType = "ButtonFrameTemplateNoPortrait"
@@ -297,6 +319,7 @@ local function CreateBackdropFrame(parent)
   if f.SetPortraitShown then
     f:SetPortraitShown(false)
   end
+  HidePortraitChrome(f)
   if f.SetTitle then
     f:SetTitle(L("BawrSpam — History"))
   elseif f.TitleContainer and f.TitleContainer.TitleText then
