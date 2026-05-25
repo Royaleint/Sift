@@ -196,6 +196,13 @@ local function Pipeline(
   end
 
   if NS.Trust and NS.Trust.IsTrusted and NS.Trust.IsTrusted(guid, sender, flags) then
+    -- BSP-047 devmode diagnostic: name which trust source skipped this sender so
+    -- a trust-bypass false-negative (gold-seller short-circuiting the filter) is
+    -- visible live in chat. Diagnostic only — no change to filtering behavior.
+    if NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode() then
+      local reason = (NS.Trust.TrustReason and NS.Trust.TrustReason(guid, sender, flags)) or "?"
+      DevLog("Trust skip [" .. reason .. "]: " .. tostring(sender))
+    end
     return false
   end
 
