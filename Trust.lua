@@ -183,27 +183,43 @@ function Trust.GetAllowlist()
   return copy
 end
 
-function Trust.IsTrusted(guid, _name, flag)
+-- Returns the trust source that would mark this sender trusted, or nil if not
+-- trusted. Mirrors IsTrusted's exact short-circuit order so the two never drift.
+-- Devmode diagnostics (BSP-047) read this to name which source fired.
+function Trust.TrustReason(guid, _name, flag)
   if IsSecret(flag) then
     flag = nil
   end
   if flag == "GM" or flag == "DEV" then
-    return true
+    return "flag"
   end
 
   if not IsUsableString(guid) then
-    return false
+    return nil
   end
 
   if Trust.IsAllowlisted(guid) then
-    return true
+    return "allowlist"
   end
 
-  if IsFriend(guid) or IsGuildMember(guid) or IsBattleNetFriend(guid) then
-    return true
+  if IsFriend(guid) then
+    return "friend"
+  end
+  if IsGuildMember(guid) then
+    return "guild"
+  end
+  if IsBattleNetFriend(guid) then
+    return "bnet"
+  end
+  if IsGrouped(guid) then
+    return "group"
   end
 
-  return IsGrouped(guid)
+  return nil
+end
+
+function Trust.IsTrusted(guid, name, flag)
+  return Trust.TrustReason(guid, name, flag) ~= nil
 end
 
 NS.Trust = Trust
