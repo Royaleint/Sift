@@ -58,11 +58,6 @@ local function IsFriend(guid)
   return ok and result == true
 end
 
-local function IsGuildMember(guid)
-  local ok, result = SafeCall(IsPlayerInGuildFromGUID, guid)
-  return ok and result == true
-end
-
 local function IsBattleNetFriend(guid)
   if not C_BattleNet or type(C_BattleNet.GetGameAccountInfoByGUID) ~= "function" then
     return false
@@ -205,9 +200,9 @@ function Trust.TrustReason(guid, _name, flag)
   if IsFriend(guid) then
     return "friend"
   end
-  if IsGuildMember(guid) then
-    return "guild"
-  end
+  -- guild-trust removed (BSP-047): IsPlayerInGuildFromGUID returns "is in ANY
+  -- guild", not "my guild" -- it trusted every guilded player. Do not re-add
+  -- without a real same-guild (IsGuildMember(name)) check.
   if IsBattleNetFriend(guid) then
     return "bnet"
   end
