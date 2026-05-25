@@ -218,6 +218,51 @@ local function ExportFP(rest)
   end
 end
 
+-- BSP-048: /bdev perf [label] — one-shot performance snapshot for the
+-- perf-optimization pass. Prints two lines: memory (pre-GC / retained / churn)
+-- and CPU (recent/peak/session avg ms + spike counts). devMode gate handled by
+-- BdevSlashHandler below. Pure diagnostic — no filtering/behavior change.
+-- The optional <label> (the rest arg, e.g. "/bdev perf trade") tags the four
+-- sample moments Rawb captures during a profiling run.
+-- NOTE: collectgarbage("collect") forces a full GC, which costs a one-frame
+-- hitch. That's acceptable for a manual dev read — it's how we separate retained
+-- memory from churn (transient garbage reclaimed by the collection).
+local function RunPerf(rest)
+  local label = string.match(rest or "", "^(%S+)") or ""
+
+  -- Memory: read after UpdateAddOnMemoryUsage(), force a full GC, then read
+  -- again. pre - retained = churn (transient garbage that GC reclaimed).
+  UpdateAddOnMemoryUsage()
+  local preGC = GetAddOnMemoryUsage(ADDON_NAME) or 0
+  collectgarbage("collect")
+  UpdateAddOnMemoryUsage()
+  local retained = GetAddOnMemoryUsage(ADDON_NAME) or 0
+  local churn = preGC - retained
+  Print(format(
+    "perf %s: mem %d KB pre-GC | %d KB retained | %d KB churn",
+    label, preGC, retained, churn
+  ))
+
+  -- CPU: C_AddOnProfiler is newer client API — guard its existence (and the
+  -- Enum table) so older/edge clients print a notice instead of erroring.
+  if C_AddOnProfiler and C_AddOnProfiler.GetAddOnMetric
+    and Enum and Enum.AddOnProfilerMetric then
+    local M = Enum.AddOnProfilerMetric
+    local recent  = C_AddOnProfiler.GetAddOnMetric(ADDON_NAME, M.RecentAverageTime) or 0
+    local peak    = C_AddOnProfiler.GetAddOnMetric(ADDON_NAME, M.PeakTime) or 0
+    local session = C_AddOnProfiler.GetAddOnMetric(ADDON_NAME, M.SessionAverageTime) or 0
+    local over1   = C_AddOnProfiler.GetAddOnMetric(ADDON_NAME, M.CountTimeOver1Ms) or 0
+    local over5   = C_AddOnProfiler.GetAddOnMetric(ADDON_NAME, M.CountTimeOver5Ms) or 0
+    local over10  = C_AddOnProfiler.GetAddOnMetric(ADDON_NAME, M.CountTimeOver10Ms) or 0
+    Print(format(
+      "perf %s: ms recent=%.3f peak=%.3f session=%.3f | spikes >1ms=%d >5ms=%d >10ms=%d",
+      label, recent, peak, session, over1, over5, over10
+    ))
+  else
+    Print("perf: C_AddOnProfiler unavailable on this client")
+  end
+end
+
 local COMMANDS = {
 	[""] = function() ToggleHistory() end,
 	history = function() ToggleHistory() end,
@@ -261,10 +306,11 @@ end
 local DEV_COMMANDS = {
 	test = RunSyntheticTest,
 	fpx  = ExportFP,
+	perf = RunPerf,
 }
 
 local function PrintDevUsage()
-	Print("usage: /bdev [test|fpx [N]]")
+	Print("usage: /bdev [test|fpx [N]|perf [label]]")
 end
 
 local function BdevSlashHandler(msg)

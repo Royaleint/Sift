@@ -65,6 +65,7 @@ read_globals = {
     "FauxScrollFrame_GetOffset",
 
     -- WoW API (C_ namespaces)
+    "C_AddOnProfiler",
     "C_BattleNet",
     "C_CVar",
     "C_FriendList",
@@ -75,9 +76,11 @@ read_globals = {
     -- WoW API (functions)
     "ChatFrameUtil",
     "ChatFrame_AddMessageEventFilter",
+    "GetAddOnMemoryUsage",
     "GetCVarBool",
     "GetServerTime",
     "GetTime",
+    "UpdateAddOnMemoryUsage",
     "hooksecurefunc",
     "IsPlayerInGuildFromGUID",
     "issecretvalue",
