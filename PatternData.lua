@@ -1,11 +1,11 @@
 -- PatternData.lua (GENERATED — do not hand-edit; regenerate via BawrSpam_Dev/tools/build_patterns.lua)
 local _, NS = ...
 NS.PatternsData = {
-  version   = 1,
+  version   = 2,
   seedLow   = 0x7D,
   seedHigh  = 0x35,
-  builtAt   = "2026-05-21T21:51:28Z",
-  ruleCount = 82,
+  builtAt   = "2026-05-25T14:49:23Z",
+  ruleCount = 83,
   entries = {
     { c = "RMT", w = 10, id = "r_a7bbac55", e = "\159\157\153\140\131\129\138" },
     { c = "RMT", w = 10, id = "r_2b21c598", e = "\122\113\115\068\071\077\081\087\068\074\066" },
@@ -89,5 +89,6 @@ NS.PatternsData = {
     { c = "Boosting", w = 5, id = "b_fff30e6c", e = "\039\049\043\033\034\039\039\057\040\045\063\055" },
     { c = "Boosting", w = 5, id = "b_a1e8ff00", e = "\011\017\027\031\019\010\018\030\226\242\224\236\247\241" },
     { c = "Boosting", w = 5, id = "b_3ff91f30", e = "\222\194\206\210\211\221\192\192" },
+    { c = "Boosting", w = 10, id = "b_b5dc7578", e = { "\149\151\151", "\144\150\138\150", "\147\150\141\134\141\148\156\136\152\159" } },
   },
 }
