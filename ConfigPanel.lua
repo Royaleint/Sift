@@ -1866,8 +1866,40 @@ local RENDERERS = {
   Dev = RenderDev,
 }
 
-local function CreateBackdropFrame(parent)
-  local f = CreateFrame("Frame", "BawrSpamConfigFrame", parent, "BackdropTemplate")
+-- BSP-022 Commit 1: dual-path chrome. PortraitFrameTemplate and
+-- ButtonFrameTemplateNoPortrait are Retail-only (MCP-confirmed: not in
+-- Classic Era 1.15 or Pandaria Classic 5.5), so Classic-family falls back to
+-- a manual BackdropTemplate shell. Embed mode (parent != nil) always uses a
+-- plain Frame regardless of flavor so it nests inside HistoryPanel's Config
+-- tab without portrait/border collision. Mirrors HistoryPanel's BSP-008
+-- pattern (CreatePlainHistoryFrame / CreateHistoryFrame / CreateBackdropFrame).
+local function HidePortraitChrome(f)
+  if not f then return end
+  local frameName = f.GetName and f:GetName() or nil
+  local pieces = {
+    f.PortraitContainer,
+    f.Portrait,
+    f.portrait,
+    f.portraitFrame,
+    frameName and _G[frameName .. "PortraitContainer"] or nil,
+    frameName and _G[frameName .. "Portrait"] or nil,
+    frameName and _G[frameName .. "PortraitFrame"] or nil,
+  }
+  for _, piece in ipairs(pieces) do
+    if piece and piece.Hide then
+      piece:Hide()
+      if piece.SetAlpha then
+        piece:SetAlpha(0)
+      end
+    end
+  end
+end
+
+local function CreatePlainConfigFrame(parent)
+  local ok, f = pcall(CreateFrame, "Frame", "BawrSpamConfigFrame", parent, "BackdropTemplate")
+  if not ok or not f then
+    f = CreateFrame("Frame", "BawrSpamConfigFrame", parent)
+  end
   if f.SetBackdrop then
     f:SetBackdrop({
       bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
@@ -1880,36 +1912,76 @@ local function CreateBackdropFrame(parent)
     f:SetBackdropColor(0.02, 0.02, 0.025, 0.96)
     f:SetBackdropBorderColor(0.35, 0.36, 0.42, 1)
   end
+
+  local header = CreateFrame("Frame", nil, f)
+  header:SetHeight(28)
+  header:SetPoint("TOPLEFT", f, "TOPLEFT", 6, -6)
+  header:SetPoint("TOPRIGHT", f, "TOPRIGHT", -30, -6)
+  header:EnableMouse(true)
+  header:RegisterForDrag("LeftButton")
+  header:SetScript("OnDragStart", function() f:StartMoving() end)
+  header:SetScript("OnDragStop", function()
+    f:StopMovingOrSizing()
+    SavePosition()
+  end)
+
+  header.TitleText = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+  header.TitleText:SetPoint("CENTER", header, "CENTER", 0, 0)
+  header.TitleText:SetText(L("BawrSpam \226\128\148 Config"))
+  f.TitleContainer = header
+
+  local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+  close:SetPoint("TOPRIGHT", f, "TOPRIGHT", 2, -2)
+  close:SetScript("OnClick", function() f:Hide() end)
+  f.CloseButton = close
+
+  return f
+end
+
+local function CreatePortraitConfigFrame(parent)
+  local template = "PortraitFrameTemplate"
+  local ok, f = pcall(CreateFrame, "Frame", "BawrSpamConfigFrame", parent, template)
+  if ok and f then
+    return f
+  end
+  return CreateFrame("Frame", "BawrSpamConfigFrame", parent, "PortraitFrameTemplate")
+end
+
+local function CreateConfigFrame(parent)
+  if NS.Compat and NS.Compat.isClassicFamily then
+    return CreatePlainConfigFrame(parent)
+  end
+  return CreatePortraitConfigFrame(parent)
+end
+
+-- Post-processor: applies PortraitFrameTemplate-specific customization
+-- (layout, portrait hide, title set, title centering). No-op on the Plain
+-- path because every method is method-existence-guarded; the Plain path
+-- already wires title + close button inline in CreatePlainConfigFrame.
+local function ApplyConfigChrome(f)
+  f.layoutType = "ButtonFrameTemplateNoPortrait"
+  if f.SetBorder then
+    f:SetBorder("ButtonFrameTemplateNoPortrait")
+  end
+  if f.SetPortraitShown then
+    f:SetPortraitShown(false)
+  end
+  HidePortraitChrome(f)
+  if f.SetTitle then
+    f:SetTitle(L("BawrSpam \226\128\148 Config"))
+  elseif f.TitleContainer and f.TitleContainer.TitleText then
+    f.TitleContainer.TitleText:SetText(L("BawrSpam \226\128\148 Config"))
+  end
+  -- Center the title within TitleContainer (PortraitFrameTemplate default
+  -- is LEFT-anchored; Plain path already centers, so this is a no-op there).
+  if f.TitleContainer and f.TitleContainer.TitleText then
+    f.TitleContainer.TitleText:ClearAllPoints()
+    f.TitleContainer.TitleText:SetPoint("CENTER", f.TitleContainer, "CENTER", 0, 0)
+  end
   f:SetFrameStrata("HIGH")
   f:SetClampedToScreen(true)
   f:Hide()
   return f
-end
-
-local function CreateHeaderBar(parent)
-  local header = CreateFrame("Frame", nil, parent)
-  header:SetHeight(28)
-  header:SetPoint("TOPLEFT", parent, "TOPLEFT", 6, -6)
-  header:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -6, -6)
-  header:EnableMouse(true)
-  header:RegisterForDrag("LeftButton")
-  header:SetScript("OnDragStart", function()
-    parent:StartMoving()
-  end)
-  header:SetScript("OnDragStop", function()
-    parent:StopMovingOrSizing()
-    SavePosition()
-  end)
-
-  local title = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-  title:SetPoint("LEFT", header, "LEFT", 4, 0)
-  title:SetText("BawrSpam - Config")
-
-  local close = CreateFrame("Button", nil, parent, "UIPanelCloseButton")
-  close:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 2, -2)
-  close:SetScript("OnClick", function()
-    parent:Hide()
-  end)
 end
 
 local function CreateResizeHandle(parent)
@@ -1981,18 +2053,23 @@ local function BuildFrame(parent)
   end
 
   if embedded then
+    -- Embed mode: plain Frame, no chrome. HistoryPanel's Config tab owns
+    -- the chrome; we just provide content inside its host frame.
     frame = CreateFrame("Frame", "BawrSpamConfigFrame", parent)
     frame:SetAllPoints(parent)
     embeddedMode = true
   else
-    frame = CreateBackdropFrame(UIParent)
+    -- Standalone: dispatcher picks PortraitFrameTemplate (Retail) or the
+    -- Plain BackdropTemplate shell (Classic-family). ApplyConfigChrome
+    -- handles Portrait-specific customization on Retail; method-existence
+    -- guards make it a no-op on Plain.
+    frame = CreateConfigFrame(UIParent)
+    ApplyConfigChrome(frame)
     frame:SetMovable(true)
     frame:SetResizable(true)
     if frame.SetResizeBounds then
       frame:SetResizeBounds(MIN_WIDTH, MIN_HEIGHT)
     end
-
-    CreateHeaderBar(frame)
     CreateResizeHandle(frame)
   end
   CreateNav(frame)
