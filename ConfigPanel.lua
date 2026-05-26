@@ -1742,7 +1742,20 @@ RenderHistory = function()
     slider:SetCallback("OnValueChanged", function(_, _, value)
       value = ClampNumber(value, 100, 5000, DEFAULT_SETTINGS.historyMaxEntries)
       value = math.floor((value + 50) / 100) * 100
-      if value < #entries then
+      -- BSP-050 Argus nit: the per-char cap applies to every character on commit
+      -- (via TrimAllCharacters), so the popup must fire when *any* char would be
+      -- trimmed, not just the current one. Mirror the global slider's cross-char
+      -- iteration at lines below, but track the *max* single-char length rather
+      -- than the sum.
+      local maxLen = 0
+      if NS.DB and NS.DB.db and NS.DB.db.sv and type(NS.DB.db.sv.char) == "table" then
+        for _, charData in pairs(NS.DB.db.sv.char) do
+          if type(charData) == "table" and type(charData.history) == "table" then
+            if #charData.history > maxLen then maxLen = #charData.history end
+          end
+        end
+      end
+      if value < maxLen then
         pendingHistoryMax = value
         if StaticPopup_Show then
           StaticPopup_Show("BAWRSPAM_TRIM_HISTORY")
