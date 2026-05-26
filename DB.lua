@@ -1,7 +1,7 @@
 local _, NS = ...
 local DB = {}
 
-local CURRENT_SCHEMA_VERSION = 2
+local CURRENT_SCHEMA_VERSION = 3
 local ADDON_VERSION = "1.1.1"
 local BLOCKED_ACTOR_CAP = 5000
 
@@ -34,6 +34,7 @@ local defaults = {
       lfgScanEnabled = true,
       showMinimapButton = true,
       historyMaxEntries = 300,
+      historyGlobalMaxEntries = 1000,
       devMode = false,
       -- BSP-010: confirmed-spam-repeat dedupe. Additive — AceDB copyDefaults
       -- backfills this subtree into existing player SVs on first db.global
@@ -65,6 +66,9 @@ local defaults = {
 local VALID_AXIS_STATES = { active = true, paused = true, off = true }
 
 local migrations = {}
+-- migrations[2] is defined immediately below; migrations[3] is defined after
+-- the local Print helper so its closure can capture Print (Lua locals are
+-- only visible to closures defined after their declaration).
 
 migrations[2] = function(db)
   -- Whisper split: entries with channel CHAT_MSG_WHISPER or CHAT_MSG_BN_WHISPER
@@ -104,6 +108,23 @@ end
 local function DevLog(message)
   if DB.IsDevMode and DB.IsDevMode() then
     Print(message)
+  end
+end
+
+migrations[3] = function(db)
+  -- BSP-050: account-wide cap introduced. Existing data may be over it; trim once
+  -- and announce. Subsequent enforcement is silent (Init.lua login-trim, commit 4).
+  if NS.History and NS.History.TrimAllCharacters then
+    local perCharRemoved, globalRemoved = NS.History.TrimAllCharacters()
+    local total = perCharRemoved + globalRemoved
+    if total > 0 then
+      Print(string.format(
+        "enforcing new account-wide history cap: trimmed %d records "
+          .. "(%d per-char excess, %d global). Open /bawrspam config > "
+          .. "History to adjust the caps.",
+        total, perCharRemoved, globalRemoved
+      ))
+    end
   end
 end
 
@@ -166,6 +187,7 @@ local function RepairSettings(settings)
   settings.mixedScriptWeight = ClampNumber(settings.mixedScriptWeight, 0, 3, defaultSettings.mixedScriptWeight)
   settings.antiSignalCap = ClampNumber(settings.antiSignalCap, -10, -1, defaultSettings.antiSignalCap)
   settings.historyMaxEntries = ClampNumber(settings.historyMaxEntries, 100, 5000, defaultSettings.historyMaxEntries)
+  settings.historyGlobalMaxEntries = ClampNumber(settings.historyGlobalMaxEntries, 100, 5000, defaultSettings.historyGlobalMaxEntries)
   settings.mixedScriptEnabled = settings.mixedScriptEnabled ~= false
   settings.filterBubbles = settings.filterBubbles == true
   settings.lfgScanEnabled = settings.lfgScanEnabled ~= false
@@ -277,6 +299,8 @@ function DB.SetSetting(key, value)
     settings.antiSignalCap = ClampNumber(value, -10, -1, defaults.global.settings.antiSignalCap)
   elseif key == "historyMaxEntries" then
     settings.historyMaxEntries = ClampNumber(value, 100, 5000, defaults.global.settings.historyMaxEntries)
+  elseif key == "historyGlobalMaxEntries" then
+    settings.historyGlobalMaxEntries = ClampNumber(value, 100, 5000, defaults.global.settings.historyGlobalMaxEntries)
   elseif key == "enabledCategories" then
     if type(value) ~= "table" then
       return nil
