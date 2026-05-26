@@ -89,6 +89,7 @@ local DEFAULT_SETTINGS = {
   filterBubbles = false,
   lfgScanEnabled = true,
   historyMaxEntries = 300,
+  historyGlobalMaxEntries = 1000,
   showMinimapButton = true,
   devMode = false,
 }
@@ -108,6 +109,7 @@ local sectionStatus = {}
 local removedAllowlistEntry
 local pendingImport
 local pendingHistoryMax
+local pendingHistoryGlobalMax
 local dialogFrame
 
 local listState = {
@@ -1190,7 +1192,7 @@ local function RegisterStaticPopups()
   }
 
   StaticPopupDialogs["BAWRSPAM_TRIM_HISTORY"] = {
-    text = "Trim current history down to the new maximum?",
+    text = "Trim history on every character down to the new maximum?",
     button1 = "Trim",
     button2 = "Cancel",
     OnAccept = function()
@@ -1198,9 +1200,9 @@ local function RegisterStaticPopups()
       pendingHistoryMax = nil
       if max then
         SetSetting("historyMaxEntries", max)
-        if NS.History and NS.History.TrimToMax then
-          NS.History.TrimToMax(max)
-          sectionStatus.History = "History trimmed to " .. tostring(max) .. " entries."
+        if NS.History and NS.History.TrimAllCharacters then
+          NS.History.TrimAllCharacters()
+          sectionStatus.History = "History trimmed to " .. tostring(max) .. " entries per character."
         else
           sectionStatus.History = "History trim API is unavailable."
         end
@@ -1211,6 +1213,37 @@ local function RegisterStaticPopups()
     end,
     OnCancel = function()
       pendingHistoryMax = nil
+      if activeSection == "History" and frame and frame:IsShown() then
+        ConfigPanel.ShowSection("History")
+      end
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+  }
+
+  StaticPopupDialogs["BAWRSPAM_TRIM_HISTORY_GLOBAL"] = {
+    text = "Trim history across all characters down to the new account-wide maximum?",
+    button1 = "Trim",
+    button2 = "Cancel",
+    OnAccept = function()
+      local max = pendingHistoryGlobalMax
+      pendingHistoryGlobalMax = nil
+      if max then
+        SetSetting("historyGlobalMaxEntries", max)
+        if NS.History and NS.History.TrimAllCharacters then
+          NS.History.TrimAllCharacters()
+          sectionStatus.History = "History trimmed account-wide to " .. tostring(max) .. " total entries."
+        else
+          sectionStatus.History = "History trim API is unavailable."
+        end
+      end
+      if activeSection == "History" and frame and frame:IsShown() then
+        ConfigPanel.ShowSection("History")
+      end
+    end,
+    OnCancel = function()
+      pendingHistoryGlobalMax = nil
       if activeSection == "History" and frame and frame:IsShown() then
         ConfigPanel.ShowSection("History")
       end
@@ -1724,6 +1757,39 @@ RenderHistory = function()
     y = y - 52
   else
     y = AddDisabledRow("Maximum history entries", "AceGUI unavailable", y)
+  end
+
+  local globalSlider = AddAceWidget("Slider", CONTENT_PAD, y, 360)
+  if globalSlider then
+    globalSlider:SetLabel("Account total")
+    globalSlider:SetSliderValues(100, 5000, 100)
+    globalSlider:SetValue(tonumber(SettingValue("historyGlobalMaxEntries")) or DEFAULT_SETTINGS.historyGlobalMaxEntries)
+    globalSlider:SetCallback("OnValueChanged", function(_, _, value)
+      value = ClampNumber(value, 100, 5000, DEFAULT_SETTINGS.historyGlobalMaxEntries)
+      value = math.floor((value + 50) / 100) * 100
+      local total = 0
+      if NS.DB and NS.DB.db and NS.DB.db.sv and type(NS.DB.db.sv.char) == "table" then
+        for _, charData in pairs(NS.DB.db.sv.char) do
+          if type(charData) == "table" and type(charData.history) == "table" then
+            total = total + #charData.history
+          end
+        end
+      end
+      if value < total then
+        pendingHistoryGlobalMax = value
+        if StaticPopup_Show then
+          StaticPopup_Show("BAWRSPAM_TRIM_HISTORY_GLOBAL")
+        end
+      else
+        SetSetting("historyGlobalMaxEntries", value)
+      end
+    end)
+    AttachTooltip(globalSlider, "Account total",
+      "Maximum spam-history records retained across all characters combined. " ..
+      "Lowering this trims oldest records account-wide on next login.")
+    y = y - 52
+  else
+    y = AddDisabledRow("Account total", "AceGUI unavailable", y)
   end
 
   AddNativeButton("Clear History", CONTENT_PAD, y, 120, ConfigPanel.ConfirmClearHistory,
