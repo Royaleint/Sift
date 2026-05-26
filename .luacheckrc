@@ -63,6 +63,8 @@ read_globals = {
     "FauxScrollFrame_Update",
     "FauxScrollFrame_OnVerticalScroll",
     "FauxScrollFrame_GetOffset",
+    "MinimalSliderWithSteppersMixin",
+    "CreateMinimalSliderFormatter",
 
     -- WoW API (C_ namespaces)
     "C_AddOnProfiler",

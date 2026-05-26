@@ -474,14 +474,161 @@ local function AddAceWidget(widgetType, x, y, width)
   return widget
 end
 
-local function AddSlider(label, key, minValue, maxValue, step, y, tooltipBody)
-  local slider = AddAceWidget("Slider", CONTENT_PAD, y, 330)
-  if not slider then
-    return AddDisabledRow(label, "AceGUI unavailable", y)
+-- BSP-022 Commit 2: native sliders, dual-path.
+-- Retail uses MinimalSliderWithSteppersTemplate (MWS) — the modern Settings-UI
+-- slider with stepper buttons on each end, matching the look of Edit Mode and
+-- Retail's Settings panels. Classic-family falls back to OptionsSliderTemplate
+-- (MCP-confirmed present in DeprecatedTemplates.xml on all 3 flavors, used by
+-- Classic's own Interface Options screens today). Both paths return a slider
+-- object exposing the same AceGUI-compatible facade so the call sites are
+-- identical regardless of flavor:
+--   SetLabel(text), SetSliderValues(min, max, step),
+--   SetValue(value), SetCallback("OnValueChanged", fn).
+--
+-- MWS-specific API reference (verified in Blizzard_SharedXML\Shared\Slider\
+-- MinimalSlider.lua): Init(value, minValue, maxValue, steps, formatters) takes
+-- `steps` as a count, not a step size — we compute steps = (max-min)/step.
+-- The formatter table is keyed by MinimalSliderWithSteppersMixin.Label.{Top,
+-- Min, Max} enum values; we use Top for "Label: value", Min/Max for range
+-- bounds. The OnValueChanged event is registered through CallbackRegistryMixin
+-- (RegisterCallback), not the native OnValueChanged script.
+local nextSliderId = 0
+
+local function MakeMWSSlider(x, y, width, label, minValue, maxValue, step)
+  local mws = TrackNative(CreateFrame("Frame", nil, content, "MinimalSliderWithSteppersTemplate"))
+  mws:SetSize(width or 280, 40)
+  mws:SetPoint("TOPLEFT", content, "TOPLEFT", x or CONTENT_PAD, y)
+
+  local labelText = label or ""
+
+  local function buildFormatters(minV, maxV)
+    return {
+      [MinimalSliderWithSteppersMixin.Label.Top] = function(v)
+        return string.format("%s: %d", labelText, math.floor((tonumber(v) or 0) + 0.5))
+      end,
+      [MinimalSliderWithSteppersMixin.Label.Min] = CreateMinimalSliderFormatter(
+        MinimalSliderWithSteppersMixin.Label.Min, tostring(minV)),
+      [MinimalSliderWithSteppersMixin.Label.Max] = CreateMinimalSliderFormatter(
+        MinimalSliderWithSteppersMixin.Label.Max, tostring(maxV)),
+    }
   end
 
-  slider:SetLabel(label)
-  slider:SetSliderValues(minValue, maxValue, step)
+  local function reInit(value, minV, maxV, stepV)
+    local span = (maxV - minV)
+    local stepSize = stepV or 1
+    local steps = math.max(1, math.floor(span / stepSize + 0.5))
+    mws:Init(value, minV, maxV, steps, buildFormatters(minV, maxV))
+  end
+
+  -- Initial setup: caller's subsequent SetValue replaces the initial value.
+  reInit(minValue, minValue, maxValue, step)
+
+  local valueCb
+
+  function mws:SetLabel(text)
+    labelText = text or ""
+    -- Refresh the Top label so the new name appears immediately.
+    self:FormatValue(self.Slider:GetValue())
+  end
+  function mws:SetSliderValues(minV, maxV, stepV)
+    local v = self.Slider:GetValue()
+    if v < minV then v = minV end
+    if v > maxV then v = maxV end
+    reInit(v, minV, maxV, stepV)
+  end
+  -- mws:SetValue already exists from MinimalSliderWithSteppersMixin (line 169
+  -- of MinimalSlider.lua) — proxies to self.Slider:SetValue.
+  function mws:SetCallback(event, fn)
+    if event ~= "OnValueChanged" then return end
+    if valueCb then
+      -- Already registered the dispatch closure; just swap the user fn.
+      valueCb = fn
+      return
+    end
+    valueCb = fn
+    self:RegisterCallback(MinimalSliderWithSteppersMixin.Event.OnValueChanged,
+      function(_, value)
+        if valueCb then valueCb(self, "OnValueChanged", value) end
+      end, self)
+  end
+
+  mws:Show()
+  return mws
+end
+
+local function MakeOptionsSlider(x, y, width, label, minValue, maxValue, step)
+  nextSliderId = nextSliderId + 1
+  local name = "BawrSpamConfigSlider" .. nextSliderId
+  local slider = TrackNative(CreateFrame("Slider", name, content, "OptionsSliderTemplate"))
+  slider:SetSize(width or 280, 17)
+  slider:SetPoint("TOPLEFT", content, "TOPLEFT", x or CONTENT_PAD, y)
+  slider:SetMinMaxValues(minValue, maxValue)
+  slider:SetValueStep(step or 1)
+  if slider.SetObeyStepOnDrag then
+    slider:SetObeyStepOnDrag(true)
+  end
+
+  -- OptionsSliderTemplate auto-creates these via $parent name resolution.
+  local textFS = _G[name .. "Text"]
+  local lowFS = _G[name .. "Low"]
+  local highFS = _G[name .. "High"]
+  if textFS then textFS:SetText(label or "") end
+  if lowFS then lowFS:SetText(tostring(minValue)) end
+  if highFS then highFS:SetText(tostring(maxValue)) end
+
+  -- Current-value readout below the slider; preserves the AceGUI visual
+  -- where the current value sat near the slider.
+  local valueFS = slider:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  valueFS:SetPoint("TOP", slider, "BOTTOM", 0, -2)
+
+  local callbacks = {}
+
+  function slider:SetLabel(text)
+    if textFS then textFS:SetText(text or "") end
+  end
+  function slider:SetSliderValues(minV, maxV, stepV)
+    slider:SetMinMaxValues(minV, maxV)
+    slider:SetValueStep(stepV or 1)
+    if lowFS then lowFS:SetText(tostring(minV)) end
+    if highFS then highFS:SetText(tostring(maxV)) end
+  end
+  -- Wrap native SetValue so the value readout updates even on initial set
+  -- (which happens before the OnValueChanged script binds the callback).
+  local nativeSetValue = slider.SetValue
+  function slider:SetValue(value)
+    nativeSetValue(slider, value)
+    valueFS:SetText(tostring(math.floor((tonumber(value) or 0) + 0.5)))
+  end
+  function slider:SetCallback(event, fn)
+    callbacks[event] = fn
+  end
+
+  slider:SetScript("OnValueChanged", function(self, value)
+    value = tonumber(value)
+    if value == nil then return end
+    valueFS:SetText(tostring(math.floor(value + 0.5)))
+    local fn = callbacks.OnValueChanged
+    if fn then fn(self, "OnValueChanged", value) end
+  end)
+
+  slider:Show()
+  return slider
+end
+
+local function MakeNativeSlider(x, y, width, label, minValue, maxValue, step)
+  if NS.Compat and NS.Compat.isClassicFamily then
+    return MakeOptionsSlider(x, y, width, label, minValue, maxValue, step)
+  end
+  -- Retail path: MWS. If the template is somehow missing at runtime, fall
+  -- back gracefully so the panel still renders.
+  if type(MinimalSliderWithSteppersMixin) ~= "table" then
+    return MakeOptionsSlider(x, y, width, label, minValue, maxValue, step)
+  end
+  return MakeMWSSlider(x, y, width, label, minValue, maxValue, step)
+end
+
+local function AddSlider(label, key, minValue, maxValue, step, y, tooltipBody)
+  local slider = MakeNativeSlider(CONTENT_PAD, y, 330, label, minValue, maxValue, step)
   slider:SetValue(tonumber(SettingValue(key)) or tonumber(DEFAULT_SETTINGS[key]) or minValue)
   slider:SetCallback("OnValueChanged", function(_, _, value)
     value = ClampNumber(value, minValue, maxValue, DEFAULT_SETTINGS[key] or minValue)
@@ -1482,25 +1629,16 @@ RenderDetection = function()
     y = AddDisabledRow("Throttle confirmed-spam repeats", "AceGUI unavailable", y)
   end
 
-  local throttleSlider = AddAceWidget("Slider", CONTENT_PAD, y, 330)
-  if throttleSlider then
-    throttleSlider:SetLabel("Throttle buffer size")
-    throttleSlider:SetSliderValues(5, 50, 1)
-    throttleSlider:SetValue(tonumber(throttle.bufferSize) or 20)
-    throttleSlider:SetCallback("OnValueChanged", function(_, _, value)
-      if NS.DB and NS.DB.SetThrottleBufferSize then
-        NS.DB.SetThrottleBufferSize(math.floor((tonumber(value) or 20) + 0.5))
-      end
-    end)
-    AttachTooltip(throttleSlider, "Throttle buffer size",
-      "How many recent confirmed-spam messages per surface are remembered for dedupe. " ..
-      "Larger = longer memory window. Range 5\194\17750.")
-  else
-    -- Slider is the last control in RenderDetection; y is unused after this.
-    -- Skip the `y =` assignment that the checkbox's else branch has, since
-    -- assigning here would trigger luacheck's "value assigned but unused" warning.
-    AddDisabledRow("Throttle buffer size", "AceGUI unavailable", y)
-  end
+  local throttleSlider = MakeNativeSlider(CONTENT_PAD, y, 330, "Throttle buffer size", 5, 50, 1)
+  throttleSlider:SetValue(tonumber(throttle.bufferSize) or 20)
+  throttleSlider:SetCallback("OnValueChanged", function(_, _, value)
+    if NS.DB and NS.DB.SetThrottleBufferSize then
+      NS.DB.SetThrottleBufferSize(math.floor((tonumber(value) or 20) + 0.5))
+    end
+  end)
+  AttachTooltip(throttleSlider, "Throttle buffer size",
+    "How many recent confirmed-spam messages per surface are remembered for dedupe. " ..
+    "Larger = longer memory window. Range 5\194\17750.")
 end
 
 RenderCategories = function()
@@ -1734,76 +1872,64 @@ RenderHistory = function()
     "GameFontNormalSmall", CONTENT_PAD, y)
   y = y - 28
 
-  local slider = AddAceWidget("Slider", CONTENT_PAD, y, 360)
-  if slider then
-    slider:SetLabel("Maximum history entries")
-    slider:SetSliderValues(100, 5000, 100)
-    slider:SetValue(tonumber(SettingValue("historyMaxEntries")) or DEFAULT_SETTINGS.historyMaxEntries)
-    slider:SetCallback("OnValueChanged", function(_, _, value)
-      value = ClampNumber(value, 100, 5000, DEFAULT_SETTINGS.historyMaxEntries)
-      value = math.floor((value + 50) / 100) * 100
-      -- BSP-050 Argus nit: the per-char cap applies to every character on commit
-      -- (via TrimAllCharacters), so the popup must fire when *any* char would be
-      -- trimmed, not just the current one. Mirror the global slider's cross-char
-      -- iteration at lines below, but track the *max* single-char length rather
-      -- than the sum.
-      local maxLen = 0
-      if NS.DB and NS.DB.db and NS.DB.db.sv and type(NS.DB.db.sv.char) == "table" then
-        for _, charData in pairs(NS.DB.db.sv.char) do
-          if type(charData) == "table" and type(charData.history) == "table" then
-            if #charData.history > maxLen then maxLen = #charData.history end
-          end
+  local slider = MakeNativeSlider(CONTENT_PAD, y, 360, "Maximum history entries", 100, 5000, 100)
+  slider:SetValue(tonumber(SettingValue("historyMaxEntries")) or DEFAULT_SETTINGS.historyMaxEntries)
+  slider:SetCallback("OnValueChanged", function(_, _, value)
+    value = ClampNumber(value, 100, 5000, DEFAULT_SETTINGS.historyMaxEntries)
+    value = math.floor((value + 50) / 100) * 100
+    -- BSP-050 Argus nit: the per-char cap applies to every character on commit
+    -- (via TrimAllCharacters), so the popup must fire when *any* char would be
+    -- trimmed, not just the current one. Mirror the global slider's cross-char
+    -- iteration at lines below, but track the *max* single-char length rather
+    -- than the sum.
+    local maxLen = 0
+    if NS.DB and NS.DB.db and NS.DB.db.sv and type(NS.DB.db.sv.char) == "table" then
+      for _, charData in pairs(NS.DB.db.sv.char) do
+        if type(charData) == "table" and type(charData.history) == "table" then
+          if #charData.history > maxLen then maxLen = #charData.history end
         end
       end
-      if value < maxLen then
-        pendingHistoryMax = value
-        if StaticPopup_Show then
-          StaticPopup_Show("BAWRSPAM_TRIM_HISTORY")
-        end
-      else
-        SetSetting("historyMaxEntries", value)
+    end
+    if value < maxLen then
+      pendingHistoryMax = value
+      if StaticPopup_Show then
+        StaticPopup_Show("BAWRSPAM_TRIM_HISTORY")
       end
-    end)
-    AttachTooltip(slider, "Maximum history entries",
-      "Cap retained History at this many entries. Oldest entries are trimmed first. " ..
-      "Lifetime stats counters are unaffected.")
-    y = y - 52
-  else
-    y = AddDisabledRow("Maximum history entries", "AceGUI unavailable", y)
-  end
+    else
+      SetSetting("historyMaxEntries", value)
+    end
+  end)
+  AttachTooltip(slider, "Maximum history entries",
+    "Cap retained History at this many entries. Oldest entries are trimmed first. " ..
+    "Lifetime stats counters are unaffected.")
+  y = y - 52
 
-  local globalSlider = AddAceWidget("Slider", CONTENT_PAD, y, 360)
-  if globalSlider then
-    globalSlider:SetLabel("Account total")
-    globalSlider:SetSliderValues(100, 5000, 100)
-    globalSlider:SetValue(tonumber(SettingValue("historyGlobalMaxEntries")) or DEFAULT_SETTINGS.historyGlobalMaxEntries)
-    globalSlider:SetCallback("OnValueChanged", function(_, _, value)
-      value = ClampNumber(value, 100, 5000, DEFAULT_SETTINGS.historyGlobalMaxEntries)
-      value = math.floor((value + 50) / 100) * 100
-      local total = 0
-      if NS.DB and NS.DB.db and NS.DB.db.sv and type(NS.DB.db.sv.char) == "table" then
-        for _, charData in pairs(NS.DB.db.sv.char) do
-          if type(charData) == "table" and type(charData.history) == "table" then
-            total = total + #charData.history
-          end
+  local globalSlider = MakeNativeSlider(CONTENT_PAD, y, 360, "Account total", 100, 5000, 100)
+  globalSlider:SetValue(tonumber(SettingValue("historyGlobalMaxEntries")) or DEFAULT_SETTINGS.historyGlobalMaxEntries)
+  globalSlider:SetCallback("OnValueChanged", function(_, _, value)
+    value = ClampNumber(value, 100, 5000, DEFAULT_SETTINGS.historyGlobalMaxEntries)
+    value = math.floor((value + 50) / 100) * 100
+    local total = 0
+    if NS.DB and NS.DB.db and NS.DB.db.sv and type(NS.DB.db.sv.char) == "table" then
+      for _, charData in pairs(NS.DB.db.sv.char) do
+        if type(charData) == "table" and type(charData.history) == "table" then
+          total = total + #charData.history
         end
       end
-      if value < total then
-        pendingHistoryGlobalMax = value
-        if StaticPopup_Show then
-          StaticPopup_Show("BAWRSPAM_TRIM_HISTORY_GLOBAL")
-        end
-      else
-        SetSetting("historyGlobalMaxEntries", value)
+    end
+    if value < total then
+      pendingHistoryGlobalMax = value
+      if StaticPopup_Show then
+        StaticPopup_Show("BAWRSPAM_TRIM_HISTORY_GLOBAL")
       end
-    end)
-    AttachTooltip(globalSlider, "Account total",
-      "Maximum spam-history records retained across all characters combined. " ..
-      "Lowering this trims oldest records account-wide on next login.")
-    y = y - 52
-  else
-    y = AddDisabledRow("Account total", "AceGUI unavailable", y)
-  end
+    else
+      SetSetting("historyGlobalMaxEntries", value)
+    end
+  end)
+  AttachTooltip(globalSlider, "Account total",
+    "Maximum spam-history records retained across all characters combined. " ..
+    "Lowering this trims oldest records account-wide on next login.")
+  y = y - 52
 
   AddNativeButton("Clear History", CONTENT_PAD, y, 120, ConfigPanel.ConfirmClearHistory,
     "Delete all retained History entries. Lifetime stats counters are preserved. Confirmation required.")
