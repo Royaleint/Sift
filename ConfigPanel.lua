@@ -103,7 +103,10 @@ local embeddedMode
 local initialized
 local interfaceRegistered
 local popupsRegistered
-local aceWidgets = {}
+-- BSP-022 Commit 3: aceWidgets ringbuffer removed — the only widget types
+-- it tracked (Slider, CheckBox) are now native and live in `nativeChildren`.
+-- The MultiLineEditBox dialog (still AceGUI in this commit) owns its own
+-- release via dialog.editWidget; full AceGUI removal lands in Commit 4.
 local nativeChildren = {}
 local sectionStatus = {}
 local removedAllowlistEntry
@@ -358,14 +361,10 @@ local function ReleaseNativeChild(child)
 end
 
 local function ReleaseContent()
-  local AceGUI = EnsureAceGUI()
-  if AceGUI then
-    for _, widget in ipairs(aceWidgets) do
-      AceGUI:Release(widget)
-    end
-  end
-  aceWidgets = {}
-
+  -- BSP-022 Commit 3: AceGUI Slider/CheckBox call sites are gone; this loop
+  -- only manages native widget cleanup now. The MultiLineEditBox dialog
+  -- (still on AceGUI in this commit) owns its own release via dialog.editWidget
+  -- in CloseDialog / ShowTextDialog — see Commit 4 for full removal.
   for _, child in ipairs(nativeChildren) do
     ReleaseNativeChild(child)
   end
@@ -452,26 +451,6 @@ local function AddDisabledRow(label, value, y)
   right:Show()
 
   return y - 36
-end
-
-local function AddAceWidget(widgetType, x, y, width)
-  local AceGUI = EnsureAceGUI()
-  if not AceGUI then
-    return nil
-  end
-
-  local widget = AceGUI:Create(widgetType)
-  if not widget or not widget.frame then
-    return nil
-  end
-
-  aceWidgets[#aceWidgets + 1] = widget
-  widget.frame:SetParent(content)
-  widget.frame:ClearAllPoints()
-  widget.frame:SetPoint("TOPLEFT", content, "TOPLEFT", x or CONTENT_PAD, y)
-  widget:SetWidth(width or 280)
-  widget.frame:Show()
-  return widget
 end
 
 -- BSP-022 Commit 2: native sliders, dual-path.
@@ -641,23 +620,40 @@ local function AddSlider(label, key, minValue, maxValue, step, y, tooltipBody)
   return y - 48
 end
 
-local function AddCheckbox(label, key, y, onChanged, tooltipBody)
-  local checkbox = AddAceWidget("CheckBox", CONTENT_PAD, y, 360)
-  if not checkbox then
-    return AddDisabledRow(label, "AceGUI unavailable", y)
-  end
+-- BSP-022 Commit 3: native checkboxes via UICheckButtonTemplate.
+-- Universal template (works on all 3 flavors), so no flavor branch.
+-- The label is a FontString anchored to the right of the checkbox.
+-- The onChange callback receives a boolean (the new checked state).
+local function MakeNativeCheckbox(x, y, label, initialChecked, onChange, tooltipBody)
+  local cb = TrackNative(CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate"))
+  cb:SetSize(24, 24)
+  cb:SetPoint("TOPLEFT", content, "TOPLEFT", x or CONTENT_PAD, y)
+  cb:SetChecked(initialChecked and true or false)
 
-  checkbox:SetLabel(label)
-  checkbox:SetValue(SettingValue(key) == true)
-  checkbox:SetCallback("OnValueChanged", function(_, _, value)
-    value = value == true
+  local labelFS = cb:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  labelFS:SetPoint("LEFT", cb, "RIGHT", 4, 0)
+  labelFS:SetJustifyH("LEFT")
+  labelFS:SetText(label or "")
+
+  cb:SetScript("OnClick", function(self)
+    local value = self:GetChecked() and true or false
+    if onChange then onChange(value) end
+  end)
+
+  if tooltipBody then AttachTooltip(cb, label, tooltipBody) end
+
+  cb:Show()
+  return cb
+end
+
+local function AddCheckbox(label, key, y, onChanged, tooltipBody)
+  MakeNativeCheckbox(CONTENT_PAD, y, label, SettingValue(key) == true, function(value)
     if onChanged then
       onChanged(value)
     else
       SetSetting(key, value)
     end
-  end)
-  if tooltipBody then AttachTooltip(checkbox, label, tooltipBody) end
+  end, tooltipBody)
   return y - 32
 end
 
@@ -1605,29 +1601,23 @@ RenderDetection = function()
   y = AddCheckbox("Use mixed-script detection", "mixedScriptEnabled", y, nil,
     "Enable Unicode-confusable script-mixing as a signal in scoring.")
 
-  -- BSP-010: Throttle controls. Cannot reuse AddSlider/AddCheckbox helpers
-  -- here because their SettingValue(key) reads are flat-keyed and these
-  -- live under settings.throttle.*. Inline via AddAceWidget directly,
-  -- matching the History section's max-entries-slider pattern.
+  -- BSP-010: Throttle controls. Cannot reuse AddCheckbox helper because its
+  -- SettingValue(key) read is flat-keyed and throttle.enabled lives under
+  -- settings.throttle.*. Use MakeNativeCheckbox directly with a custom
+  -- onChange that routes through NS.DB.SetThrottleEnabled.
   local throttle = (GetSettings() and GetSettings().throttle) or {}
 
-  local throttleCheckbox = AddAceWidget("CheckBox", CONTENT_PAD, y, 360)
-  if throttleCheckbox then
-    throttleCheckbox:SetLabel("Throttle confirmed-spam repeats")
-    throttleCheckbox:SetValue(throttle.enabled ~= false)
-    throttleCheckbox:SetCallback("OnValueChanged", function(_, _, value)
+  MakeNativeCheckbox(CONTENT_PAD, y, "Throttle confirmed-spam repeats",
+    throttle.enabled ~= false,
+    function(value)
       if NS.DB and NS.DB.SetThrottleEnabled then
-        NS.DB.SetThrottleEnabled(value == true)
+        NS.DB.SetThrottleEnabled(value)
       end
-    end)
-    AttachTooltip(throttleCheckbox, "Throttle confirmed-spam repeats",
-      "When the same cleansed text and sender GUID repeats inside the buffer window, " ..
-      "the second hit is auto-blocked. Only runs on messages already scored as spam \194\151 " ..
-      "legitimate repeats are unaffected.")
-    y = y - 32
-  else
-    y = AddDisabledRow("Throttle confirmed-spam repeats", "AceGUI unavailable", y)
-  end
+    end,
+    "When the same cleansed text and sender GUID repeats inside the buffer window, " ..
+    "the second hit is auto-blocked. Only runs on messages already scored as spam \194\151 " ..
+    "legitimate repeats are unaffected.")
+  y = y - 32
 
   local throttleSlider = MakeNativeSlider(CONTENT_PAD, y, 330, "Throttle buffer size", 5, 50, 1)
   throttleSlider:SetValue(tonumber(throttle.bufferSize) or 20)
