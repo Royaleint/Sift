@@ -1701,13 +1701,33 @@ local function CreateDetailPane()
   detailPane.actions = { btn1 = footer.btn1, btn2 = footer.btn2 }
   detailPane.sections.footer = footer
 
-  -- Stats area (flex-grow to fill below footer)
-  local stats = CreateFrame("Frame", nil, detailPane)
-  stats:SetPoint("TOPLEFT",     footer, "BOTTOMLEFT",  0, -6)
-  stats:SetPoint("TOPRIGHT",    footer, "BOTTOMRIGHT", 0, -6)
-  stats:SetPoint("BOTTOMLEFT",  detailPane, "BOTTOMLEFT",  0, 0)
-  stats:SetPoint("BOTTOMRIGHT", detailPane, "BOTTOMRIGHT", 0, 0)
+  -- BSP-055 fix #11: stats area now lives inside a ScrollFrame so content
+  -- that exceeds the viewport (BY SURFACE / BY CATEGORY / PIPELINE rows when
+  -- text wraps, plus the lifetime-stats tiles row) scrolls instead of
+  -- clipping into the panel's tab strip. The ScrollFrame fills the area
+  -- below the footer; the scrollChild has a fixed worst-case content height
+  -- and its width tracks the viewport so the by-* FontStrings re-wrap on
+  -- panel resize.
+  local statsScroll = CreateFrame("ScrollFrame", nil, detailPane, "UIPanelScrollFrameTemplate")
+  statsScroll:SetPoint("TOPLEFT",     footer, "BOTTOMLEFT",  0, -6)
+  statsScroll:SetPoint("TOPRIGHT",    footer, "BOTTOMRIGHT", -22, -6)
+  statsScroll:SetPoint("BOTTOMLEFT",  detailPane, "BOTTOMLEFT",  0, 0)
+  statsScroll:SetPoint("BOTTOMRIGHT", detailPane, "BOTTOMRIGHT", -22, 0)
+
+  local stats = CreateFrame("Frame", nil, statsScroll)
+  -- Width set after BuildStatsArea via the scroll's OnSizeChanged; the
+  -- initial value matches the typical panel width so first-frame layout
+  -- does not collapse to zero. Height is a worst-case envelope (tiles row
+  -- + 3 wrapped data rows + labels + margins); scrollbar engages above it.
+  stats:SetSize(540, 280)
   BuildStatsArea(stats)
+  statsScroll:SetScrollChild(stats)
+
+  statsScroll:SetScript("OnSizeChanged", function(self, w)
+    if w and w > 0 then stats:SetWidth(w) end
+  end)
+
+  detailPane.statsScroll = statsScroll
   detailPane.stats = stats
   detailPane.sections.stats = stats
 
