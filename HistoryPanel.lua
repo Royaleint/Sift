@@ -1879,6 +1879,8 @@ local function ShowHistoryContent()
   if configHost then configHost:Hide() end
   if listPane then listPane:Show() end
   if detailPane then detailPane:Show() end
+  -- BSP-055 fix #1: restore the list/detail splitter when leaving Config mode.
+  if frame and frame.splitter then frame.splitter:Show() end
   if frame and frame.filterStrip then frame.filterStrip:Show() end
   if frame and frame.filterChipsBand then frame.filterChipsBand:Show() end
   UpdateSenderFilterChip()
@@ -1893,6 +1895,10 @@ local function ShowConfigContent(section)
   if frame and frame.senderChip then frame.senderChip:Hide() end
   if listPane then listPane:Hide() end
   if detailPane then detailPane:Hide() end
+  -- BSP-055 fix #1: the splitter is anchored to listPane and lives independently
+  -- in CreateSplitter; hiding listPane alone leaves the splitter drawing over
+  -- the empty list-pane area when Config takes over the host frame.
+  if frame and frame.splitter then frame.splitter:Hide() end
   if configHost then
     configHost:Show()
     if NS.ConfigPanel and NS.ConfigPanel.Attach then
@@ -2301,17 +2307,23 @@ local function RegisterMinimap()
           OpenConfigPanel()
           return
         end
+        -- BSP-055 fix #2: flatten the "Pause surface" submenu to top-level items.
+        -- The submenu construction (root:CreateButton(parent) → submenu:CreateButton(child))
+        -- matches Blizzard's own pattern (Blizzard_HeirloomCollection.lua:145), but in
+        -- this menu the cursor-traversal from parent → submenu items was causing the
+        -- whole menu to collapse mid-hover. Flat layout sidesteps the issue entirely,
+        -- and surfaces the surface list directly without the extra click.
+        -- Each click cycles the surface and returns MenuResponse.Refresh so the menu
+        -- stays open for fast multi-cycle without re-opening.
         MenuUtil.CreateContextMenu(self, function(_, root)
           root:CreateTitle(L("BawrSpam"))
-          local submenu = root:CreateButton(L("Pause surface"))
+          root:CreateTitle(L("Pause surface"))
           for _, surfaceKey in ipairs(VisiblePausePillKeys()) do
             local labelText = SURFACE_LABELS[surfaceKey] or surfaceKey
-            local suffixFn = function()
-              local s = NS.PauseState and NS.PauseState.GetSurface(surfaceKey) or "active"
-              return PauseStateMenuSuffix(s)
-            end
-            submenu:CreateButton(L(labelText) .. suffixFn(), function()
+            local s = NS.PauseState and NS.PauseState.GetSurface(surfaceKey) or "active"
+            root:CreateButton(L(labelText) .. PauseStateMenuSuffix(s), function()
               if NS.PauseState then NS.PauseState.CycleSurface(surfaceKey, "forward") end
+              return MenuResponse.Refresh
             end)
           end
           root:CreateDivider()
