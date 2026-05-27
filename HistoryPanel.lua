@@ -43,11 +43,12 @@ local LIST_ROW_HEIGHT  = 26
 local SCROLLBAR_GUTTER = 22
 local LIST_MAX_ROWS    = 40
 
--- Pane minimums tightened so the splitter cannot drag either pane below
--- the width where its content (legend strip on listPane, DETECTION STATS
--- tile labels on detailPane) would clip.
+-- listPane is locked at DEFAULT_LIST_PANE_WIDTH after BSP-055 followup-v3
+-- (splitter no longer draggable). MIN_LIST_PANE_WIDTH is retained as a
+-- clamp on GetStoredListPaneWidth so any pre-existing too-narrow value
+-- in SavedVariables snaps up to a width where the BSP-008 legend strip
+-- and column headers still fit.
 local MIN_LIST_PANE_WIDTH   = 420
-local MIN_DETAIL_PANE_WIDTH = 480
 local DEFAULT_LIST_PANE_WIDTH = 440
 local SPLITTER_WIDTH = 4
 
@@ -237,11 +238,10 @@ local function GetStoredListPaneWidth()
   return w
 end
 
-local function SaveListPaneWidth(width)
-  local store = GetCharStore()
-  if not store then return end
-  store.listPaneWidth = width
-end
+-- BSP-055 Gate 2 followup-v3: SaveListPaneWidth removed. The splitter is
+-- locked (CreateSplitter has no drag handler) so listPaneWidth no longer
+-- changes after the initial CreatePanes seed. The SV key keeps any older
+-- value harmlessly; GetStoredListPaneWidth clamps it to MIN_LIST_PANE_WIDTH.
 
 local function SavePosition()
   if not frame then return end
@@ -2047,12 +2047,17 @@ end
 
 -- BSP-055 Gate 2 followup-v2: ClampPanes removed. It existed to re-clamp the
 -- list/detail proportion when the user resized the panel; with the panel
--- now fixed-size, the only thing that moves the splitter is the user's
--- mouse drag, and that handler does its own MIN_LIST_PANE_WIDTH /
--- MIN_DETAIL_PANE_WIDTH bounds checks inline (see CreateSplitter OnUpdate).
+-- BSP-055 Gate 2 followup-v3: splitter is locked at DEFAULT_LIST_PANE_WIDTH.
+-- The drag, hover, tooltip, and OnUpdate scripts are gone; what remains is a
+-- purely-decorative vertical line between listPane and detailPane. The fixed
+-- panel size (940 x 560) only allowed ~20 px of useful splitter range, which
+-- was effectively vestigial (Argus Lens 3 UX nit on followup-v2). Locking it
+-- removes the SaveListPaneWidth path entirely; the SavedVariables key
+-- listPaneWidth becomes inert (existing values are clamped to the new range
+-- but no longer updated by user action).
 
 local function CreateSplitter(parent)
-  local splitter = CreateFrame("Button", nil, parent)
+  local splitter = CreateFrame("Frame", nil, parent)
   splitter:SetWidth(SPLITTER_WIDTH)
   splitter:SetPoint("TOPLEFT",    listPane, "TOPRIGHT", 0, 0)
   splitter:SetPoint("BOTTOMLEFT", listPane, "BOTTOMRIGHT", 0, 0)
@@ -2060,41 +2065,6 @@ local function CreateSplitter(parent)
   splitter.tex = splitter:CreateTexture(nil, "ARTWORK")
   splitter.tex:SetAllPoints(splitter)
   splitter.tex:SetColorTexture(0.23, 0.23, 0.27, 1)
-
-  splitter.hoverTex = splitter:CreateTexture(nil, "HIGHLIGHT")
-  splitter.hoverTex:SetAllPoints(splitter)
-  splitter.hoverTex:SetColorTexture(0.45, 0.45, 0.55, 1)
-
-  splitter:EnableMouse(true)
-  splitter:RegisterForDrag("LeftButton")
-  splitter.dragging = false
-
-  splitter:SetScript("OnMouseDown", function(self) self.dragging = true end)
-  splitter:SetScript("OnMouseUp",   function(self)
-    self.dragging = false
-    SaveListPaneWidth(listPane:GetWidth())
-  end)
-
-  splitter:SetScript("OnUpdate", function(self)
-    if not self.dragging then return end
-    local scale = parent:GetEffectiveScale()
-    local cx = select(1, GetCursorPosition()) / scale
-    local parentLeft = parent:GetLeft()
-    if not parentLeft then return end
-    local localX = cx - parentLeft - 6  -- 6 matches CreatePanes TOPLEFT offset
-    if localX < MIN_LIST_PANE_WIDTH then localX = MIN_LIST_PANE_WIDTH end
-    local maxList = parent:GetWidth() - SPLITTER_WIDTH - MIN_DETAIL_PANE_WIDTH - 16
-    -- 16 = left margin 6 + post-splitter gap 4 + right margin 6
-    if localX > maxList then localX = maxList end
-    listPane:SetWidth(localX)
-    detailPane:ClearAllPoints()
-    detailPane:SetPoint("TOPLEFT",     parent, "TOPLEFT",     6 + localX + SPLITTER_WIDTH + 4, -86)
-    detailPane:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -6, 40)
-  end)
-
-  AttachTooltip(splitter, "Adjust list / detail split",
-    "Drag horizontally to resize the list pane.",
-    "Width is saved per character.")
 
   parent.splitter = splitter
   return splitter
