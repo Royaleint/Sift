@@ -48,6 +48,7 @@ read_globals = {
     "StaticPopup_Show",
     "CLOSE",
     "MenuUtil",
+    "MenuResponse",
     "TooltipDataProcessor",
     "Enum",
     "PlayerLocation",

@@ -1437,7 +1437,19 @@ local function RegisterInterfaceOptions()
     if cancel and cancel.Click then
       pcall(cancel.Click, cancel)
     end
-    ConfigPanel.Open()
+    -- BSP-055 fix #12: defer ConfigPanel.Open by one frame so the secure
+    -- execution context unwinds before we create the BawrSpam frame.
+    -- Without this, the OnClick chain (secure Settings button → addon
+    -- handler → SettingsPanel:Close → ConfigPanel.Open) leaves a
+    -- secure-tainted breadcrumb that fires the "BawrSpam has been blocked
+    -- from an action only available to the Blizzard UI" warning when our
+    -- frame tries to register against UISpecialFrames. C_Timer.After(0)
+    -- queues the open onto the next OnUpdate tick, which is non-secure.
+    if C_Timer and C_Timer.After then
+      C_Timer.After(0, ConfigPanel.Open)
+    else
+      ConfigPanel.Open()
+    end
   end)
 
   local settings = _G["Settings"]

@@ -1104,6 +1104,26 @@ local function RefreshStatsArea()
   detailPane.stats.pipelineText:SetText(string.format(
     "%s |cffffffff%d|r   %s |cffffffff%d|r",
     L("Throttled"), throttled, L("Bubbles suppressed"), bubbles))
+
+  -- BSP-055 / Argus Nit 1: size the scrollChild to fit actual content so
+  -- pathological label wrapping (zhCN/ruRU, new surfaces, new categories)
+  -- triggers the scrollbar instead of clipping past the 280px envelope.
+  -- Defer one frame so FontString wrap heights settle after the SetText
+  -- calls above. GetTop/GetBottom return nil pre-layout; fall back to the
+  -- 280px envelope if that happens.
+  if C_Timer and C_Timer.After then
+    C_Timer.After(0, function()
+      if not detailPane or not detailPane.stats or not detailPane.stats.pipelineText then return end
+      local s = detailPane.stats
+      local statsTop = s:GetTop()
+      local lastBottom = s.pipelineText:GetBottom()
+      if statsTop and lastBottom then
+        local h = (statsTop - lastBottom) + 12
+        if h < 200 then h = 200 end
+        s:SetHeight(h)
+      end
+    end)
+  end
 end
 
 local function RenderBodyFlex(entry)
@@ -1701,15 +1721,41 @@ local function CreateDetailPane()
   detailPane.actions = { btn1 = footer.btn1, btn2 = footer.btn2 }
   detailPane.sections.footer = footer
 
-  -- Stats area (flex-grow to fill below footer)
-  local stats = CreateFrame("Frame", nil, detailPane)
-  stats:SetPoint("TOPLEFT",     footer, "BOTTOMLEFT",  0, -6)
-  stats:SetPoint("TOPRIGHT",    footer, "BOTTOMRIGHT", 0, -6)
-  stats:SetPoint("BOTTOMLEFT",  detailPane, "BOTTOMLEFT",  0, 0)
-  stats:SetPoint("BOTTOMRIGHT", detailPane, "BOTTOMRIGHT", 0, 0)
+  -- BSP-055 fix #11: stats area now lives inside a ScrollFrame so content
+  -- that exceeds the viewport (BY SURFACE / BY CATEGORY / PIPELINE rows when
+  -- text wraps, plus the lifetime-stats tiles row) scrolls instead of
+  -- clipping into the panel's tab strip. The ScrollFrame fills the area
+  -- below the footer; the scrollChild has a fixed worst-case content height
+  -- and its width tracks the viewport so the by-* FontStrings re-wrap on
+  -- panel resize.
+  local statsScroll = CreateFrame("ScrollFrame", nil, detailPane, "UIPanelScrollFrameTemplate")
+  statsScroll:SetPoint("TOPLEFT",     footer, "BOTTOMLEFT",  0, -6)
+  statsScroll:SetPoint("TOPRIGHT",    footer, "BOTTOMRIGHT", -22, -6)
+  statsScroll:SetPoint("BOTTOMLEFT",  detailPane, "BOTTOMLEFT",  0, 0)
+  statsScroll:SetPoint("BOTTOMRIGHT", detailPane, "BOTTOMRIGHT", -22, 0)
+
+  local stats = CreateFrame("Frame", nil, statsScroll)
+  -- Width set after BuildStatsArea via the scroll's OnSizeChanged; the
+  -- initial value matches the typical panel width so first-frame layout
+  -- does not collapse to zero. Height is a worst-case envelope (tiles row
+  -- + 3 wrapped data rows + labels + margins); scrollbar engages above it.
+  stats:SetSize(540, 280)
   BuildStatsArea(stats)
+  statsScroll:SetScrollChild(stats)
+
+  statsScroll:SetScript("OnSizeChanged", function(self, w)
+    if w and w > 0 then stats:SetWidth(w) end
+  end)
+
+  detailPane.statsScroll = statsScroll
   detailPane.stats = stats
-  detailPane.sections.stats = stats
+  -- BSP-055 / Argus Gate 1 finding: ShowEmptyState iterates detailPane.sections
+  -- and toggles SetShown on each. Point the section at the ScrollFrame, not
+  -- the scrollChild — hiding the scrollChild alone leaves the scrollbar
+  -- widgets (track, up/down buttons, slider texture) parented to statsScroll
+  -- still drawing over the empty-state placeholder. Visibility cascades from
+  -- statsScroll → stats so toggling the parent hides both as a unit.
+  detailPane.sections.stats = statsScroll
 
   -- Empty state placeholder (replaces header/body/footer when nothing selected)
   detailPane.empty = BuildEmptyState(detailPane)
@@ -1879,6 +1925,8 @@ local function ShowHistoryContent()
   if configHost then configHost:Hide() end
   if listPane then listPane:Show() end
   if detailPane then detailPane:Show() end
+  -- BSP-055 fix #1: restore the list/detail splitter when leaving Config mode.
+  if frame and frame.splitter then frame.splitter:Show() end
   if frame and frame.filterStrip then frame.filterStrip:Show() end
   if frame and frame.filterChipsBand then frame.filterChipsBand:Show() end
   UpdateSenderFilterChip()
@@ -1893,6 +1941,10 @@ local function ShowConfigContent(section)
   if frame and frame.senderChip then frame.senderChip:Hide() end
   if listPane then listPane:Hide() end
   if detailPane then detailPane:Hide() end
+  -- BSP-055 fix #1: the splitter is anchored to listPane and lives independently
+  -- in CreateSplitter; hiding listPane alone leaves the splitter drawing over
+  -- the empty list-pane area when Config takes over the host frame.
+  if frame and frame.splitter then frame.splitter:Hide() end
   if configHost then
     configHost:Show()
     if NS.ConfigPanel and NS.ConfigPanel.Attach then
@@ -2301,17 +2353,23 @@ local function RegisterMinimap()
           OpenConfigPanel()
           return
         end
+        -- BSP-055 fix #2: flatten the "Pause surface" submenu to top-level items.
+        -- The submenu construction (root:CreateButton(parent) → submenu:CreateButton(child))
+        -- matches Blizzard's own pattern (Blizzard_HeirloomCollection.lua:145), but in
+        -- this menu the cursor-traversal from parent → submenu items was causing the
+        -- whole menu to collapse mid-hover. Flat layout sidesteps the issue entirely,
+        -- and surfaces the surface list directly without the extra click.
+        -- Each click cycles the surface and returns MenuResponse.Refresh so the menu
+        -- stays open for fast multi-cycle without re-opening.
         MenuUtil.CreateContextMenu(self, function(_, root)
           root:CreateTitle(L("BawrSpam"))
-          local submenu = root:CreateButton(L("Pause surface"))
+          root:CreateTitle(L("Pause surface"))
           for _, surfaceKey in ipairs(VisiblePausePillKeys()) do
             local labelText = SURFACE_LABELS[surfaceKey] or surfaceKey
-            local suffixFn = function()
-              local s = NS.PauseState and NS.PauseState.GetSurface(surfaceKey) or "active"
-              return PauseStateMenuSuffix(s)
-            end
-            submenu:CreateButton(L(labelText) .. suffixFn(), function()
+            local s = NS.PauseState and NS.PauseState.GetSurface(surfaceKey) or "active"
+            root:CreateButton(L(labelText) .. PauseStateMenuSuffix(s), function()
               if NS.PauseState then NS.PauseState.CycleSurface(surfaceKey, "forward") end
+              return MenuResponse.Refresh
             end)
           end
           root:CreateDivider()
