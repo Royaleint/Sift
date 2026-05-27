@@ -1729,7 +1729,13 @@ local function CreateDetailPane()
 
   detailPane.statsScroll = statsScroll
   detailPane.stats = stats
-  detailPane.sections.stats = stats
+  -- BSP-055 / Argus Gate 1 finding: ShowEmptyState iterates detailPane.sections
+  -- and toggles SetShown on each. Point the section at the ScrollFrame, not
+  -- the scrollChild — hiding the scrollChild alone leaves the scrollbar
+  -- widgets (track, up/down buttons, slider texture) parented to statsScroll
+  -- still drawing over the empty-state placeholder. Visibility cascades from
+  -- statsScroll → stats so toggling the parent hides both as a unit.
+  detailPane.sections.stats = statsScroll
 
   -- Empty state placeholder (replaces header/body/footer when nothing selected)
   detailPane.empty = BuildEmptyState(detailPane)
