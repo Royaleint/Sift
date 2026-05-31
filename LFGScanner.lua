@@ -1,4 +1,5 @@
 local _, NS = ...
+local F = _G.Foundry_1_0
 local LFGScanner = {}
 
 local LFG_EVENTS = {
@@ -8,7 +9,7 @@ local LFG_EVENTS = {
   "LFG_LIST_APPLICANT_UPDATED",
 }
 
-local eventFrame = nil
+local controller = nil
 local enabled = false
 local renderHooksInstalled = false
 local renderHideEnabled = false
@@ -509,36 +510,29 @@ local function ScanAllApplicants()
   end
 end
 
-local function OnEvent(_self, event, ...)
-  if not enabled then
-    return
-  end
-
-  if event == "LFG_LIST_SEARCH_RESULTS_RECEIVED" then
+-- Per-event handlers. Foundry dispatch drops the native frame self and calls
+-- handler(event, ...), and Foundry only dispatches events this controller has
+-- registered, so the handlers need no `enabled` guard of their own.
+local HANDLERS = {
+  LFG_LIST_SEARCH_RESULTS_RECEIVED = function()
     SafeScan(ScanAllSearchResults)
-  elseif event == "LFG_LIST_SEARCH_RESULT_UPDATED" then
-    local searchResultID = ...
+  end,
+  LFG_LIST_SEARCH_RESULT_UPDATED = function(_, searchResultID)
     SafeScan(ScanSearchResult, searchResultID)
-  elseif event == "LFG_LIST_APPLICANT_LIST_UPDATED" then
+  end,
+  LFG_LIST_APPLICANT_LIST_UPDATED = function()
     SafeScan(ScanAllApplicants)
-  elseif event == "LFG_LIST_APPLICANT_UPDATED" then
-    local applicantID = ...
+  end,
+  LFG_LIST_APPLICANT_UPDATED = function(_, applicantID)
     SafeScan(ScanApplicant, applicantID)
-  end
-end
+  end,
+}
 
-local function EnsureFrame()
-  if eventFrame then
-    return eventFrame
+local function EnsureController()
+  if not controller and F and F.Events then
+    controller = F.Events:New("BawrSpam.LFGScanner")
   end
-
-  if type(CreateFrame) ~= "function" then
-    return nil
-  end
-
-  eventFrame = CreateFrame("Frame")
-  eventFrame:SetScript("OnEvent", OnEvent)
-  return eventFrame
+  return controller
 end
 
 local function ClearTransientLFG()
@@ -564,15 +558,19 @@ function LFGScanner.SetEnabled(shouldEnable)
       return false
     end
 
-    local frame = EnsureFrame()
-    if not frame then
-      DevLog("LFG scanner frame API unavailable; scanner not enabled.")
+    local c = EnsureController()
+    if not c then
+      DevLog("LFG scanner event controller unavailable (Foundry missing); scanner not enabled.")
       enabled = false
       return false
     end
 
-    for i = 1, #LFG_EVENTS do
-      frame:RegisterEvent(LFG_EVENTS[i])
+    -- Guard on `enabled` so a repeat enable does not double-Register (Foundry
+    -- refuses a duplicate Register -- a dev-build error, a release-build no-op).
+    if not enabled then
+      for i = 1, #LFG_EVENTS do
+        c:Register(LFG_EVENTS[i], HANDLERS[LFG_EVENTS[i]])
+      end
     end
     enabled = true
     SetRenderHideEnabled(true)
@@ -580,10 +578,8 @@ function LFGScanner.SetEnabled(shouldEnable)
   end
 
   enabled = false
-  if eventFrame then
-    for i = 1, #LFG_EVENTS do
-      eventFrame:UnregisterEvent(LFG_EVENTS[i])
-    end
+  if controller then
+    controller:UnregisterAll()
   end
   ClearTransientLFG()
   SetRenderHideEnabled(false)
