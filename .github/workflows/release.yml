@@ -10,6 +10,19 @@ on:
         description: 'Tag to release (e.g. v1.1.1). Leave empty to use the current ref.'
         required: false
         type: string
+      force:
+        description: 'Bypass the newest-tag guard (publish this tag even if a newer tag exists). Use only for a deliberate re-publish.'
+        required: false
+        type: boolean
+        default: false
+
+# Serialize releases: a bulk tag push fires this workflow once per tag ref, so
+# two runs can be in flight at once. Without serialization they race to be the
+# last CurseForge upload — and the loser's version is what players get. One
+# release publishes at a time; never cancel an upload that is already running.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -22,10 +35,46 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Extract current version changelog
+      # Guard against a stale tag re-triggering the uploader. A bulk tag push
+      # (e.g. `git push --tags`, or re-pushing previously-deleted tags) fires
+      # this workflow once per tag ref — including OLD versions. Whichever run
+      # finishes last becomes CurseForge's newest file, so an old tag can
+      # silently overwrite a newer release (this happened with v1.1.1 over
+      # v1.1.2 on 2026-06-01 — see release-pipeline.md). Only the highest
+      # version tag in the repo is allowed to publish.
+      # versionsort.suffix makes "vX.Y.Z-rc1" sort BEFORE "vX.Y.Z" so a final
+      # release is never blocked by its own prerelease tag.
+      - name: Guard — only the newest tag may publish
+        id: guard
         run: |
           TAG="${{ inputs.tag }}"
           [ -z "$TAG" ] && TAG="${{ github.ref_name }}"
+          # Highest version = first line of the version-sorted tag list. Read
+          # into a var and slice the first line rather than piping to `head`,
+          # so an early-closed pipe can't trip `set -o pipefail` (no SIGPIPE).
+          ALL_TAGS=$(git -c versionsort.suffix=-alpha \
+                         -c versionsort.suffix=-beta \
+                         -c versionsort.suffix=-rc \
+                         tag --sort=-v:refname)
+          NEWEST="${ALL_TAGS%%$'\n'*}"
+          echo "Triggering tag:     $TAG"
+          echo "Newest tag in repo: $NEWEST"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if [ "$TAG" = "$NEWEST" ] || [ "${{ inputs.force }}" = "true" ]; then
+            if [ "$TAG" != "$NEWEST" ]; then
+              echo "::warning::Publishing $TAG via force override even though $NEWEST is newer."
+            fi
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::$TAG is not the newest tag ($NEWEST); skipping packaging and CurseForge upload to avoid publishing an older build over a newer one. Re-run from the Actions tab with force=true if this is a deliberate re-publish."
+          fi
+
+      - name: Extract current version changelog
+        if: steps.guard.outputs.publish == 'true'
+        env:
+          TAG: ${{ steps.guard.outputs.tag }}
+        run: |
           echo "Extracting release notes for tag: $TAG"
           # Extract the section whose heading matches the tag (## vX.Y.Z), stop
           # at the next "## v" version heading. Fail loudly if absent.
@@ -56,6 +105,7 @@ jobs:
       # (Retail, Classic Era, TBC). No Wago/WoWInterface yet — add the IDs +
       # tokens to this step when that day comes (no rebuild needed).
       - name: Package and Release
+        if: steps.guard.outputs.publish == 'true'
         uses: BigWigsMods/packager@v2
         env:
           CF_API_KEY: ${{ secrets.CF_API_KEY }}
