@@ -1,5 +1,9 @@
 local ADDON_NAME, NS = ...
 
+-- Foundry-1.0 is a hard dependency (## Dependencies: Foundry-1.0), so it is loaded
+-- before BawrSpam and _G.Foundry_1_0 is bound (same pattern as LFGScanner.lua:2).
+local F = _G.Foundry_1_0
+
 local initialized = false
 
 local function Print(message)
@@ -395,22 +399,33 @@ local function BdevSlashHandler(msg)
 	end
 end
 
-local frame = CreateFrame("Frame")
-frame:RegisterEvent("ADDON_LOADED")
-frame:RegisterEvent("PLAYER_LOGIN")
-frame:SetScript("OnEvent", function(_self, event, ...)
-  if event == "ADDON_LOADED" then
-    local addonName = ...
-    if addonName == ADDON_NAME then
-      Initialize()
-    end
-  elseif event == "PLAYER_LOGIN" then
-    InstallScanner()
-    if C_Timer and C_Timer.After then
-      C_Timer.After(1, InstallScanner)
-    end
-  end
-end)
+-- Bootstrap via Foundry.Lifecycle (FND-004 Phase E). Adopts NS onto a Lifecycle
+-- controller, replacing the hand-rolled driver frame + ADDON_LOADED/PLAYER_LOGIN
+-- demux + the C_Timer retry. F:RequireModule fails loud with a clear diagnostic if a
+-- too-old Foundry without the Lifecycle module is loaded (the version-skew window
+-- before Foundry's Lifecycle release lands) instead of an opaque nil-index.
+--
+-- The C_Timer.After(1, InstallScanner) retry is DROPPED as vestigial: InstallScanner
+-- no-ops while `initialized == false`, and `initialized` only flips true at the end of
+-- Initialize() (which runs on the addon-loaded hook, before the login hook), so the
+-- +1s retry could only ever fire after the synchronous login-hook call had already
+-- installed the scanner. No behavior change.
+--
+-- Subscription ORDER is load-bearing: OnAddonLoaded (Initialize) must precede OnLogin
+-- (InstallScanner) -- if BawrSpam were ever loaded on demand after login, both hooks
+-- catch up synchronously in registration order, and InstallScanner guards on
+-- `initialized`, so Initialize must run first.
+--
+-- §7.5 deliberate-exclusion set (Lifecycle adopts WHEN these run, not their contents):
+--   * NS.DB.Initialize() hard-gate (in Initialize) -- DB-readiness, not a phase; stays.
+--   * idempotency flag `initialized` -- kept (cheap consumer-owned guard).
+--   * slash commands (/bawrspam, /bdev below) -- Foundry.Commands territory; not adopted.
+--   * settings-driven LFG (de)registration (LFGScanner) -- runtime/Events; stays in module.
+--   * Initialize() module chain + InstallScanner's ChatScanner.Install -- consumer-owned.
+--   * OnLogout -- Lifecycle ships it, but BawrSpam has no logout teardown; deliberately unused.
+local controller = F:RequireModule("Lifecycle", 1):New(NS, ADDON_NAME)
+controller:OnAddonLoaded(function() Initialize() end)
+controller:OnLogin(function() InstallScanner() end)
 
 SLASH_BAWRSPAM1 = "/bawrspam"
 SlashCmdList.BAWRSPAM = SlashHandler
