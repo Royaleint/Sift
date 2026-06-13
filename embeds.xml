@@ -1,4 +1,12 @@
 <Ui xmlns="http://www.blizzard.com/wow/ui/">
+  <!-- Foundry-1.0 vendored at v1.0.4 (BSP-064). Standalone Foundry-1.0 wins when
+       present (OptionalDeps ordering loads it first); this embed stands down silently
+       via the bootstrap gate in Foundry.lua. -->
+  <Script file="Libs/Foundry-1.0/Foundry.lua"/>
+  <Script file="Libs/Foundry-1.0/Modules/Commands.lua"/>
+  <Script file="Libs/Foundry-1.0/Modules/Events.lua"/>
+  <Script file="Libs/Foundry-1.0/Modules/Lifecycle.lua"/>
+  <Script file="Libs/Foundry-1.0/Modules/DB.lua"/>
   <Script file="Libs/LibStub/LibStub.lua"/>
   <Include file="Libs/CallbackHandler-1.0/CallbackHandler-1.0.xml"/>
   <!-- AceGUI removed at BSP-022 (ConfigPanel native conversion). All widgets
