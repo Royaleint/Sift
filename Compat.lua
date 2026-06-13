@@ -36,7 +36,6 @@ local function Detect(env)
     isClassicFamily = isClassicFamily,
     hasModernHistoryList = hasModernHistoryList,
     hasClassicHistoryList = hasClassicHistoryList,
-    hasLFGRenderHide = isRetail and hasModernHistoryList,
     hasChatReportDialog = hasChatReportDialog,
   }
 end
