@@ -4,7 +4,7 @@ enable-nolib-creation: no
 enable-toc-creation: yes
 
 manual-changelog:
-  filename: CHANGELOG.md
+  filename: RELEASE_NOTES.md
   markup-type: markdown
 
 # No `externals:` block — BawrSpam vendors its libraries directly in Libs/
