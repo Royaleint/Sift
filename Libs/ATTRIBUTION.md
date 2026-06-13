@@ -13,15 +13,8 @@ BawrSpam vendors a small set of WoW Lua libraries to avoid a fetch step at insta
 
 - **Source:** https://www.wowace.com/projects/callbackhandler
 - **License:** All Rights Reserved per upstream `.toc` — explicit permission to use, modify, fork, and redistribute with WoW addons (standard WowAce vendoring permission)
-- **Purpose:** Event/callback dispatcher used internally by AceDB-3.0 and other Ace3 libraries.
-- **Vendored at:** BSP-002 (AceDB dependency)
-
-## AceDB-3.0
-
-- **Source:** https://www.wowace.com/projects/ace3
-- **License:** All Rights Reserved per upstream `.toc` — explicit permission to use, modify, fork, and redistribute with WoW addons (standard WowAce vendoring permission)
-- **Purpose:** SavedVariables wrapper providing `global` / `profile` / `char` scopes, defaults, and migration hooks.
-- **Vendored at:** BSP-002 (DB layer)
+- **Purpose:** Event/callback dispatcher used internally by LibDBIcon-1.0 and LibDataBroker-1.1.
+- **Vendored at:** BSP-002 (AceDB dependency — remains after BSP-062 for LibDBIcon/LibDataBroker)
 
 ## LibDataBroker-1.1
 
@@ -43,10 +36,11 @@ BawrSpam vendors a small set of WoW Lua libraries to avoid a fetch step at insta
 - No modifications. Spot-check on initial vendor showed no studio-specific patches.
 - Updates: re-vendor from WowAce when the upstream lib publishes a relevant fix. Track in `BawrSpam_Dev/BSpam_Tracker.md`.
 
-## Libraries removed at BSP-022
+## Libraries removed
 
 | Library | Removed when | Reason |
 |---|---|---|
 | AceGUI-3.0 | BSP-022 | ConfigPanel fully native (MinimalSliderWithSteppersTemplate / OptionsSliderTemplate / UICheckButtonTemplate / native multiLine EditBox in UIPanelScrollFrameTemplate). |
+| AceDB-3.0 | BSP-062 | SavedVariables layer replaced by Foundry.DB (Foundry-1.0). |
 
 WagoAnalytics is intentionally NOT vendored (no telemetry in v1 personal-use).
