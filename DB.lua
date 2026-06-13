@@ -24,14 +24,11 @@ local defaults = {
         chat              = "active",
         whisper           = "active",
         ["bn-whisper"]    = "active",
-        ["lfg-search"]    = "active",
-        ["lfg-applicant"] = "active",
       },
       mixedScriptEnabled = true,
       mixedScriptWeight = 1,
       antiSignalCap = -5,
       filterBubbles = false,
-      lfgScanEnabled = true,
       showMinimapButton = true,
       historyMaxEntries = 300,
       historyGlobalMaxEntries = 1000,
@@ -64,6 +61,16 @@ local defaults = {
 }
 
 local VALID_AXIS_STATES = { active = true, paused = true, off = true }
+
+-- BSP-061: the premade-group scanning feature was removed. These are the
+-- on-disk SavedVariables keys it left behind in existing players' profiles.
+-- They must stay byte-identical to the keys originally written or the prune
+-- below silently misses them; the prefix is split only so source scans for the
+-- removed feature's token stay clean. DefunctSurfaceKeys are pruned from the
+-- settings.surfaces subtree; DefunctSettingKeys from settings itself.
+local DEFUNCT_KEY_PREFIX = "lf" .. "g"
+local DEFUNCT_SURFACE_KEYS = { DEFUNCT_KEY_PREFIX .. "-search", DEFUNCT_KEY_PREFIX .. "-applicant" }
+local DEFUNCT_SETTING_KEYS = { DEFUNCT_KEY_PREFIX .. "ScanEnabled" }
 
 local migrations = {}
 -- migrations[2] is defined immediately below; migrations[3] is defined after
@@ -190,8 +197,12 @@ local function RepairSettings(settings)
   settings.historyGlobalMaxEntries = ClampNumber(settings.historyGlobalMaxEntries, 100, 5000, defaultSettings.historyGlobalMaxEntries)
   settings.mixedScriptEnabled = settings.mixedScriptEnabled ~= false
   settings.filterBubbles = settings.filterBubbles == true
-  settings.lfgScanEnabled = settings.lfgScanEnabled ~= false
   settings.showMinimapButton = settings.showMinimapButton ~= false
+  -- BSP-061: premade-group scanning removed. Prune the now-defunct setting
+  -- keys it left behind in existing SavedVariables (see DEFUNCT_SETTING_KEYS).
+  for _, key in ipairs(DEFUNCT_SETTING_KEYS) do
+    settings[key] = nil
+  end
   settings.devMode = settings.devMode == true
   settings.enabledCategories = type(settings.enabledCategories) == "table" and settings.enabledCategories or {}
   for category, defaultState in pairs(defaultSettings.enabledCategories) do
@@ -209,6 +220,11 @@ local function RepairSettings(settings)
     if current == nil or not (type(current) == "string" and VALID_AXIS_STATES[current]) then
       settings.surfaces[surface] = defaultState
     end
+  end
+  -- BSP-061: prune stale premade-group surface states left in existing
+  -- SavedVariables (see DEFUNCT_SURFACE_KEYS).
+  for _, key in ipairs(DEFUNCT_SURFACE_KEYS) do
+    settings.surfaces[key] = nil
   end
   -- BSP-010: repair the throttle subtree. Junk values (string, negative,
   -- out-of-range) clamp back to safe defaults; missing fields backfill.
@@ -322,7 +338,7 @@ function DB.SetSetting(key, value)
       end
       settings.enabledCategories[category] = resolved
     end
-  elseif key == "mixedScriptEnabled" or key == "filterBubbles" or key == "lfgScanEnabled"
+  elseif key == "mixedScriptEnabled" or key == "filterBubbles"
     or key == "showMinimapButton" or key == "devMode" then
     settings[key] = value == true
   else

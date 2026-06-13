@@ -2,7 +2,7 @@ local _, NS = ...
 local PauseState = {}
 
 local VALID_STATES = { active = true, paused = true, off = true }
-local SURFACE_KEYS = { "chat", "whisper", "bn-whisper", "lfg-search", "lfg-applicant" }
+local SURFACE_KEYS = { "chat", "whisper", "bn-whisper" }
 local CATEGORY_KEYS = { "RMT", "Boosting", "Casino", "Phishing", "Commercial", "Anti" }
 local CYCLE_FORWARD = { active = "paused", paused = "off", off = "active" }
 local CYCLE_BACKWARD = { active = "off", off = "paused", paused = "active" }
