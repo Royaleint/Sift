@@ -22,8 +22,9 @@ Personal-use only — not published to CurseForge or Wago.
 
 1. Clone or download this repository.
 2. Place the `BawrSpam/` folder in `World of Warcraft/_retail_/Interface/AddOns/BawrSpam/`.
-3. Place the vendored libraries (LibStub, CallbackHandler-1.0, AceDB-3.0, LibDataBroker-1.1, LibDBIcon-1.0) in `World of Warcraft/_retail_/Interface/AddOns/` — see `Libs/ATTRIBUTION.md`.
-4. Enable in your addon list and `/reload`.
+3. Install [Foundry-1.0](https://www.curseforge.com/wow/addons/foundry-1-0) separately (TOC dependency, not vendored).
+4. Place the vendored libraries (LibStub, CallbackHandler-1.0, LibDataBroker-1.1, LibDBIcon-1.0) in `World of Warcraft/_retail_/Interface/AddOns/` — see `Libs/ATTRIBUTION.md`.
+5. Enable in your addon list and `/reload`.
 
 ## Commands
 
@@ -77,4 +78,4 @@ Vendored libraries under `Libs/` retain their upstream terms; see
 
 Inspired by funkydude's BadBoy (https://github.com/funkydude/BadBoy) — a long-running chat-spam filter for WoW. BawrSpam is an independent original-work implementation; no code, patterns, or data are imported from BadBoy or any other addon. The category model, scoring approach, cleanse pipeline, and pattern corpus are all original work, written from observed in-game spam by the author.
 
-Vendored libraries (LibStub, CallbackHandler-1.0, AceDB-3.0, LibDataBroker-1.1, LibDBIcon-1.0) retain their original licenses and authorship; see `Libs/ATTRIBUTION.md`.
+Vendored libraries (LibStub, CallbackHandler-1.0, LibDataBroker-1.1, LibDBIcon-1.0) retain their original licenses and authorship; see `Libs/ATTRIBUTION.md`.

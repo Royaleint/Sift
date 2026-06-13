@@ -7,7 +7,6 @@ local BLOCKED_ACTOR_CAP = 5000
 
 local defaults = {
   global = {
-    schemaVersion = CURRENT_SCHEMA_VERSION,
     allowlist = {},
     blockedActors = {},
     settings = {
@@ -33,9 +32,9 @@ local defaults = {
       historyMaxEntries = 300,
       historyGlobalMaxEntries = 1000,
       devMode = false,
-      -- BSP-010: confirmed-spam-repeat dedupe. Additive — AceDB copyDefaults
-      -- backfills this subtree into existing player SVs on first db.global
-      -- access. Module-level defaults in Throttle.lua mirror these values.
+      -- BSP-010: confirmed-spam-repeat dedupe. Additive — Foundry.DB backfills
+      -- nil slots from defaults on first section access. Module-level defaults
+      -- in Throttle.lua mirror these values.
       throttle = {
         enabled = true,
         bufferSize = 20,
@@ -234,27 +233,25 @@ local function RepairSettings(settings)
     defaultSettings.throttle.bufferSize)
 end
 
-local function RepairShape(db)
-  db.global = db.global or {}
-  db.char = db.char or {}
-  db.global.schemaVersion = tonumber(db.global.schemaVersion) or CURRENT_SCHEMA_VERSION
-  db.global.allowlist = db.global.allowlist or {}
-  db.global.blockedActors = db.global.blockedActors or {}
-  db.global.settings = db.global.settings or {}
-  db.char.history = db.char.history or {}
-  db.char.historyCursor = db.char.historyCursor or 0
-  db.char.stats = db.char.stats or {}
-  db.char.stats.initialized = db.char.stats.initialized == true
-  db.char.stats.detections = tonumber(db.char.stats.detections) or 0
-  db.char.stats.blocked = tonumber(db.char.stats.blocked) or 0
-  db.char.stats.restored = tonumber(db.char.stats.restored) or 0
-  db.char.stats.bySurface = type(db.char.stats.bySurface) == "table" and db.char.stats.bySurface or {}
-  db.char.stats.passThru = tonumber(db.char.stats.passThru) or 0
-  db.char.stats.byCategory = type(db.char.stats.byCategory) == "table" and db.char.stats.byCategory or {}
-  db.char.stats.throttled = tonumber(db.char.stats.throttled) or 0
-  db.char.stats.bubblesSuppressed = tonumber(db.char.stats.bubblesSuppressed) or 0
-  db.char.lastSeenVersion = db.char.lastSeenVersion or ADDON_VERSION
-  RepairSettings(db.global.settings)
+local function RepairShape(global, char)
+  global.schemaVersion = tonumber(global.schemaVersion) or CURRENT_SCHEMA_VERSION
+  global.allowlist = global.allowlist or {}
+  global.blockedActors = global.blockedActors or {}
+  global.settings = global.settings or {}
+  char.history = char.history or {}
+  char.historyCursor = char.historyCursor or 0
+  char.stats = char.stats or {}
+  char.stats.initialized = char.stats.initialized == true
+  char.stats.detections = tonumber(char.stats.detections) or 0
+  char.stats.blocked = tonumber(char.stats.blocked) or 0
+  char.stats.restored = tonumber(char.stats.restored) or 0
+  char.stats.bySurface = type(char.stats.bySurface) == "table" and char.stats.bySurface or {}
+  char.stats.passThru = tonumber(char.stats.passThru) or 0
+  char.stats.byCategory = type(char.stats.byCategory) == "table" and char.stats.byCategory or {}
+  char.stats.throttled = tonumber(char.stats.throttled) or 0
+  char.stats.bubblesSuppressed = tonumber(char.stats.bubblesSuppressed) or 0
+  char.lastSeenVersion = char.lastSeenVersion or ADDON_VERSION
+  RepairSettings(global.settings)
 end
 
 local function ApplyMigrations(db)
@@ -274,17 +271,17 @@ local function ApplyMigrations(db)
 end
 
 function DB.Initialize()
-  local AceDB = LibStub and LibStub("AceDB-3.0", true)
-  if not AceDB then
+  local F = _G.Foundry_1_0
+  if not (F and F:HasModule("DB")) then
     NS._InitFailed = true
-    Print("could not initialize: AceDB-3.0 is missing.")
+    Print("could not initialize: Foundry.DB is missing.")
     return false
   end
 
-  DB.db = AceDB:New("BawrSpamDB", defaults, true)
-  RepairShape(DB.db)
+  DB.db = F.DB:New({ name = "BawrSpam", sv = "BawrSpamDB", defaults = defaults, defaultProfile = true })
+  RepairShape(DB.db.global, DB.db.char)
   ApplyMigrations(DB.db)
-  RepairShape(DB.db)
+  RepairShape(DB.db.global, DB.db.char)
   DB.db.char.lastSeenVersion = ADDON_VERSION
   return true
 end

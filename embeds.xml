@@ -1,7 +1,6 @@
 <Ui xmlns="http://www.blizzard.com/wow/ui/">
   <Script file="Libs/LibStub/LibStub.lua"/>
   <Include file="Libs/CallbackHandler-1.0/CallbackHandler-1.0.xml"/>
-  <Include file="Libs/AceDB-3.0/AceDB-3.0.xml"/>
   <!-- AceGUI removed at BSP-022 (ConfigPanel native conversion). All widgets
        it used to provide (Slider, CheckBox, MultiLineEditBox) are now built
        on Blizzard-native templates: MinimalSliderWithSteppersTemplate (Retail)
