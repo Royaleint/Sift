@@ -3,17 +3,16 @@
 > **Version:** 1.0.0 | TOC: 120005 | WoW Retail 12.0.5+
 > **Status:** Personal-use only — public release pending.
 
-A personal chat-spam filter for World of Warcraft Retail with recoverable history. Blocks RMT, boost-service, casino, and phishing spam across chat, LFG listings, and LFG applicants, and lets you review or restore anything it blocks.
+A personal chat-spam filter for World of Warcraft Retail with recoverable history. Blocks RMT, boost-service, casino, and phishing spam in chat, and lets you review or restore anything it blocks.
 
 ## Features
 
 - **Chat Filter** — Blocks spam in CHANNEL, WHISPER, SAY, and YELL channels before it reaches your chat frame. Trusted senders (party, raid, guild, friends, Battle.net friends) are never filtered.
-- **LFG Suppression** — Hides blocked LFG listings and applicants at the render layer. Recycled rows correctly re-show when their suppression window ages out.
 - **Chat Bubble Suppression** — Optional CVar toggle that hides world chat bubbles for blocked SAY/YELL spam. CVar restores on the next non-blocked event and on logout — your bubble setting isn't permanently altered.
 - **Repeat-Sender Throttle** — Catches the same sender repeating the same cleansed message across surfaces (CHANNEL/WHISPER/YELL/SAY) without re-running the full scoring path.
 - **Recoverable History** — Every block lands in a per-character history table you can review, restore, or always-allow from. Stored locally; never transmitted.
 - **History Panel** — Master/detail UI with category chips, surface/time/outcome/sort filters, FauxScroll list, and surface-aware Restore / Always-allow actions.
-- **Config Panel** — Eight-section options panel covering Detection thresholds, Allowlist, Blocked list, Surfaces, Notifications, LFG, Bubbles, and Advanced. Slash subcommands hit the same surfaces.
+- **Config Panel** — Eight-section options panel covering Detection, Categories, Surfaces, Allowlist, Blocked, History, UI, and Dev. Slash subcommands hit the same surfaces.
 - **Unit Tooltip Annotation** — Hover any player and see "BawrSpam: blocked N spam messages (last Xm ago)" if you've blocked them before.
 - **Minimap Launcher** — LibDBIcon button toggles the history panel.
 
@@ -58,8 +57,8 @@ The pattern data shipped in `PatternData.lua` is XOR-encoded so the addon files 
 ## Known Limitations
 
 - **Pattern corpus is small at v1.0** — ships with 30 hand-curated rules; expected to grow toward 100+ via personal dogfood observation.
-- **LFG applicant report send is disabled** — the addon-callable applicant report dialog path wasn't safely confirmed during BSP-005 implementation. Listings report works.
-- **No mail-spam scanning** — chat and LFG surfaces only. Mail scanning is a v2.0 candidate.
+- **No LFG listing scanning** — premade-group listing text is Kstring-protected on Midnight (unreadable to addons), and Blizzard filters advertisement listings natively, so BawrSpam covers chat surfaces only.
+- **No mail-spam scanning** — chat surfaces only. Mail scanning is a v2.0 candidate.
 
 ## License
 

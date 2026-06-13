@@ -88,9 +88,6 @@ local function InstallScanner()
   end
 
   NS.ChatScanner.Install()
-  if NS.LFGScanner and NS.LFGScanner.RefreshEnabled then
-    NS.LFGScanner.RefreshEnabled()
-  end
 end
 
 local function ToggleHistory()
@@ -427,7 +424,6 @@ end
 --   * NS.DB.Initialize() hard-gate (in Initialize) -- DB-readiness, not a phase; stays.
 --   * idempotency flag `initialized` -- kept (cheap consumer-owned guard).
 --   * slash commands (/bawrspam, /bdev below) -- Foundry.Commands territory; not adopted.
---   * settings-driven LFG (de)registration (LFGScanner) -- runtime/Events; stays in module.
 --   * Initialize() module chain + InstallScanner's ChatScanner.Install -- consumer-owned.
 --   * OnLogout -- Lifecycle ships it, but BawrSpam has no logout teardown; deliberately unused.
 local controller = F:RequireModule("Lifecycle", 1):New(NS, ADDON_NAME)

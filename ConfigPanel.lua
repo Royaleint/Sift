@@ -51,28 +51,12 @@ local SECTIONS = {
 
 local CATEGORY_KEYS = { "RMT", "Boosting", "Casino", "Phishing", "Commercial", "Anti" }
 
-local SURFACE_KEYS = { "chat", "whisper", "bn-whisper", "lfg-search", "lfg-applicant" }
+local SURFACE_KEYS = { "chat", "whisper", "bn-whisper" }
 local SURFACE_LABELS = {
   chat              = "Chat",
   whisper           = "Whisper",
   ["bn-whisper"]    = "Bnet whisper",
-  ["lfg-search"]    = "LFG search",
-  ["lfg-applicant"] = "LFG applicant",
 }
-
-local function IsLFGSurface(surface)
-  return surface == "lfg-search" or surface == "lfg-applicant"
-end
-
-local function VisibleSurfaceKeys()
-  local keys = {}
-  for _, surface in ipairs(SURFACE_KEYS) do
-    if not (NS.Compat and NS.Compat.isClassicFamily and IsLFGSurface(surface)) then
-      keys[#keys + 1] = surface
-    end
-  end
-  return keys
-end
 
 local DEFAULT_SETTINGS = {
   threshold = 4,
@@ -88,7 +72,6 @@ local DEFAULT_SETTINGS = {
   mixedScriptWeight = 1,
   antiSignalCap = -5,
   filterBubbles = false,
-  lfgScanEnabled = true,
   historyMaxEntries = 300,
   historyGlobalMaxEntries = 1000,
   showMinimapButton = true,
@@ -223,14 +206,6 @@ local function SetFilterBubblesEnabled(value)
   SetSetting("filterBubbles", value)
   if not value and NS.BubbleSuppressor and NS.BubbleSuppressor.MaybeRestore then
     NS.BubbleSuppressor.MaybeRestore()
-  end
-end
-
-local function SetLFGScanEnabled(value)
-  value = value == true
-  SetSetting("lfgScanEnabled", value)
-  if NS.LFGScanner and NS.LFGScanner.SetEnabled then
-    NS.LFGScanner.SetEnabled(value)
   end
 end
 
@@ -1665,17 +1640,14 @@ end
 RenderSurfaces = function()
   local y = AddSectionTitle("Surfaces", "Three states per surface: Active (block) / Paused (detect + log, don't hide) / Off (don't scan).")
   y = AddStatus(y, sectionStatus.Surfaces)
-  for _, surface in ipairs(VisibleSurfaceKeys()) do
+  for _, surface in ipairs(SURFACE_KEYS) do
     local label = SURFACE_LABELS[surface] or surface
     y = AddAxisPauseRow("surface", surface, label, y)
   end
   -- Preserved settings (live toggles, not part of the pause taxonomy).
-  y = AddCheckbox("Filter bubbles", "filterBubbles", y, SetFilterBubblesEnabled,
+  AddCheckbox("Filter bubbles", "filterBubbles", y, SetFilterBubblesEnabled,
     "Hide blocked Say / Yell text from chat bubbles via a Blizzard cvar toggle. " ..
     "Auto-restores after each suppressed message and on logout.")
-  AddCheckbox("LFG scanning", "lfgScanEnabled", y, SetLFGScanEnabled,
-    "Scan LFG listings and applicants. Required for LFG render-hide (the visual blocking " ..
-    "of spam rows in the Group Finder window).")
 end
 
 RenderAllowlist = function()
@@ -2150,7 +2122,7 @@ end
 local NAV_TOOLTIPS = {
   Detection  = "Score threshold, mixed-script signal weight, anti-signal cap.",
   Categories = "Toggle each spam category between Active (block), Paused (log only), and Off (ignore).",
-  Surfaces   = "Toggle each chat / LFG surface between Active, Paused, and Off. Also: filter bubbles, LFG scanning.",
+  Surfaces   = "Toggle each chat surface between Active, Paused, and Off. Also: filter bubbles.",
   Allowlist  = "Senders BawrSpam will always trust. Add from History or import a saved list.",
   Blocked    = "Recently blocked actors. Manage repeat offenders.",
   History    = "Retained-history limit and clear control.",

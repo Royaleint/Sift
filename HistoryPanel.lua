@@ -67,17 +67,17 @@ local IGNORED_BREAKDOWN_KEYS = {
 
 local CATEGORIES         = { "RMT", "Boosting", "Casino", "Phishing", "Commercial", "Anti" }
 
--- Surface uses canonical lowercase keys ("chat", "lfg-search", "lfg-applicant")
--- to match what ChatScanner writes into entry.surface. SURFACE_LABELS maps the
--- key to its display name so the dropdown UI stays user-friendly.
-local SURFACE_VALUES = { "All", "chat", "whisper", "bn-whisper", "lfg-search", "lfg-applicant" }
+-- Surface uses canonical lowercase keys ("chat", "whisper") to match what
+-- ChatScanner writes into entry.surface. SURFACE_LABELS maps the key to its
+-- display name so the dropdown UI stays user-friendly. An unmapped key (e.g. a
+-- stale surface string from a removed feature persisted in old SavedVariables)
+-- falls back to its raw surface string rather than erroring or being dropped.
+local SURFACE_VALUES = { "All", "chat", "whisper", "bn-whisper" }
 local SURFACE_LABELS = {
   All               = "All",
   chat              = "Chat",
   whisper           = "Whisper",
   ["bn-whisper"]    = "Bnet whisper",
-  ["lfg-search"]    = "LFG search",
-  ["lfg-applicant"] = "LFG applicant",
 }
 
 -- Friendly labels for the WoW chat event names persisted as entry.channel.
@@ -138,7 +138,7 @@ local STATS_TILE_TOOLTIPS = {
   },
   blocked = {
     title = "Blocked",
-    body  = "Lifetime count of spam messages hidden from chat or LFG. " ..
+    body  = "Lifetime count of spam messages hidden from chat. " ..
             "Does not include pass-thru (paused surface/category) detections.",
   },
   passThru = {
@@ -695,18 +695,8 @@ local function PerformRestore(entry)
   if NS.History and NS.History.MarkRestored then
     NS.History.MarkRestored(entry.id)
   end
-  if NS.Suppression then
-    if entry.surface == "lfg-search" and NS.Suppression.ClearLFGSearchResult then
-      NS.Suppression.ClearLFGSearchResult(entry.searchResultID)
-    elseif entry.surface == "lfg-applicant" and NS.Suppression.ClearLFGApplicant then
-      NS.Suppression.ClearLFGApplicant(entry.applicantID)
-    end
-  end
   if NS.ReportFlow and NS.ReportFlow.Clear then
     NS.ReportFlow.Clear(entry.id)
-  end
-  if NS.LFGScanner and NS.LFGScanner.RefreshVisibleRows then
-    NS.LFGScanner.RefreshVisibleRows()
   end
   -- Keep the just-restored entry visible: when the default Outcome filter is
   -- "Blocked", a Restore would immediately filter the row out. Promote the
@@ -747,9 +737,6 @@ local function PerformBlockRetroactively(entry)
     if (surface == "chat" or surface == "whisper" or surface == "bn-whisper")
        and NS.ReportFlow.ReportChatNow then
       NS.ReportFlow.ReportChatNow(entry.id)
-    elseif (surface == "lfg-search" or surface == "lfg-applicant")
-       and NS.ReportFlow.ReportLFGAdvertisementNow then
-      NS.ReportFlow.ReportLFGAdvertisementNow(entry.id)
     end
   end
   if RefreshList then RefreshList() end
@@ -807,7 +794,6 @@ local function GetReportKind(entry)
 end
 
 local function GetReportLabel(kind)
-  if kind == "lfg-ad" then return "Report Listing" end
   if kind == "chat" then return "Report Spam" end
   return nil
 end
@@ -816,9 +802,7 @@ local function PerformReport(entry)
   local kind = GetReportKind(entry)
   if not kind or not NS.ReportFlow then return end
 
-  if kind == "lfg-ad" and NS.ReportFlow.ReportLFGAdvertisementNow then
-    NS.ReportFlow.ReportLFGAdvertisementNow(entry.id)
-  elseif kind == "chat" and NS.ReportFlow.ReportChatNow then
+  if kind == "chat" and NS.ReportFlow.ReportChatNow then
     NS.ReportFlow.ReportChatNow(entry.id)
   end
 
@@ -940,15 +924,6 @@ local function RenderActions(entry)
   end
 
   if outcome == "pass-thru" then
-    if entry.surface == "lfg-applicant" then
-      -- No safe in-game applicant-report path: C_LFGList exposes only
-      -- ReportGroupAsAdvertisement(searchResultID) for listings, and
-      -- C_ReportSystem.SendReport is documented "Not allowed to be called
-      -- by addons." BSP-008 investigation closed without a callable API;
-      -- hide the action row for pass-thru applicant entries until a future
-      -- BSP- ticket re-investigates.
-      return
-    end
     actions.btn1:SetText(L("Block retroactively"))
     actions.btn1:SetScript("OnClick", function()
       PerformBlockRetroactively(entry)
@@ -985,9 +960,7 @@ local function RenderActions(entry)
     actions.btn2:SetScript("OnClick", function() PerformReport(entry) end)
     actions.btn2:Show()
     actions.btn2.tipTitle = reportLabel
-    actions.btn2.tipBody  = (reportKind == "lfg-ad")
-      and "Send a Blizzard report for this LFG listing as advertisement spam."
-      or  "Send a Blizzard spam report for this message."
+    actions.btn2.tipBody  = "Send a Blizzard spam report for this message."
     return
   end
 
@@ -1066,7 +1039,7 @@ local function RefreshStatsArea()
   -- the BSP-055 ScrollFrame still wraps the stats area so any vertical
   -- overflow scrolls cleanly.
   local surfaceParts = {}
-  local surfaceOrder = { "chat", "whisper", "bn-whisper", "lfg-search", "lfg-applicant" }
+  local surfaceOrder = { "chat", "whisper", "bn-whisper" }
   for _, s in ipairs(surfaceOrder) do
     local label = SURFACE_LABELS[s] or s
     surfaceParts[#surfaceParts + 1] = string.format("%s |cffffffff%d|r", L(label), tonumber(bySurface[s]) or 0)
@@ -2002,7 +1975,7 @@ local function CreateHeaderFilters()
     function(v) filterState.surface = v; if RefreshList then RefreshList() end end)
   ddBand.surfaceDD:SetPoint("LEFT", ddBand, "LEFT", 0, 0)
   AttachTooltip(ddBand.surfaceDD, "Surface filter",
-    "Restrict the list to detections from one chat or LFG surface. \"All\" clears the filter.")
+    "Restrict the list to detections from one chat surface. \"All\" clears the filter.")
 
   ddBand.timeDD = CreateModernDropdown(ddBand, "Time", TIME_WINDOW_VALUES, nil,
     function() return filterState.timeWindow end,
@@ -2070,28 +2043,12 @@ local function CreateSplitter(parent)
   return splitter
 end
 
-local PAUSE_PILL_KEYS = { "chat", "whisper", "bn-whisper", "lfg-search", "lfg-applicant" }
+local PAUSE_PILL_KEYS = { "chat", "whisper", "bn-whisper" }
 local PAUSE_PILL_LABELS = {
   chat              = "Chat",
   whisper           = "Whisp",
   ["bn-whisper"]    = "Bnet",
-  ["lfg-search"]    = "LFG-s",
-  ["lfg-applicant"] = "LFG-a",
 }
-
-local function IsLFGSurface(surface)
-  return surface == "lfg-search" or surface == "lfg-applicant"
-end
-
-local function VisiblePausePillKeys()
-  local keys = {}
-  for _, surface in ipairs(PAUSE_PILL_KEYS) do
-    if not (NS.Compat and NS.Compat.isClassicFamily and IsLFGSurface(surface)) then
-      keys[#keys + 1] = surface
-    end
-  end
-  return keys
-end
 
 -- BSP-008: Retail uses atlas icons; Classic-family clients use color textures
 -- because some Retail atlas names are absent and can leave stale glyphs behind.
@@ -2147,8 +2104,7 @@ end
 local function CreatePauseRow(parent)
   pauseRow = CreateFrame("Frame", nil, parent)
   pauseRow:SetHeight(20)
-  local visibleKeys = VisiblePausePillKeys()
-  pauseRow:SetWidth((#visibleKeys * 60) + math.max(#visibleKeys - 1, 0) * 4)
+  pauseRow:SetWidth((#PAUSE_PILL_KEYS * 60) + math.max(#PAUSE_PILL_KEYS - 1, 0) * 4)
   if parent.TitleContainer then
     pauseRow:SetPoint("TOPRIGHT", parent.TitleContainer, "BOTTOMRIGHT", -28, -2)
   else
@@ -2161,8 +2117,8 @@ local function CreatePauseRow(parent)
 
   pausePills = {}
   local previousPill
-  for i = #visibleKeys, 1, -1 do
-    local surfaceKey = visibleKeys[i]
+  for i = #PAUSE_PILL_KEYS, 1, -1 do
+    local surfaceKey = PAUSE_PILL_KEYS[i]
     local pill = CreateFrame("Button", nil, pauseRow)
     pill:SetSize(60, 18)
     if previousPill then
@@ -2304,7 +2260,7 @@ local function RegisterMinimap()
         MenuUtil.CreateContextMenu(self, function(_, root)
           root:CreateTitle(L("BawrSpam"))
           root:CreateTitle(L("Pause surface"))
-          for _, surfaceKey in ipairs(VisiblePausePillKeys()) do
+          for _, surfaceKey in ipairs(PAUSE_PILL_KEYS) do
             local labelText = SURFACE_LABELS[surfaceKey] or surfaceKey
             local s = NS.PauseState and NS.PauseState.GetSurface(surfaceKey) or "active"
             root:CreateButton(L(labelText) .. PauseStateMenuSuffix(s), function()

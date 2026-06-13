@@ -72,7 +72,6 @@ read_globals = {
     "C_BattleNet",
     "C_CVar",
     "C_FriendList",
-    "C_LFGList",
     "C_ReportSystem",
     "C_Timer",
 
