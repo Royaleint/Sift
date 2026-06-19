@@ -1,6 +1,10 @@
 local _, NS = ...
 local HistoryPanel = {}
 
+-- BSP-066: Foundry-1.0 is a hard dependency (## Dependencies: Foundry-1.0).
+-- Bound at file load so CreateModernListPane can call F:RequireModule at use-time.
+local F = _G.Foundry_1_0
+
 -- BSP-008: i18n hook. Identity function today; future Locale ticket
 -- swaps to NS.L or a string table without touching call sites.
 local function L(s) return s end
@@ -1347,49 +1351,73 @@ end
 
 local function CreateModernListPane()
   CreateListHeader()
-  local scrollBox = CreateFrame("Frame", nil, listPane, "WowScrollBoxList")
+
+  -- BSP-066 / FND-006 Phase E: replace hand-wired ScrollBox composition with
+  -- Foundry.List:New(). F.List builds the five-object ScrollBox system
+  -- (WowScrollBoxList, MinimalScrollBar, LinearView, DataProvider, ScrollUtil
+  -- wiring) in one call and returns a controller. We expose the native
+  -- scrollBox via GetNativeHandles() so all existing RefreshList and
+  -- SelectEntry call sites (GetDataProvider, ForEachFrame) keep working
+  -- without modification.
+  F:RequireModule("List", 1)
+
+  local list = F.List:New({
+    name        = "BawrSpamHistoryList",
+    parent      = listPane,
+    elementType = "Button",
+    extent      = LIST_ROW_HEIGHT,
+    spacing     = 0,
+    initializer = function(button, entry)
+      InitListRow(button)
+      RenderRow(button, entry)
+      button.selection:SetShown(selectedEntryId == entry.id)
+      button:SetScript("OnClick", function(self, mouseButton)
+        if mouseButton == "RightButton" then
+          self._lastClick = nil
+          OpenRowContextMenu(self, entry)
+          return
+        end
+        local now = GetTime()
+        if self._lastClick and (now - self._lastClick) < DOUBLE_CLICK_WINDOW then
+          self._lastClick = nil
+          PerformRestore(entry)
+          if ContextEntryCanAllowlist(entry) then
+            PerformAlwaysAllow(entry)
+          end
+        else
+          self._lastClick = now
+          SelectEntry(entry.id)
+        end
+      end)
+    end,
+    resetter = function(button)
+      button:SetScript("OnClick", nil)
+      button.selection:Hide()
+      button._lastClick = nil
+    end,
+  })
+
+  -- Re-anchor the native frames to the original HistoryPanel insets.
+  -- F.List:New() sets default fill anchors; clear and reassign to match
+  -- the pre-BSP-066 layout: scrollBox inset 18 px from top and 18 px from
+  -- bottom (legend strip), SCROLLBAR_GUTTER wide on the right; scrollBar
+  -- flush against scrollBox right edge (0 offset, not F.List's default 4).
+  local handles = list:GetNativeHandles()
+  local scrollBox = handles.scrollBox
+  local scrollBar = handles.scrollBar
+
+  scrollBox:ClearAllPoints()
   scrollBox:SetPoint("TOPLEFT",     listPane, "TOPLEFT",     0, -18)
   scrollBox:SetPoint("BOTTOMRIGHT", listPane, "BOTTOMRIGHT", -SCROLLBAR_GUTTER, 18)
 
-  local scrollBar = CreateFrame("EventFrame", nil, listPane, "MinimalScrollBar")
-  scrollBar:SetPoint("TOPLEFT",    scrollBox, "TOPRIGHT",    0,  0)
-  scrollBar:SetPoint("BOTTOMLEFT", scrollBox, "BOTTOMRIGHT", 0,  0)
+  scrollBar:ClearAllPoints()
+  scrollBar:SetPoint("TOPLEFT",    scrollBox, "TOPRIGHT",    0, 0)
+  scrollBar:SetPoint("BOTTOMLEFT", scrollBox, "BOTTOMRIGHT", 0, 0)
   scrollBar:SetHideIfUnscrollable(false)
 
-  local view = CreateScrollBoxListLinearView()
-  view:SetElementExtent(LIST_ROW_HEIGHT)
-  view:SetElementInitializer("Button", function(button, entry)
-    InitListRow(button)
-    RenderRow(button, entry)
-    button.selection:SetShown(selectedEntryId == entry.id)
-    button:SetScript("OnClick", function(self, mouseButton)
-      if mouseButton == "RightButton" then
-        self._lastClick = nil
-        OpenRowContextMenu(self, entry)
-        return
-      end
-      local now = GetTime()
-      if self._lastClick and (now - self._lastClick) < DOUBLE_CLICK_WINDOW then
-        self._lastClick = nil
-        PerformRestore(entry)
-        if ContextEntryCanAllowlist(entry) then
-          PerformAlwaysAllow(entry)
-        end
-      else
-        self._lastClick = now
-        SelectEntry(entry.id)
-      end
-    end)
-  end)
-  view:SetElementResetter(function(button)
-    button:SetScript("OnClick", nil)
-    button.selection:Hide()
-    button._lastClick = nil
-  end)
-
-  ScrollUtil.InitScrollBoxListWithScrollBar(scrollBox, scrollBar, view)
-  view:SetDataProvider(CreateDataProvider())
-
+  -- listPane.scroll is the native scrollBox so existing RefreshList
+  -- (GetDataProvider():Flush()/InsertTable()) and SelectEntry (ForEachFrame)
+  -- call sites require zero changes.
   listPane.scroll = scrollBox
   listPane.listBackend = "modern"
 end
