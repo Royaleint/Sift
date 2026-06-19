@@ -359,7 +359,7 @@ local function CreatePlainHistoryFrame(parent)
 end
 
 local function CreateHistoryFrame(parent)
-  if NS.Compat and NS.Compat.isClassicFamily then
+  if NS.Compat and (NS.Compat.isClassicFamily or NS.Compat.isMistsClassic) then
     return CreatePlainHistoryFrame(parent)
   end
   local template = "PortraitFrameTemplate"
