@@ -2272,7 +2272,7 @@ local function RegisterMinimap()
   minimapLDB = LDB:NewDataObject("Hush", {
     type  = "launcher",
     text  = "Hush",
-    icon  = "Interface\\Icons\\INV_Misc_Note_03",
+    icon  = "Interface\\Icons\\ability_warrior_shieldreflection",
     OnClick = function(self, button)
       if button == "RightButton" then
         if not MenuUtil or not MenuUtil.CreateContextMenu then
