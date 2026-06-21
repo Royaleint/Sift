@@ -1,4 +1,4 @@
--- BawrSpam/Frequency.lua
+-- Hush/Frequency.lua
 -- BSP-027: chat flood / repetition detection. Pure Lua, dual-mode (addon TOC +
 -- test runner dofile). Zero WoW API references — the clock is passed in by the
 -- caller (ChatScanner passes ServerTime()), so this runs identically standalone.

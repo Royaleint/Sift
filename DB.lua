@@ -103,7 +103,7 @@ migrations[2] = function(db)
 end
 
 local function Print(message)
-  message = "|cff33ff99BawrSpam|r " .. tostring(message)
+  message = "|cff33ff99Hush|r " .. tostring(message)
   if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
     DEFAULT_CHAT_FRAME:AddMessage(message)
   else
@@ -126,7 +126,7 @@ migrations[3] = function(db)
     if total > 0 then
       Print(string.format(
         "enforcing new account-wide history cap: trimmed %d records "
-          .. "(%d per-char excess, %d global). Open /bawrspam config > "
+          .. "(%d per-char excess, %d global). Open /hush config > "
           .. "History to adjust the caps.",
         total, perCharRemoved, globalRemoved
       ))

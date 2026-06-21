@@ -1,4 +1,4 @@
--- BawrSpam/Throttle.lua
+-- Hush/Throttle.lua
 -- Confirmed-spam dedupe ring buffer, per surface. Pure Lua, dual-mode
 -- (addon TOC + test runner dofile). Zero WoW API references — runs
 -- identically in both contexts.

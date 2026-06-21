@@ -318,9 +318,9 @@ local function HidePortraitChrome(f)
 end
 
 local function CreatePlainHistoryFrame(parent)
-  local ok, f = pcall(CreateFrame, "Frame", "BawrSpamHistoryFrame", parent, "BackdropTemplate")
+  local ok, f = pcall(CreateFrame, "Frame", "HushHistoryFrame", parent, "BackdropTemplate")
   if not ok or not f then
-    f = CreateFrame("Frame", "BawrSpamHistoryFrame", parent)
+    f = CreateFrame("Frame", "HushHistoryFrame", parent)
   end
   if f.SetBackdrop then
     f:SetBackdrop({
@@ -363,11 +363,11 @@ local function CreateHistoryFrame(parent)
     return CreatePlainHistoryFrame(parent)
   end
   local template = "PortraitFrameTemplate"
-  local ok, f = pcall(CreateFrame, "Frame", "BawrSpamHistoryFrame", parent, template)
+  local ok, f = pcall(CreateFrame, "Frame", "HushHistoryFrame", parent, template)
   if ok and f then
     return f
   end
-  return CreateFrame("Frame", "BawrSpamHistoryFrame", parent, "PortraitFrameTemplate")
+  return CreateFrame("Frame", "HushHistoryFrame", parent, "PortraitFrameTemplate")
 end
 
 local function CreateBackdropFrame(parent)
@@ -766,7 +766,7 @@ end
 
 local function FallbackMenuFrame()
   if not fallbackMenuFrame then
-    fallbackMenuFrame = CreateFrame("Frame", "BawrSpamContextMenu", UIParent, "UIDropDownMenuTemplate")
+    fallbackMenuFrame = CreateFrame("Frame", "HushContextMenu", UIParent, "UIDropDownMenuTemplate")
   end
   return fallbackMenuFrame
 end
@@ -1362,7 +1362,7 @@ local function CreateModernListPane()
   F:RequireModule("List", 1)
 
   local list = F.List:New({
-    name        = "BawrSpamHistoryList",
+    name        = "HushHistoryList",
     parent      = listPane,
     elementType = "Button",
     extent      = LIST_ROW_HEIGHT,
@@ -1427,7 +1427,7 @@ end
 local function CreateClassicListPane()
   CreateListHeader()
 
-  local scroll = CreateFrame("ScrollFrame", "BawrSpamHistoryListScroll", listPane, "FauxScrollFrameTemplate")
+  local scroll = CreateFrame("ScrollFrame", "HushHistoryListScroll", listPane, "FauxScrollFrameTemplate")
   scroll:SetPoint("TOPLEFT",     listPane, "TOPLEFT",     0, -18)
   scroll:SetPoint("BOTTOMRIGHT", listPane, "BOTTOMRIGHT", -SCROLLBAR_GUTTER, 18)
   scroll:SetScript("OnVerticalScroll", function(self, yOffset)
@@ -2261,7 +2261,7 @@ local function BuildFrame()
   -- bounds derived from the fixed panel width.
 
   ApplyStoredGeometry()
-  tinsert(UISpecialFrames, "BawrSpamHistoryFrame")
+  tinsert(UISpecialFrames, "HushHistoryFrame")
 end
 
 local function RegisterMinimap()

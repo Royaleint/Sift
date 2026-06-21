@@ -1,4 +1,4 @@
--- BawrSpam/Cleanse.lua
+-- Hush/Cleanse.lua
 -- 9-stage text normalization pipeline. Pure Lua, dual-mode (addon TOC + build tool dofile).
 -- Zero WoW API references — runs identically in both contexts.
 
