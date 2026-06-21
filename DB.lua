@@ -103,7 +103,7 @@ migrations[2] = function(db)
 end
 
 local function Print(message)
-  message = "|cff33ff99BawrSpam|r " .. tostring(message)
+  message = "|cff33ff99Sift|r " .. tostring(message)
   if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
     DEFAULT_CHAT_FRAME:AddMessage(message)
   else
@@ -126,7 +126,7 @@ migrations[3] = function(db)
     if total > 0 then
       Print(string.format(
         "enforcing new account-wide history cap: trimmed %d records "
-          .. "(%d per-char excess, %d global). Open /bawrspam config > "
+          .. "(%d per-char excess, %d global). Open /sift config > "
           .. "History to adjust the caps.",
         total, perCharRemoved, globalRemoved
       ))
@@ -278,7 +278,13 @@ function DB.Initialize()
     return false
   end
 
-  DB.db = F.DB:New({ name = "BawrSpam", sv = "BawrSpamDB", defaults = defaults, defaultProfile = true })
+  -- One-time SavedVariables migration: BawrSpam → Hush (BSP-067)
+  if type(BawrSpamDB) == "table" and (SiftDB == nil or next(SiftDB) == nil) then
+    SiftDB = BawrSpamDB
+    BawrSpamDB = nil
+  end
+
+  DB.db = F.DB:New({ name = "Sift", sv = "SiftDB", defaults = defaults, defaultProfile = true })
   RepairShape(DB.db.global, DB.db.char)
   ApplyMigrations(DB.db)
   RepairShape(DB.db.global, DB.db.char)

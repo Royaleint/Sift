@@ -8,13 +8,13 @@ local ADDON_NAME, NS = ...
 -- makes this unreachable in a healthy install; it is the broken-Foundry guard.
 local F = _G.Foundry_1_0
 if not F then
-  error("BawrSpam requires Foundry-1.0. Please install or enable it.")
+  error("Sift requires Foundry-1.0. Please install or enable it.")
 end
 
 local initialized = false
 
 local function Print(message)
-  message = "|cff33ff99BawrSpam|r " .. tostring(message)
+  message = "|cff33ff99Sift|r " .. tostring(message)
   if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
     DEFAULT_CHAT_FRAME:AddMessage(message)
   else
@@ -128,7 +128,7 @@ local function RunSyntheticTest(message)
     2,
     "Trade",
     nil,
-    "BawrSpamTestLine",
+    "HushTestLine",
     "Player-9999-FFFFFFFF"
   )
 
@@ -430,8 +430,8 @@ local controller = F:RequireModule("Lifecycle", 1):New(NS, ADDON_NAME)
 controller:OnAddonLoaded(function() Initialize() end)
 controller:OnLogin(function() InstallScanner() end)
 
-SLASH_BAWRSPAM1 = "/bawrspam"
-SlashCmdList.BAWRSPAM = SlashHandler
+SLASH_SIFT1 = "/sift"
+SlashCmdList.SIFT = SlashHandler
 
 SLASH_BDEV1 = "/bdev"
 -- BSP-018 polish (post-Argus): defensive fallback alias against silent

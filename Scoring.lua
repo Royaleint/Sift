@@ -1,4 +1,4 @@
--- BawrSpam/Scoring.lua
+-- Sift/Scoring.lua
 -- Pure scoring: weighted sum + anti-signal cap + mixed-script meta + dedup.
 -- Dual-mode + dependency-injectable Patterns reference.
 

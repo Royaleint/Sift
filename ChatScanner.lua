@@ -303,7 +303,7 @@ end
 
 local function ErrorHandler(err)
   if NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode() then
-    print("[BawrSpam] xpcall: " .. tostring(err))
+    print("[Sift] xpcall: " .. tostring(err))
   end
   return err
 end
