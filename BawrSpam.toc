@@ -3,6 +3,7 @@
 ## Notes: Personal chat-spam filter with recoverable history. Inspired by funkydude's BadBoy; original-work implementation.
 ## Author: Royaleint
 ## Category: Chat
+## IconTexture: ability_warrior_shieldreflection
 ## Version: @project-version@
 ## X-License: All Rights Reserved; personal addon use and contribution forks permitted. See LICENSE.
 ## X-Curse-Project-ID: 1549238
