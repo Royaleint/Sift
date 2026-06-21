@@ -3,16 +3,17 @@ max_line_length = false
 
 globals = {
     -- SavedVariables (created by WoW, read/written by addon)
-    "BawrSpamDB",
+    "HushDB",
+    "BawrSpamDB",  -- legacy key declared for one-time migration shim (BSP-067); remove next release
     -- Named UI frames (require global for UISpecialFrames + Blizz close behavior)
-    "BawrSpamHistoryFrame",
-    "BawrSpamConfigFrame",
-    "BawrSpamConfigDialog",
-    "BawrSpamConfigOptionsPanel",
-    "BawrSpamContextMenu",
+    "HushHistoryFrame",
+    "HushConfigFrame",
+    "HushConfigDialog",
+    "HushConfigOptionsPanel",
+    "HushContextMenu",
     -- Slash registration
     "SlashCmdList",
-    "SLASH_BAWRSPAM1",
+    "SLASH_HUSH1",
     "SLASH_BDEV1",
     "SLASH_BDEV2",
     -- StaticPopupDialogs is read-only at the table level but addons mutate it
