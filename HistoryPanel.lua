@@ -169,8 +169,6 @@ local STATS_TILE_COLORS = {
   falsePositives = { 0.53, 0.67, 0.80 },
 }
 
-local fallbackMenuFrame
-
 local function RegisterStaticPopups()
   if StaticPopupDialogs and not StaticPopupDialogs["BAWRSPAM_COPY_SENDER"] then
     StaticPopupDialogs["BAWRSPAM_COPY_SENDER"] = {
@@ -764,13 +762,6 @@ local function ClearSenderFilter()
   if RefreshList then RefreshList() end
 end
 
-local function FallbackMenuFrame()
-  if not fallbackMenuFrame then
-    fallbackMenuFrame = CreateFrame("Frame", "SiftContextMenu", UIParent, "UIDropDownMenuTemplate")
-  end
-  return fallbackMenuFrame
-end
-
 local function ContextEntryRestorable(entry)
   return entry.outcome ~= "restored"
 end
@@ -819,75 +810,13 @@ local function ShowCopySenderPopup(entry)
   end
 end
 
-local function BuildContextMenuItems(entry)
-  local items = { { text = "Sift", isTitle = true, notCheckable = true } }
-
-  if ContextEntryRestorable(entry) then
-    items[#items + 1] = { text = "Restore", notCheckable = true,
-      func = function() PerformRestore(entry) end }
-    if ContextEntryCanAllowlist(entry) then
-      items[#items + 1] = { text = "Restore + Always allow", notCheckable = true,
-        func = function()
-          PerformRestore(entry)
-          PerformAlwaysAllow(entry)
-        end }
-    end
-  end
-
-  items[#items + 1] = { text = "Filter by this sender", notCheckable = true,
-    func = function() SetSenderFilter(entry) end }
-  if filterState and filterState.senderFilter then
-    items[#items + 1] = { text = "Clear sender filter", notCheckable = true,
-      func = ClearSenderFilter }
-  end
-
-  local reportKind = GetReportKind(entry)
-  local reportLabel = GetReportLabel(reportKind)
-  if reportLabel then
-    items[#items + 1] = { text = reportLabel, notCheckable = true,
-      func = function() PerformReport(entry) end }
-  end
-
-  items[#items + 1] = { text = "Copy sender name", notCheckable = true,
-    func = function() ShowCopySenderPopup(entry) end }
-
-  return items
-end
+local rowContextMenu  -- set in HistoryPanel.Initialize()
+local pauseSurfaceMenu  -- set in HistoryPanel.Initialize()
 
 local function OpenRowContextMenu(anchor, entry)
   if not entry or not anchor then return end
-
-  if MenuUtil and MenuUtil.CreateContextMenu then
-    MenuUtil.CreateContextMenu(anchor, function(_, root)
-      root:CreateTitle("Sift")
-      if ContextEntryRestorable(entry) then
-        root:CreateButton("Restore", function() PerformRestore(entry) end)
-        if ContextEntryCanAllowlist(entry) then
-          root:CreateButton("Restore + Always allow", function()
-            PerformRestore(entry)
-            PerformAlwaysAllow(entry)
-          end)
-        end
-      end
-      root:CreateButton("Filter by this sender", function() SetSenderFilter(entry) end)
-      if filterState and filterState.senderFilter then
-        root:CreateButton("Clear sender filter", ClearSenderFilter)
-      end
-      local reportKind = GetReportKind(entry)
-      local reportLabel = GetReportLabel(reportKind)
-      if reportLabel then
-        root:CreateButton(reportLabel, function() PerformReport(entry) end)
-      end
-      root:CreateButton("Copy sender name", function() ShowCopySenderPopup(entry) end)
-    end)
-    return
-  end
-
-  if EasyMenu then
-    local f = FallbackMenuFrame()
-    if f then
-      EasyMenu(BuildContextMenuItems(entry), f, "cursor", 0, 0, "MENU")
-    end
+  if rowContextMenu then
+    rowContextMenu:CreateContextMenu(anchor, entry)
   end
 end
 
@@ -1856,15 +1785,21 @@ local function CreateModernDropdown(parent, labelText, values, labels, getValue,
   if dd.SetDefaultText then
     dd:SetDefaultText(L(labelText))
   end
-  dd:SetupMenu(function(_, root)
-    root:CreateTitle(L(labelText))
-    for _, v in ipairs(values) do
-      local displayLabel = (labels and labels[v]) or v
-      root:CreateRadio(L(displayLabel),
-        function() return getValue() == v end,
-        function() setValue(v); dd:GenerateMenu() end)
-    end
-  end)
+  if F then
+    local ctrl = F.Menu:New({
+      name    = "NS.FilterDropdown." .. labelText,
+      builder = function(_, root)
+        root:CreateTitle(L(labelText))
+        for _, v in ipairs(values) do
+          local displayLabel = (labels and labels[v]) or v
+          root:CreateRadio(L(displayLabel),
+            function() return getValue() == v end,
+            function() setValue(v); dd:GenerateMenu() end)
+        end
+      end,
+    })
+    if ctrl then ctrl:SetupDropdown(dd) end
+  end
   return dd
 end
 
@@ -2275,32 +2210,11 @@ local function RegisterMinimap()
     icon  = "Interface\\Icons\\ability_warrior_shieldreflection",
     OnClick = function(self, button)
       if button == "RightButton" then
-        if not MenuUtil or not MenuUtil.CreateContextMenu then
+        if pauseSurfaceMenu then
+          pauseSurfaceMenu:CreateContextMenu(self)
+        else
           OpenConfigPanel()
-          return
         end
-        -- BSP-055 fix #2: flatten the "Pause surface" submenu to top-level items.
-        -- The submenu construction (root:CreateButton(parent) → submenu:CreateButton(child))
-        -- matches Blizzard's own pattern (Blizzard_HeirloomCollection.lua:145), but in
-        -- this menu the cursor-traversal from parent → submenu items was causing the
-        -- whole menu to collapse mid-hover. Flat layout sidesteps the issue entirely,
-        -- and surfaces the surface list directly without the extra click.
-        -- Each click cycles the surface and returns MenuResponse.Refresh so the menu
-        -- stays open for fast multi-cycle without re-opening.
-        MenuUtil.CreateContextMenu(self, function(_, root)
-          root:CreateTitle(L("Sift"))
-          root:CreateTitle(L("Pause surface"))
-          for _, surfaceKey in ipairs(PAUSE_PILL_KEYS) do
-            local labelText = SURFACE_LABELS[surfaceKey] or surfaceKey
-            local s = NS.PauseState and NS.PauseState.GetSurface(surfaceKey) or "active"
-            root:CreateButton(L(labelText) .. PauseStateMenuSuffix(s), function()
-              if NS.PauseState then NS.PauseState.CycleSurface(surfaceKey, "forward") end
-              return MenuResponse.Refresh
-            end)
-          end
-          root:CreateDivider()
-          root:CreateButton(L("Open config"), function() OpenConfigPanel() end)
-        end)
       else
         HistoryPanel.Toggle()
       end
@@ -2332,6 +2246,52 @@ function HistoryPanel.Initialize()
       if HistoryPanel.RefreshPauseRow then HistoryPanel.RefreshPauseRow() end
       if axis == "category" and RefreshDetail then RefreshDetail() end
     end)
+  end
+
+  if F then
+    rowContextMenu = F.Menu:New({
+      name    = "NS.RowContext",
+      builder = function(anchor, rootDescription, entry)
+        rootDescription:CreateTitle("Sift")
+        if ContextEntryRestorable(entry) then
+          rootDescription:CreateButton("Restore", function() PerformRestore(entry) end)
+          if ContextEntryCanAllowlist(entry) then
+            rootDescription:CreateButton("Restore + Always allow", function()
+              PerformRestore(entry)
+              PerformAlwaysAllow(entry)
+            end)
+          end
+        end
+        rootDescription:CreateButton("Filter by this sender", function() SetSenderFilter(entry) end)
+        if filterState and filterState.senderFilter then
+          rootDescription:CreateButton("Clear sender filter", ClearSenderFilter)
+        end
+        local reportKind = GetReportKind(entry)
+        local reportLabel = GetReportLabel(reportKind)
+        if reportLabel then
+          rootDescription:CreateButton(reportLabel, function() PerformReport(entry) end)
+        end
+        rootDescription:CreateButton("Copy sender name", function() ShowCopySenderPopup(entry) end)
+      end,
+    })
+
+    pauseSurfaceMenu = F.Menu:New({
+      name    = "NS.PauseSurface",
+      builder = function(_, rootDescription)
+        rootDescription:CreateTitle(L("Sift"))
+        rootDescription:CreateTitle(L("Pause surface"))
+        for _, surfaceKey in ipairs(PAUSE_PILL_KEYS) do
+          local labelText = SURFACE_LABELS[surfaceKey] or surfaceKey
+          local s = NS.PauseState and NS.PauseState.GetSurface(surfaceKey) or "active"
+          rootDescription:CreateButton(L(labelText) .. PauseStateMenuSuffix(s), function()
+            if NS.PauseState then NS.PauseState.CycleSurface(surfaceKey, "forward") end
+            return MenuResponse.Refresh
+          end)
+        end
+        rootDescription:CreateDivider()
+        rootDescription:CreateButton(L("Open config"), function() OpenConfigPanel() end)
+      end,
+    })
   end
 end
 
