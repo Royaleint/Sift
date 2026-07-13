@@ -216,6 +216,24 @@ function Cleanse._Stage9_Symbols(text)
   return (string.gsub(text, "[%*%-<>%(%)\"!%?=`'_%+#%%%^&;:~{}%[%]%s/\\|,.@]", ""))
 end
 
+local TOKEN_SEPARATORS = {
+  [0x00D7] = true, -- × Multiplication Sign
+  [0x2022] = true, -- • Bullet
+  [0x25BA] = true, -- ► Black Right-Pointing Pointer
+  [0x25C4] = true, -- ◄ Black Left-Pointing Pointer
+}
+
+local function _isTokenSeparator(cp)
+  return TOKEN_SEPARATORS[cp] == true
+end
+
+function Cleanse._Stage9_UnicodeSeparators(text)
+  return Cleanse._ScanCodepoints(text, function(cp)
+    if _isTokenSeparator(cp) then return nil end
+    return cp
+  end)
+end
+
 -- Returns boolean. Flushes word state on any non-letter codepoint.
 -- BSP-030: promoted from a file-local to a Cleanse member. Analyze no longer
 -- calls it (the fused front-end below detects mixed-script inline); it is
@@ -325,6 +343,7 @@ function Cleanse._FusedFrontPass(text)
   local i, len = 1, #text
   local mixed = false
   local wordHasLatin, wordHasOther = false, false
+  local hasTokenSeparator = false
 
   while i <= len do
     local b1 = string.byte(text, i)
@@ -368,6 +387,9 @@ function Cleanse._FusedFrontPass(text)
       else
         wordHasOther = true
       end
+      if cp >= 0x80 and _isTokenSeparator(cp) then
+        hasTokenSeparator = true
+      end
       local folded = Cleanse._confusables[cp] or cp   -- Stage 4 then Stage 5
       folded = _styledFold(folded)
       n = _emit(out, n, folded)
@@ -377,7 +399,7 @@ function Cleanse._FusedFrontPass(text)
   end
   if wordHasLatin and wordHasOther then mixed = true end
 
-  return table.concat(out), mixed
+  return table.concat(out), mixed, hasTokenSeparator
 end
 
 function Cleanse.Analyze(text)
@@ -390,17 +412,21 @@ function Cleanse.Analyze(text)
   text = Cleanse._Stage1_ItemLinks(text)
 
   -- BSP-030: Stages 2-5 + mixed-script in one pass, with a pure-ASCII fast-path.
-  local mixedScript
+  local mixedScript, hasTokenSeparator
   if not string.find(text, "[\128-\255]") then
     mixedScript = false                       -- ASCII: stages 2-5 identity, never mixed
+    hasTokenSeparator = false
   else
-    text, mixedScript = Cleanse._FusedFrontPass(text)
+    text, mixedScript, hasTokenSeparator = Cleanse._FusedFrontPass(text)
   end
 
   text = Cleanse._Stage6_Leetspeak(text)
   text = Cleanse._Stage7_Lowercase(text)
   text = Cleanse._Stage8_RunLength(text)
   text = Cleanse._Stage9_Symbols(text)
+  if hasTokenSeparator then
+    text = Cleanse._Stage9_UnicodeSeparators(text)
+  end
 
   return {
     normalized = text,
