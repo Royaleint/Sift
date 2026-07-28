@@ -22,15 +22,28 @@ local BASE_SV_NAME = "SiftDB"
 local LEGACY_SV_NAME = "BawrSpamDB"
 
 -- Exposed for the contract test. Pure: no upvalues beyond the constants above.
+--
+-- Returns (svName, legacySvName) for a recognised folder, or (nil, reason) for
+-- anything else. It does NOT fall back to the live names. An earlier draft did,
+-- and that was wrong: a folder we do not recognise, silently pointed at the LIVE
+-- store, is a build writing into data it does not own -- the same shape of
+-- failure BSP-070's C1 test proved destroys SavedVariables. There is no safe
+-- guess here, so it refuses instead. The caller raises; this stays pure so the
+-- contract test can exercise it outside the client.
 function DB.DeriveSVNames(addonName)
-  -- A folder that is not the live name or a suffixed variant of it is an
-  -- unsupported install; fall back to the live names, which is exactly the
-  -- behaviour that shipped before this change.
-  local suffix = tostring(addonName or ""):match("^" .. LIVE_ADDON_NAME .. "(.*)$") or ""
+  local name = tostring(addonName or "")
+  local suffix = name:match("^" .. LIVE_ADDON_NAME .. "(.*)$")
+  if not suffix then
+    return nil, "addon folder '" .. name .. "' is neither '" .. LIVE_ADDON_NAME
+      .. "' nor '" .. LIVE_ADDON_NAME .. "<suffix>'"
+  end
   return BASE_SV_NAME .. suffix, LEGACY_SV_NAME .. suffix
 end
 
+-- Resolved at file scope but NOT raised here: an error() during file load aborts
+-- the rest of this file with no useful context for the player. Initialize raises.
 local SV_NAME, SV_LEGACY_NAME = DB.DeriveSVNames(ADDON_NAME)
+local SV_NAME_ERROR = (not SV_NAME) and SV_LEGACY_NAME or nil
 
 local CURRENT_SCHEMA_VERSION = 3
 local ADDON_VERSION = "1.3.0"
@@ -302,6 +315,18 @@ local function ApplyMigrations(db)
 end
 
 function DB.Initialize()
+  -- Unrecognised folder name: refuse loudly rather than guess a store. Guessing
+  -- means writing into SavedVariables this build does not own, and BSP-070's C1
+  -- test showed that loss is unrecoverable. Raised here, not at file scope, so
+  -- the message reaches the player instead of aborting the file's remaining
+  -- definitions.
+  if SV_NAME_ERROR then
+    error("Sift: " .. SV_NAME_ERROR
+      .. ". Refusing to load saved data rather than risk writing into another build's store."
+      .. " Supported folder names are '" .. LIVE_ADDON_NAME .. "' (the released build) and '"
+      .. LIVE_ADDON_NAME .. "_DevBuild' (the generated dev build). Rename the folder to one of those.")
+  end
+
   local F = _G.Foundry_1_0
   if not (F and F:HasModule("DB")) then
     NS._InitFailed = true
