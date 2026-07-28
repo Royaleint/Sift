@@ -1861,7 +1861,7 @@ RenderBlocked = function()
     "Remove every blocked actor. Confirmation required.")
   y = y - 34
 
-  y = AddDisabledRow("Manual blocked add", "Right-click a player name in chat and choose Block (Sift).", y)
+  y = AddDisabledRow("Add a manual block", "Right-click a player name in chat and choose Block (Sift).", y)
 
   local entries = SortedBlockedActors()
   local maxPage = MaxPage(#entries)
@@ -1942,9 +1942,8 @@ local KEYWORD_SECTIONS = {
     kind = NS.UserRules and NS.UserRules.BLOCK or "block",
     blurb = "Words and phrases you want hidden. Matching messages are blocked even when Sift's own filter would let them through.",
     addLabel = "Block phrase",
-    addTooltip = "Type a word or phrase to block. It is matched against the same cleaned-up "
-      .. "text the filter uses, so it also catches spaced-out, mis-capitalised and "
-      .. "look-alike-character spellings.",
+    addTooltip = "Type a word or phrase to block. Matching is forgiving about spacing "
+      .. "and odd spellings.",
     help = "Matching ignores spaces and punctuation, so a phrase can match across word "
       .. "boundaries \194\183 \"tank lf\" also matches \"tank lfm dungeon\". Prefer distinctive "
       .. "phrases. Anything blocked this way is recoverable from History.",
@@ -1957,10 +1956,11 @@ local KEYWORD_SECTIONS = {
     blurb = "Words and phrases that protect a message. Anything containing one is never blocked.",
     addLabel = "Allow phrase",
     addTooltip = "Type a word or phrase that should always come through. Matching works the "
-      .. "same way as the block list, so look-alike spellings count too.",
+      .. "same way as the block list.",
     help = "|cffff6060Careful:|r these win over Sift's own filter, so a spammer who guesses "
       .. "one of your phrases can put it in a message and walk straight through. Use long, "
-      .. "distinctive phrases, not common words. Only players on your Allowlist outrank this.",
+      .. "distinctive phrases, not common words. Only your Allowlist and the players you "
+      .. "have blocked yourself outrank this.",
     emptyLabel = "No never-block phrases",
     emptyHint = "Sift's filter decides on its own until you add one.",
     popup = "SIFT_REMOVE_ALL_ALLOW_KEYWORDS",
@@ -1971,7 +1971,7 @@ local ADD_STATUS_TEXT = {
   added          = "Added \"%s\".",
   empty          = "Enter a word or phrase.",
   too_short      = "Needs at least %d characters once spaces and punctuation are removed.",
-  already_exists = "\"%s\" is already in this list.",
+  already_exists = "That matches \"%s\", already in this list.",
   full           = "This list is full (%d maximum). Remove something first.",
   unavailable    = "Keyword rules are unavailable.",
 }
@@ -2243,10 +2243,9 @@ RenderDev = function()
   local y = AddSectionTitle("Dev", "Developer-only diagnostics and reset controls.")
   y = AddStatus(y, sectionStatus.Dev)
   y = AddCheckbox("Enable dev mode", "devMode", y, nil,
-    "Enable developer-only diagnostics: extra logging, devMode-gated error reporting, " ..
-    "/bdev slash commands, and other diagnostic affordances. " ..
-    "Also records recent chat from other players (including whispers) into your " ..
-    "account's saved data for false-negative analysis.")
+    "Records recent chat from other players, whispers included, into your saved " ..
+    "data so missed spam can be reviewed later. Also turns on extra logging and " ..
+    "the /bdev diagnostic commands. Leave off unless you are helping test.")
   AddNativeButton("Reset Settings", CONTENT_PAD, y, 120, function()
     if StaticPopup_Show then
       StaticPopup_Show("SIFT_RESET_SETTINGS")
@@ -2258,14 +2257,12 @@ RenderDev = function()
   -- functional when devMode is enabled.
   AddNativeButton("Export FP fixtures", CONTENT_PAD + 130, y, 150, function()
     ConfigPanel.OpenFPExportDialog(nil)
-  end, "Export false-positive entries from History as a paste-ready Lua " ..
-    "negatives block for fixtures.lua. Equivalent to /bdev fpx. " ..
-    "Requires devMode to be enabled.")
+  end, "Save the false-positive entries in History to a copy-paste window. " ..
+    "Equivalent to /bdev fpx. Requires dev mode.")
   AddNativeButton("Export FN candidates", CONTENT_PAD + 290, y, 160, function()
     ConfigPanel.OpenFNExportDialog(nil)
-  end, "Export the messages the filter let through, captured while devMode is " ..
-    "on, as corpus candidates for hand triage. Equivalent to /bdev fnx. " ..
-    "Requires devMode to be enabled.")
+  end, "Save the recent chat captured while dev mode is on to a copy-paste " ..
+    "window for review. Equivalent to /bdev fnx. Requires dev mode.")
   -- Second row: a fourth button on the row above would start at x=460 and end at
   -- 580, past the right edge of the content region at MIN_WIDTH.
   AddNativeButton("Clear FN log", CONTENT_PAD, y - ROW_HEIGHT, 120, function()
@@ -2717,7 +2714,7 @@ end
 function ConfigPanel.OpenFPExportDialog(limit)
   ConfigPanel.Initialize()
   if NS.DB and NS.DB.IsDevMode and not NS.DB.IsDevMode() then
-    Print("/bdev commands require devMode. Enable in Config \194\187 Dev.")
+    Print("These commands need dev mode. Turn it on in Config \194\187 Dev.")
     return
   end
   -- BSP-018 polish (post-Argus): match BuildFPExportText's clamp so the
@@ -2873,7 +2870,7 @@ end
 function ConfigPanel.OpenHistoryExportDialog(limit)
   ConfigPanel.Initialize()
   if NS.DB and NS.DB.IsDevMode and not NS.DB.IsDevMode() then
-    Print("/bdev commands require devMode. Enable in Config \194\187 Dev.")
+    Print("These commands need dev mode. Turn it on in Config \194\187 Dev.")
     return
   end
   if limit and limit <= 0 then limit = nil end
@@ -3020,7 +3017,7 @@ end
 function ConfigPanel.OpenFNExportDialog(limit)
   ConfigPanel.Initialize()
   if NS.DB and NS.DB.IsDevMode and not NS.DB.IsDevMode() then
-    Print("/bdev commands require devMode. Enable in Config \194\187 Dev.")
+    Print("These commands need dev mode. Turn it on in Config \194\187 Dev.")
     return
   end
   if limit and limit <= 0 then limit = nil end

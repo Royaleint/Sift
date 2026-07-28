@@ -67,6 +67,14 @@ local CATEGORY_COLORS = {
   -- above rather than fall through to the grey Anti shares.
   Custom     = "2bc",
 }
+-- Internal category keys that differ from the words the player sees. Every
+-- surface that prints a category key routes through this map so "Custom" and
+-- "RMT" never leak; keys not listed here (Boosting, the retired categories)
+-- already read as plain words.
+local CATEGORY_BADGE_LABELS = {
+  RMT    = "Gold selling",
+  Custom = "My Keywords",
+}
 -- Keys that describe WHY a message was caught rather than WHAT KIND of spam it
 -- is. Letting them win "dominant category" mislabels the row: a boosting ad
 -- caught during a flood would take the flood's colour and be filtered as though
@@ -668,7 +676,7 @@ local function RenderRow(row, entry)
     row.badgeText:SetText(L("You"))
     row.scoreText:SetText("")
   else
-    row.badgeText:SetText(cat or "?")
+    row.badgeText:SetText(cat and (CATEGORY_BADGE_LABELS[cat] or cat) or "?")
     row.scoreText:SetText(tostring(entry.score or 0))
   end
 end
@@ -1133,12 +1141,16 @@ local function RenderBreakdownChips(breakdown)
     if chip.SetBackdropColor then
       chip:SetBackdropColor(HexNibble(hex, 1), HexNibble(hex, 2), HexNibble(hex, 3), 1)
     end
-    chip.label:SetText(string.format("|cff000000%s +%d|r", item.cat, item.val))
-    chip:SetSize(80, 14)
+    chip.label:SetText(string.format("|cff000000%s +%d|r",
+      CATEGORY_BADGE_LABELS[item.cat] or item.cat, item.val))
+    -- Size to the label (same idiom as PlaceCategoryChips): the mapped names
+    -- ("Gold selling", "My Keywords") overflow the old fixed 80px.
+    local chipWidth = math.max(80, math.floor((chip.label:GetStringWidth() or 0) + 10.5))
+    chip:SetSize(chipWidth, 14)
     chip:ClearAllPoints()
     chip:SetPoint("LEFT", row, "LEFT", xOffset, 0)
     chip:Show()
-    xOffset = xOffset + 84
+    xOffset = xOffset + chipWidth + 4
   end
 end
 

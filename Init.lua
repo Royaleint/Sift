@@ -431,7 +431,7 @@ end
 
 local function BdevSlashHandler(msg)
 	if not NS.DB or not NS.DB.IsDevMode or not NS.DB.IsDevMode() then
-		Print("/bdev commands require devMode. Enable in Config \194\187 Dev.")
+		Print("These commands need dev mode. Turn it on in Config \194\187 Dev.")
 		return
 	end
 	msg = msg or ""
