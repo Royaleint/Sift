@@ -77,11 +77,11 @@ local defaults = {
       historyGlobalMaxEntries = 1000,
       devMode = false,
       -- BSP-010: confirmed-spam-repeat dedupe. Additive — Foundry.DB backfills
-      -- nil slots from defaults on first section access. Module-level defaults
-      -- in Throttle.lua mirror these values.
+      -- nil slots from defaults on first section access. The module-level
+      -- default in Frequency.lua mirrors this value. BSP-029 retired
+      -- bufferSize as a setting; the default now lives only in Frequency.
       throttle = {
         enabled = true,
-        bufferSize = 20,
       },
     },
   },
@@ -269,12 +269,14 @@ local function RepairSettings(settings)
   for _, key in ipairs(DEFUNCT_SURFACE_KEYS) do
     settings.surfaces[key] = nil
   end
-  -- BSP-010: repair the throttle subtree. Junk values (string, negative,
-  -- out-of-range) clamp back to safe defaults; missing fields backfill.
+  -- BSP-010: repair the throttle subtree. Junk values clamp back to safe
+  -- defaults; missing fields backfill.
   settings.throttle = type(settings.throttle) == "table" and settings.throttle or {}
   settings.throttle.enabled = settings.throttle.enabled ~= false
-  settings.throttle.bufferSize = ClampNumber(settings.throttle.bufferSize, 5, 50,
-    defaultSettings.throttle.bufferSize)
+  -- BSP-029: the buffer size is no longer user-configurable (the flood window
+  -- is the single timing knob). Prune the key existing SavedVariables still
+  -- carry — the matching default is gone, so nothing backfills it again.
+  settings.throttle.bufferSize = nil
 end
 
 local function RepairShape(global, char)
@@ -466,10 +468,10 @@ function DB.SetCategoryState(category, state)
   return state
 end
 
--- BSP-010: throttle setters. Mirror the SetSurfaceState / SetCategoryState
+-- BSP-010: repeat-dedupe setter. Mirrors the SetSurfaceState / SetCategoryState
 -- convention (per-setter validation, returns canonical value or nil on
--- failure) and also push the new value into NS.Throttle's runtime state so
--- ConfigPanel slider/checkbox changes take effect without /reload.
+-- failure) and also pushes the new value into the runtime module so a
+-- ConfigPanel checkbox change takes effect without /reload.
 function DB.SetThrottleEnabled(value)
   local settings = DB.GetSettings()
   if not settings then
@@ -477,24 +479,10 @@ function DB.SetThrottleEnabled(value)
   end
   settings.throttle = settings.throttle or {}
   settings.throttle.enabled = value == true
-  if NS.Throttle and NS.Throttle.SetEnabled then
-    NS.Throttle.SetEnabled(settings.throttle.enabled)
+  if NS.Frequency and NS.Frequency.SetRepeatEnabled then
+    NS.Frequency.SetRepeatEnabled(settings.throttle.enabled)
   end
   return settings.throttle.enabled
-end
-
-function DB.SetThrottleBufferSize(value)
-  local settings = DB.GetSettings()
-  if not settings then
-    return nil
-  end
-  settings.throttle = settings.throttle or {}
-  settings.throttle.bufferSize = ClampNumber(value, 5, 50,
-    defaults.global.settings.throttle.bufferSize)
-  if NS.Throttle and NS.Throttle.SetBufferSize then
-    NS.Throttle.SetBufferSize(settings.throttle.bufferSize)
-  end
-  return settings.throttle.bufferSize
 end
 
 function DB.GetBlockedActor(guid)

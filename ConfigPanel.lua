@@ -1603,10 +1603,12 @@ RenderDetection = function()
   y = AddCheckbox("Use mixed-script detection", "mixedScriptEnabled", y, nil,
     "Enable Unicode-confusable script-mixing as a signal in scoring.")
 
-  -- BSP-010: Throttle controls. Cannot reuse AddCheckbox helper because its
+  -- BSP-010: Throttle control. Cannot reuse AddCheckbox helper because its
   -- SettingValue(key) read is flat-keyed and throttle.enabled lives under
   -- settings.throttle.*. Use MakeNativeCheckbox directly with a custom
-  -- onChange that routes through NS.DB.SetThrottleEnabled.
+  -- onChange that routes through NS.DB.SetThrottleEnabled. BSP-029 removed the
+  -- companion buffer-size slider — how long a repeat is remembered is no longer
+  -- a user-facing knob.
   local throttle = (GetSettings() and GetSettings().throttle) or {}
 
   MakeNativeCheckbox(CONTENT_PAD, y, "Throttle confirmed-spam repeats",
@@ -1616,21 +1618,9 @@ RenderDetection = function()
         NS.DB.SetThrottleEnabled(value)
       end
     end,
-    "When the same cleansed text and sender GUID repeats inside the buffer window, " ..
-    "the second hit is auto-blocked. Only runs on messages already scored as spam \194\151 " ..
-    "legitimate repeats are unaffected.")
-  y = y - 32
-
-  local throttleSlider = MakeNativeSlider(CONTENT_PAD, y, 330, "Throttle buffer size", 5, 50, 1)
-  throttleSlider:SetValue(tonumber(throttle.bufferSize) or 20)
-  throttleSlider:SetCallback("OnValueChanged", function(_, _, value)
-    if NS.DB and NS.DB.SetThrottleBufferSize then
-      NS.DB.SetThrottleBufferSize(math.floor((tonumber(value) or 20) + 0.5))
-    end
-  end)
-  AttachTooltip(throttleSlider, "Throttle buffer size",
-    "How many recent confirmed-spam messages per surface are remembered for dedupe. " ..
-    "Larger = longer memory window. Range 5\194\17750.")
+    "When the same sender repeats the same message on the same surface, the repeat is " ..
+    "logged as one condensed history entry and counted as throttled. Only applies to " ..
+    "messages already blocked as spam \194\151 it does not change what gets blocked.")
 end
 
 RenderCategories = function()
@@ -2420,6 +2410,9 @@ local HISTORY_EXPORT_IGNORED_KEYS = {
   MixedScript = true,
   BlockedActor = true,
   Flood = true,
+  -- BSP-029: without this, every repeat-dedupe record exported as a "Throttle"
+  -- corpus candidate — a mechanism, not a category anyone can hand-triage.
+  Throttle = true,
 }
 
 -- BSP-049: build a raw (NOT Lua-escaped) corpus-candidate export from ALL

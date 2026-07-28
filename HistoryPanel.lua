@@ -64,9 +64,14 @@ local CATEGORY_COLORS = {
   Commercial = "5a7",
   Anti       = "888",
 }
+-- Mirrors History.lua's IGNORED_BREAKDOWN_KEYS (the canonical set). Flood was
+-- missed when BSP-027 added it there; BSP-029 added Throttle and realigned this
+-- copy to match.
 local IGNORED_BREAKDOWN_KEYS = {
   MixedScript = true,
   BlockedActor = true,
+  Flood = true,
+  Throttle = true,
 }
 
 local CATEGORIES         = { "RMT", "Boosting", "Casino", "Phishing", "Commercial", "Anti" }
