@@ -19,8 +19,7 @@ if not F then
         .. "to have loaded first; _G.Foundry_1_0 is missing.", 0)
 end
 -- Guarded-embedding stand-down (§2.2b): if this module is already registered on the
--- winning copy, this is a redundant embedded copy — load nothing. Silent no-op on
--- the first load (not registered yet). Zero new surface on F (HasModule already exists).
+-- winning copy, this is a redundant embedded copy — load nothing.
 if F:HasModule("Lifecycle") then return end
 
 local Lifecycle = {}
@@ -124,11 +123,22 @@ local function ensureDispatcher()
     frame:RegisterEvent("PLAYER_LOGIN")
     frame:RegisterEvent("PLAYER_LOGOUT")
 
+    -- Late-creation catch-up (the login analogue of OnAddonLoaded's
+    -- C_AddOns.IsAddOnLoaded probe): if the FIRST controller of the whole
+    -- session is created after PLAYER_LOGIN (an all-Load-on-Demand consumer),
+    -- the one-shot event has already fired and will never reach this frame, so
+    -- loginFired would stay false and every OnLogin handler would be silently
+    -- dropped. IsLoggedIn() is authoritative for that state; seed the central
+    -- flag from it at the moment the dispatcher is born.
+    if type(IsLoggedIn) == "function" and IsLoggedIn() then
+        loginFired = true
+    end
+
     dispatcher = frame
 end
 
--- Private post-logout-fan-out registration seam (Cycle-3 deliverable; spec §6.4,
--- plan R2). Internal surface only -- the dot-call underscore name keeps it off
+-- Private post-logout-fan-out registration seam (spec §6.4). Internal surface
+-- only -- the dot-call underscore name keeps it off
 -- the public controller API, so Lifecycle.API_VERSION stays 1 (the _TestFire
 -- precedent). Foundry.DB registers its logout strip here exactly once, at its
 -- first :New. It calls ensureDispatcher() itself so the dispatcher and its
