@@ -2655,10 +2655,25 @@ local function BuildFNExportText(limit)
     order = trimmed
   end
 
+  local params = NS.ShadowLog and NS.ShadowLog._Params and NS.ShadowLog._Params() or {}
+  local ordinarySource = params.sourceFnCandidate
+
+  -- SFT-081: the near-miss band is the point of the export, so say up front how
+  -- much of the list carries a capture signal. They sort to the top by rank.
+  local candidates = 0
+  for i = 1, #order do
+    local tags = order[i].tags
+    if type(tags) == "table" and #tags > 0 then
+      candidates = candidates + 1
+    end
+  end
+
   local lines = {
     string.format("-- Sift false-negative export: %d distinct messages%s",
       totalEntries,
       limit and (" (top " .. tostring(limit) .. " shown)") or ""),
+    string.format("-- %d of the %d listed below carry a capture signal, and lead the list.",
+      candidates, #order),
     "-- Exported: " .. (date and date("%Y-%m-%d %H:%M:%S") or "?"),
     "-- Format: [<count>x] <category>/<score> <surface> <last seen> [tags] | <raw original>",
     "-- Additional spellings that cleansed to the same text follow indented.",
@@ -2677,6 +2692,15 @@ local function BuildFNExportText(limit)
     local tagLabel = ""
     if type(entry.tags) == "table" and #entry.tags > 0 then
       tagLabel = " [" .. table.concat(entry.tags, ",") .. "]"
+    end
+    -- Provenance is worth saying only when it is not just the ordinary lane, so
+    -- a record the allowlist also let through cannot read as a plain miss. The
+    -- lane names come from ShadowLog, not a copy of the string here.
+    local sources = type(entry.sources) == "table" and entry.sources or {}
+    for s = 1, #sources do
+      if sources[s] ~= ordinarySource then
+        tagLabel = tagLabel .. " {" .. tostring(sources[s]) .. "}"
+      end
     end
 
     lines[#lines + 1] = string.format("[%dx] %s/%s %s %s%s | %s",
