@@ -1673,28 +1673,58 @@ local RenderHistory
 local RenderUI
 local RenderDev
 
+-- Gate 2 request (Rawb, 2026-07-28): every Detection setting gets its own
+-- reset-to-default button. Re-rendering the section is what syncs the control
+-- back to the default value — the widgets have no per-widget refresh path.
+local function AddDetectionReset(rowY, defaultValue, applyDefault)
+  AddNativeButton("Reset", CONTENT_PAD + 344, rowY, 52, function()
+    applyDefault()
+    ConfigPanel.ShowSection("Detection")
+  end, "Reset this setting to its default (" .. tostring(defaultValue) .. ").")
+end
+
 RenderDetection = function()
   local y = AddSectionTitle("Detection", "Tune the score threshold and mixed-script signal weight.")
   y = AddStatus(y, sectionStatus.Detection)
+  local rowY = y
   y = AddSlider("Block threshold", "threshold", 1, 10, 1, y,
     "Messages scoring at or above this value are blocked. Higher = stricter.")
+  AddDetectionReset(rowY - 10, DEFAULT_SETTINGS.threshold, function()
+    SetSetting("threshold", DEFAULT_SETTINGS.threshold)
+  end)
+  rowY = y
   y = AddSlider("Anti-signal cap", "antiSignalCap", -10, -1, 1, y,
     "Maximum negative score one anti-signal (e.g. guild affiliation) can contribute. " ..
     "Limits how much a single trusted indicator offsets spam weight.")
+  AddDetectionReset(rowY - 10, DEFAULT_SETTINGS.antiSignalCap, function()
+    SetSetting("antiSignalCap", DEFAULT_SETTINGS.antiSignalCap)
+  end)
+  rowY = y
   y = AddSlider("Mixed-script weight", "mixedScriptWeight", 0, 3, 1, y,
     "Score weight added when a message mixes Latin with another script (Cyrillic, etc.) \194\151 " ..
     "the classic Unicode-confusable pattern. Set 0 to disable.")
+  AddDetectionReset(rowY - 10, DEFAULT_SETTINGS.mixedScriptWeight, function()
+    SetSetting("mixedScriptWeight", DEFAULT_SETTINGS.mixedScriptWeight)
+  end)
+  rowY = y
   y = AddCheckbox("Use mixed-script detection", "mixedScriptEnabled", y, nil,
     "Enable Unicode-confusable script-mixing as a signal in scoring.")
+  AddDetectionReset(rowY, DEFAULT_SETTINGS.mixedScriptEnabled and "on" or "off", function()
+    SetSetting("mixedScriptEnabled", DEFAULT_SETTINGS.mixedScriptEnabled)
+  end)
 
   -- BSP-039: bounds come from Frequency so the slider cannot drift away from
   -- the clamp that actually enforces them.
   local minWindow, maxWindow, defaultWindow = NS.Frequency.GetFloodWindowBounds()
+  rowY = y
   y = AddSlider("Flood window (seconds)", "floodWindow", minWindow, maxWindow, 30, y,
     "How far back Sift looks when deciding that the same message is being repeated too " ..
     "often. A longer window catches slower, more persistent repeats; a shorter one only " ..
     "reacts to rapid bursts. Leave at " .. defaultWindow .. " unless repeat spam is " ..
     "slipping past.")
+  AddDetectionReset(rowY - 10, defaultWindow, function()
+    SetSetting("floodWindow", defaultWindow)
+  end)
 
   -- BSP-010: Throttle control. Cannot reuse AddCheckbox helper because its
   -- SettingValue(key) read is flat-keyed and throttle.enabled lives under
@@ -1714,6 +1744,11 @@ RenderDetection = function()
     "When the same sender repeats the same message on the same surface, the repeat is " ..
     "logged as one condensed history entry and counted as throttled. Only applies to " ..
     "messages already blocked as spam \194\151 it does not change what gets blocked.")
+  AddDetectionReset(y, "on", function()
+    if NS.DB and NS.DB.SetThrottleEnabled then
+      NS.DB.SetThrottleEnabled(true)
+    end
+  end)
 end
 
 RenderCategories = function()
