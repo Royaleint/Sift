@@ -163,6 +163,23 @@ local function GetHistoryStats()
   }
 end
 
+-- BSP-063: account-wide record count, summed across every character's
+-- retained history. This is the same cross-char loop the "Account total"
+-- slider's OnValueChanged callback uses to validate the cap against the
+-- current total; factored out here so RenderHistory can display it on
+-- panel open too, not only after the slider is dragged.
+local function GetAccountHistoryTotal()
+  local total = 0
+  if NS.DB and NS.DB.db and NS.DB.db.sv and type(NS.DB.db.sv.char) == "table" then
+    for _, charData in pairs(NS.DB.db.sv.char) do
+      if type(charData) == "table" and type(charData.history) == "table" then
+        total = total + #charData.history
+      end
+    end
+  end
+  return total
+end
+
 local function CopyTable(tbl)
   local out = {}
   if type(tbl) == "table" then
@@ -1876,19 +1893,19 @@ RenderHistory = function()
     "Lifetime stats counters are unaffected.")
   y = y - 52
 
+  -- BSP-063: show the current account-wide count on render, not only after
+  -- the slider below is dragged (GetAccountHistoryTotal fires here on every
+  -- panel open/section-show, same as RenderHistory's other stats rows).
+  AddText("Account-wide records: " .. tostring(GetAccountHistoryTotal()),
+    "GameFontNormalSmall", CONTENT_PAD, y)
+  y = y - 20
+
   local globalSlider = MakeNativeSlider(CONTENT_PAD, y, 360, "Account total", 100, 5000, 100)
   globalSlider:SetValue(tonumber(SettingValue("historyGlobalMaxEntries")) or DEFAULT_SETTINGS.historyGlobalMaxEntries)
   globalSlider:SetCallback("OnValueChanged", function(_, _, value)
     value = ClampNumber(value, 100, 5000, DEFAULT_SETTINGS.historyGlobalMaxEntries)
     value = math.floor((value + 50) / 100) * 100
-    local total = 0
-    if NS.DB and NS.DB.db and NS.DB.db.sv and type(NS.DB.db.sv.char) == "table" then
-      for _, charData in pairs(NS.DB.db.sv.char) do
-        if type(charData) == "table" and type(charData.history) == "table" then
-          total = total + #charData.history
-        end
-      end
-    end
+    local total = GetAccountHistoryTotal()
     if value < total then
       pendingHistoryGlobalMax = value
       if StaticPopup_Show then
