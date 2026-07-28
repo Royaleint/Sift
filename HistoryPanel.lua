@@ -72,7 +72,8 @@ local CATEGORY_COLORS = {
 -- ChatScanner's list of the same name: Throttle is absent there on purpose,
 -- because Throttle is injected after the scanner's category gate has already
 -- read the breakdown, so it can never reach that gate. It does reach stored
--- rows, which is why it has to be excluded here.
+-- rows, which is why it has to be excluded here. (SFT-080 and BSP-029
+-- converged on this exact set independently.)
 local IGNORED_BREAKDOWN_KEYS = {
   MixedScript = true,
   BlockedActor = true,

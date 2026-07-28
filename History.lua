@@ -7,6 +7,10 @@ local IGNORED_BREAKDOWN_KEYS = {
   MixedScript = true,
   BlockedActor = true,
   Flood = true,
+  -- BSP-029: repeat-dedupe blocks carry a synthesized { Throttle = threshold }
+  -- breakdown, which counted as a spam category and dominated byCategory. The
+  -- repeat count is already reported separately as stats.throttled.
+  Throttle = true,
 }
 
 local function GetChar()
