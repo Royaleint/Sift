@@ -71,6 +71,9 @@ local defaults = {
       mixedScriptEnabled = true,
       mixedScriptWeight = 1,
       antiSignalCap = -5,
+      -- BSP-039: flood window in seconds. The band is owned by Frequency.lua
+      -- and read through GetFloodWindowBounds; this is only the seed value.
+      floodWindow = 180,
       filterBubbles = false,
       showMinimapButton = true,
       historyMaxEntries = 300,
@@ -197,6 +200,19 @@ local function ClampNumber(value, minValue, maxValue, fallback)
   return value
 end
 
+-- BSP-039: Frequency owns the flood-window band, so read it from there rather
+-- than repeating the numbers here. Frequency loads before this ever runs (TOC
+-- order, and every caller is post-init). If it somehow has not, return the
+-- default rather than an unclamped number — without the bounds there is no way
+-- to tell whether a supplied value is inside the band.
+local function ClampFloodWindow(value)
+  if NS.Frequency and NS.Frequency.GetFloodWindowBounds then
+    local minWindow, maxWindow = NS.Frequency.GetFloodWindowBounds()
+    return ClampNumber(value, minWindow, maxWindow, defaults.global.settings.floodWindow)
+  end
+  return defaults.global.settings.floodWindow
+end
+
 local function Now()
   if type(GetServerTime) == "function" then
     return GetServerTime()
@@ -236,6 +252,7 @@ local function RepairSettings(settings)
   settings.threshold = ClampNumber(settings.threshold, 1, 10, defaultSettings.threshold)
   settings.mixedScriptWeight = ClampNumber(settings.mixedScriptWeight, 0, 3, defaultSettings.mixedScriptWeight)
   settings.antiSignalCap = ClampNumber(settings.antiSignalCap, -10, -1, defaultSettings.antiSignalCap)
+  settings.floodWindow = ClampFloodWindow(settings.floodWindow)
   settings.historyMaxEntries = ClampNumber(settings.historyMaxEntries, 100, 5000, defaultSettings.historyMaxEntries)
   settings.historyGlobalMaxEntries = ClampNumber(settings.historyGlobalMaxEntries, 100, 5000, defaultSettings.historyGlobalMaxEntries)
   settings.mixedScriptEnabled = settings.mixedScriptEnabled ~= false
@@ -386,6 +403,11 @@ function DB.SetSetting(key, value)
     settings.mixedScriptWeight = ClampNumber(value, 0, 3, defaults.global.settings.mixedScriptWeight)
   elseif key == "antiSignalCap" then
     settings.antiSignalCap = ClampNumber(value, -10, -1, defaults.global.settings.antiSignalCap)
+  elseif key == "floodWindow" then
+    settings.floodWindow = ClampFloodWindow(value)
+    if NS.Frequency and NS.Frequency.SetFloodWindow then
+      NS.Frequency.SetFloodWindow(settings.floodWindow)
+    end
   elseif key == "historyMaxEntries" then
     settings.historyMaxEntries = ClampNumber(value, 100, 5000, defaults.global.settings.historyMaxEntries)
   elseif key == "historyGlobalMaxEntries" then
@@ -563,6 +585,12 @@ function DB.ResetSettings()
   -- account-wide, not enforced piecemeal as each alt next logs in.
   if NS.History and NS.History.TrimAllCharacters then
     NS.History.TrimAllCharacters()
+  end
+  -- BSP-039: same reasoning as the trim above — a reset value is authoritative
+  -- immediately, not at next login. Without this the slider snaps back to 180
+  -- while the runtime keeps scanning on whatever window was set before.
+  if NS.Frequency and NS.Frequency.SetFloodWindow then
+    NS.Frequency.SetFloodWindow(global.settings.floodWindow)
   end
   return global.settings
 end

@@ -23,7 +23,9 @@
 local Frequency = {}
 
 -- Flood lane (any-sender, time-windowed).
-local WINDOW      = 180   -- seconds; rolling repeat window (rapid floods only)
+local DEFAULT_WINDOW = 180  -- seconds; rolling repeat window (rapid floods only)
+local MIN_WINDOW     = 60
+local MAX_WINDOW     = 240
 local TRIGGER     = 3     -- nth identical occurrence that starts boosting
 local MIN_LEN     = 24    -- min cleansed length to track (kills trivial chatter)
 local BOOST_BASE  = 5     -- boost at the trigger count
@@ -32,6 +34,7 @@ local BOOST_CAP   = 9
 local SOFT_CAP    = 2000  -- distinct-key ceiling before a prune sweep
 
 local floodEnabled = true
+local window = DEFAULT_WINDOW
 local seen = {}           -- key -> { ascending occurrence timestamps within window }
 local distinctCount = 0
 
@@ -89,7 +92,7 @@ function Frequency.RecordAndCount(cleansed, now)
   if not floodEnabled then return 0 end
   if type(cleansed) ~= "string" or #cleansed < MIN_LEN then return 0 end
   now = tonumber(now) or 0
-  local cutoff = now - WINDOW
+  local cutoff = now - window
 
   if distinctCount > SOFT_CAP then sweep(cutoff) end
 
@@ -121,6 +124,27 @@ end
 
 function Frequency.IsFloodEnabled()
   return floodEnabled
+end
+
+-- Capped at 240 as a false-positive guard (see BSP-039's tracker entry for the
+-- band rationale).
+function Frequency.SetFloodWindow(value)
+  value = tonumber(value) or DEFAULT_WINDOW
+  if value < MIN_WINDOW then value = MIN_WINDOW end
+  if value > MAX_WINDOW then value = MAX_WINDOW end
+  window = value
+  return window
+end
+
+function Frequency.GetFloodWindow()
+  return window
+end
+
+-- The band is defined once, here. DB and ConfigPanel read it through this
+-- accessor instead of repeating the numbers, so the clamp, the SavedVariables
+-- repair, and the slider bounds cannot drift apart.
+function Frequency.GetFloodWindowBounds()
+  return MIN_WINDOW, MAX_WINDOW, DEFAULT_WINDOW
 end
 
 local function ClampBufferSize(value)
@@ -219,7 +243,7 @@ end
 -- Inspection accessor (tests / future config). Not used by the addon at runtime.
 function Frequency._Params()
   return {
-    window = WINDOW, trigger = TRIGGER, minLen = MIN_LEN,
+    window = window, trigger = TRIGGER, minLen = MIN_LEN,
     boostBase = BOOST_BASE, boostStep = BOOST_STEP, boostCap = BOOST_CAP,
   }
 end

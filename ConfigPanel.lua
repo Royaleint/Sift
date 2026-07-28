@@ -71,6 +71,10 @@ local DEFAULT_SETTINGS = {
   mixedScriptEnabled = true,
   mixedScriptWeight = 1,
   antiSignalCap = -5,
+  -- Mirrors Frequency's DEFAULT_WINDOW. Not read from GetFloodWindowBounds
+  -- because this table is built at file scope, before NS.Frequency is
+  -- guaranteed present; the live slider bounds do come from the accessor.
+  floodWindow = 180,
   filterBubbles = false,
   historyMaxEntries = 300,
   historyGlobalMaxEntries = 1000,
@@ -1602,6 +1606,15 @@ RenderDetection = function()
     "the classic Unicode-confusable pattern. Set 0 to disable.")
   y = AddCheckbox("Use mixed-script detection", "mixedScriptEnabled", y, nil,
     "Enable Unicode-confusable script-mixing as a signal in scoring.")
+
+  -- BSP-039: bounds come from Frequency so the slider cannot drift away from
+  -- the clamp that actually enforces them.
+  local minWindow, maxWindow, defaultWindow = NS.Frequency.GetFloodWindowBounds()
+  y = AddSlider("Flood window (seconds)", "floodWindow", minWindow, maxWindow, 30, y,
+    "How far back Sift looks when deciding that the same message is being repeated too " ..
+    "often. A longer window catches slower, more persistent repeats; a shorter one only " ..
+    "reacts to rapid bursts. Leave at " .. defaultWindow .. " unless repeat spam is " ..
+    "slipping past.")
 
   -- BSP-010: Throttle control. Cannot reuse AddCheckbox helper because its
   -- SettingValue(key) read is flat-keyed and throttle.enabled lives under

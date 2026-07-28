@@ -52,6 +52,11 @@ local function Initialize()
      and NS.Frequency.SetRepeatEnabled then
     NS.Frequency.SetRepeatEnabled(throttleSettings.throttle.enabled)
   end
+  -- BSP-039: same reasoning for the flood window, a persisted setting as of
+  -- this ticket rather than a module constant.
+  if throttleSettings and NS.Frequency and NS.Frequency.SetFloodWindow then
+    NS.Frequency.SetFloodWindow(throttleSettings.floodWindow)
+  end
 
   if NS.Patterns and NS.Patterns.LoadOnInit then
     local loaded = NS.Patterns:LoadOnInit()
