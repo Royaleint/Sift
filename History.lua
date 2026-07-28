@@ -246,6 +246,59 @@ function History.GetStats()
   }
 end
 
+-- BSP-036: account-wide aggregate. char.stats is a running lifetime counter
+-- (IncrementStats increments it forever; History.TrimToMax / TrimAllCharacters
+-- only prune the retained `history` record array, never char.stats), so
+-- summing char.stats across every stored character namespace is an accurate
+-- account-wide lifetime total. Live aggregation, not a maintained db.global
+-- running total: no SavedVariables migration, no double-count risk if a
+-- counter and its source ever drift. This is the same cross-char loop
+-- BSP-063's account-history-total already uses over `history`; here it sums
+-- `stats` instead.
+function History.GetAccountStats()
+  local total = {
+    detections = 0, blocked = 0, passThru = 0, restored = 0,
+    throttled = 0, bubblesSuppressed = 0,
+    bySurface = {}, byCategory = {},
+  }
+  local retainedTotal = 0
+
+  local charTable = NS.DB and NS.DB.db and NS.DB.db.sv and NS.DB.db.sv.char
+  if type(charTable) == "table" then
+    for _, charData in pairs(charTable) do
+      if type(charData) == "table" then
+        if type(charData.stats) == "table" then
+          local stats = charData.stats
+          total.detections = total.detections + (tonumber(stats.detections) or 0)
+          total.blocked = total.blocked + (tonumber(stats.blocked) or 0)
+          total.passThru = total.passThru + (tonumber(stats.passThru) or 0)
+          total.restored = total.restored + (tonumber(stats.restored) or 0)
+          total.throttled = total.throttled + (tonumber(stats.throttled) or 0)
+          total.bubblesSuppressed = total.bubblesSuppressed + (tonumber(stats.bubblesSuppressed) or 0)
+          if type(stats.bySurface) == "table" then
+            for surface, count in pairs(stats.bySurface) do
+              total.bySurface[surface] = (total.bySurface[surface] or 0) + (tonumber(count) or 0)
+            end
+          end
+          if type(stats.byCategory) == "table" then
+            for category, count in pairs(stats.byCategory) do
+              total.byCategory[category] = (total.byCategory[category] or 0) + (tonumber(count) or 0)
+            end
+          end
+        end
+        if type(charData.history) == "table" then
+          retainedTotal = retainedTotal + #charData.history
+        end
+      end
+    end
+  end
+
+  return {
+    lifetime = total,
+    retained = { detections = retainedTotal },
+  }
+end
+
 function History.Clear()
   local char = GetChar()
   if not char then

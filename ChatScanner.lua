@@ -33,10 +33,10 @@ local IGNORED_BREAKDOWN_KEYS = {
   MixedScript = true,
   BlockedActor = true,
   Flood = true,
-  -- BSP-029: Throttle is a dedupe mechanism, not a spam category. It reaches
-  -- DominantCategory only through the synthesized repeat record below, where
-  -- crediting it as the dominant category tagged the sender's blocked-actor
-  -- entry with a category they never actually posted.
+  -- BSP-029: Throttle is a dedupe mechanism, not a spam category. SFT-082
+  -- removed the synthesized repeat record that used to inject it, but rows
+  -- persisted before that fix still carry the key, and SFT-084's stats
+  -- correction depends on it staying excluded here.
   Throttle = true,
   -- BSP-037: same reasoning. A manual block is an identity decision, so it must
   -- never be credited as a content category the sender never posted.
@@ -502,9 +502,9 @@ local function Pipeline(
       guid,
       analysis,
       settings,
-      settings.threshold,
-      settings.threshold,
-      { Throttle = settings.threshold },
+      score.score,
+      score.threshold,
+      score.breakdown,
       "throttle",
       surface,
       throttleOutcome
