@@ -1,7 +1,10 @@
 <Ui xmlns="http://www.blizzard.com/wow/ui/">
-  <!-- Foundry-1.0 vendored at v1.0.5 (BSP-066). Standalone Foundry-1.0 wins when
-       present (OptionalDeps ordering loads it first); this embed stands down silently
-       via the bootstrap gate in Foundry.lua. -->
+  <!-- Foundry-1.0 is vendored file by file, not as one snapshot, so check the file
+       you are about to touch rather than assuming a single version: DB.lua is at
+       v1.0.102 (BSP-071), Events.lua is still back at v1.0.5, and Foundry.lua plus
+       the remaining modules are at v1.0.100. Consolidating the set is a follow-up.
+       Standalone Foundry-1.0 wins when present (OptionalDeps ordering loads it
+       first); this embed stands down silently via the bootstrap gate in Foundry.lua. -->
   <Script file="Libs/Foundry-1.0/Foundry.lua"/>
   <Script file="Libs/Foundry-1.0/Modules/Commands.lua"/>
   <Script file="Libs/Foundry-1.0/Modules/Events.lua"/>
