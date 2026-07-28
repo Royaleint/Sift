@@ -68,12 +68,10 @@ local CATEGORY_COLORS = {
 -- is. Letting them win "dominant category" mislabels the row: a boosting ad
 -- caught during a flood would take the flood's colour and be filtered as though
 -- boosting were not its category. They stay visible as breakdown chips in the
--- detail pane, which is where the "why" belongs. This is a superset of
--- ChatScanner's list of the same name: Throttle is absent there on purpose,
--- because Throttle is injected after the scanner's category gate has already
--- read the breakdown, so it can never reach that gate. It does reach stored
--- rows, which is why it has to be excluded here. (SFT-080 and BSP-029
--- converged on this exact set independently.)
+-- detail pane, which is where the "why" belongs. ChatScanner keeps its own
+-- copy of this set; BSP-029 aligned the two (Throttle included in both --
+-- an earlier note here claimed ChatScanner deliberately omitted it, which
+-- stopped being true when the repeat lane moved into Frequency).
 local IGNORED_BREAKDOWN_KEYS = {
   MixedScript = true,
   BlockedActor = true,
