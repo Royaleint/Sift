@@ -134,6 +134,31 @@ end
 -- many spellings -- but the spellings ARE the data being mined (a re-spelled ad
 -- is what defeats a vocabulary rule). Keep a bounded handful of distinct raw
 -- originals per key rather than only the first one seen.
+-- Union, never replacement. Sightings of one message disagree about tags: an
+-- obfuscated respelling of a handle loses the token match while keeping the
+-- shape, and the next clean spelling gets it back. Assigning the newest result
+-- would silently drop a tag the entry had already earned, which is the opposite
+-- of what a mining record is for.
+local function MergeTags(entry, tags)
+  if not tags then
+    return
+  end
+  local existing = entry.tags
+  if not existing then
+    entry.tags = tags
+    return
+  end
+  for i = 1, #tags do
+    local tag, seen = tags[i], false
+    for j = 1, #existing do
+      if existing[j] == tag then seen = true break end
+    end
+    if not seen then
+      existing[#existing + 1] = tag
+    end
+  end
+end
+
 local function AddVariant(entry, original)
   local originals = entry.originals
   for i = 1, #originals do
@@ -207,6 +232,13 @@ function ShadowLog.Capture(original, analysis, surface, score)
   end
 
   local total = tonumber(score and score.score) or 0
+
+  -- SFT-079: capture-only tags. Evaluate answers nil unless the message already
+  -- carries a sell signal, so a message in another language is never tagged for
+  -- being in another language. Nothing here can block: the tag is written into a
+  -- store a human reads.
+  local tags = NS.Signals and NS.Signals.Evaluate and NS.Signals.Evaluate(analysis, score)
+
   local entries = GetIndex(store)
   local entry = entries[cleansed]
 
@@ -217,6 +249,7 @@ function ShadowLog.Capture(original, analysis, surface, score)
       entry.score = total
       entry.category = DominantCategory(score and score.breakdown)
     end
+    MergeTags(entry, tags)
     AddVariant(entry, original)
     RefreshChances(entry)
     return entry
@@ -234,6 +267,7 @@ function ShadowLog.Capture(original, analysis, surface, score)
     count = 1,
     score = total,
     category = DominantCategory(score and score.breakdown),
+    tags = tags,
     source = SOURCE_FN_CANDIDATE,
   }
   RefreshChances(entry)

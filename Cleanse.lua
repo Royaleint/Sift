@@ -318,6 +318,25 @@ local function _scriptOf(cp)
   return nil
 end
 
+-- SFT-079: the structural script-mix shape. A mostly-CJK message carrying an
+-- embedded run of Latin is what an off-platform contact handle looks like
+-- dropped into an otherwise non-Latin advert. It is a shape rather than a
+-- vocabulary, so it survives respelling, and measuring it here is free: this
+-- walk already decodes every codepoint, and pure-ASCII text skips the walk
+-- entirely. Measured, not judged -- whether the shape MEANS anything is
+-- Signals.lua's decision, and it is capture-only either way.
+local ISLAND_MIN_CJK = 4  -- ignore a stray ideograph or two
+local ISLAND_MIN_RUN = 4  -- a handle-length run, not an incidental letter
+
+local function _isCJK(cp)
+  if cp >= 0x3040 and cp <= 0x30FF then return true end  -- Hiragana + Katakana
+  if cp >= 0x3400 and cp <= 0x4DBF then return true end  -- CJK Unified Ext A
+  if cp >= 0x4E00 and cp <= 0x9FFF then return true end  -- CJK Unified
+  if cp >= 0xAC00 and cp <= 0xD7AF then return true end  -- Hangul syllables
+  if cp >= 0xF900 and cp <= 0xFAFF then return true end  -- CJK compatibility
+  return false
+end
+
 local function _emit(out, n, cp)
   if cp < 0x80 then
     n = n + 1; out[n] = string.char(cp)
@@ -344,6 +363,7 @@ function Cleanse._FusedFrontPass(text)
   local mixed = false
   local wordHasLatin, wordHasOther = false, false
   local hasTokenSeparator = false
+  local cjkCount, latinCount, latinRun, maxLatinRun = 0, 0, 0, 0
 
   while i <= len do
     local b1 = string.byte(text, i)
@@ -392,6 +412,24 @@ function Cleanse._FusedFrontPass(text)
       end
       local folded = Cleanse._confusables[cp] or cp   -- Stage 4 then Stage 5
       folded = _styledFold(folded)
+
+      -- Script-island shape. The Latin run is counted on the FOLDED codepoint so
+      -- a fullwidth-Latin handle counts as the Latin it renders as; digits
+      -- continue a run (handles carry them) but do not start the Latin majority.
+      if _isCJK(cp) then
+        cjkCount = cjkCount + 1
+        latinRun = 0
+      elseif (folded >= 0x41 and folded <= 0x5A) or (folded >= 0x61 and folded <= 0x7A) then
+        latinCount = latinCount + 1
+        latinRun = latinRun + 1
+        if latinRun > maxLatinRun then maxLatinRun = latinRun end
+      elseif folded >= 0x30 and folded <= 0x39 then
+        latinRun = latinRun + 1
+        if latinRun > maxLatinRun then maxLatinRun = latinRun end
+      else
+        latinRun = 0
+      end
+
       n = _emit(out, n, folded)
     end
 
@@ -399,12 +437,23 @@ function Cleanse._FusedFrontPass(text)
   end
   if wordHasLatin and wordHasOther then mixed = true end
 
-  return table.concat(out), mixed, hasTokenSeparator
+  -- latinCount > 0 is load-bearing: digits extend a run but must never BE one on
+  -- their own, or a CJK message quoting a price ("...1234") reads as a contact
+  -- island with no Latin in it at all.
+  local scriptIsland = cjkCount >= ISLAND_MIN_CJK
+    and cjkCount > latinCount
+    and latinCount > 0
+    and maxLatinRun >= ISLAND_MIN_RUN
+
+  return table.concat(out), mixed, hasTokenSeparator, scriptIsland
 end
 
 function Cleanse.Analyze(text)
   if type(text) ~= "string" then
-    return { normalized = "", signals = { mixedScript = false, containsItemLinks = false } }
+    return {
+      normalized = "",
+      signals = { mixedScript = false, containsItemLinks = false, scriptIsland = false },
+    }
   end
 
   local containsItemLinks = string.find(text, "|H", 1, true) ~= nil
@@ -412,12 +461,13 @@ function Cleanse.Analyze(text)
   text = Cleanse._Stage1_ItemLinks(text)
 
   -- BSP-030: Stages 2-5 + mixed-script in one pass, with a pure-ASCII fast-path.
-  local mixedScript, hasTokenSeparator
+  local mixedScript, hasTokenSeparator, scriptIsland
   if not string.find(text, "[\128-\255]") then
     mixedScript = false                       -- ASCII: stages 2-5 identity, never mixed
     hasTokenSeparator = false
+    scriptIsland = false                      -- ASCII: no CJK, so no script island
   else
-    text, mixedScript, hasTokenSeparator = Cleanse._FusedFrontPass(text)
+    text, mixedScript, hasTokenSeparator, scriptIsland = Cleanse._FusedFrontPass(text)
   end
 
   text = Cleanse._Stage6_Leetspeak(text)
@@ -430,7 +480,11 @@ function Cleanse.Analyze(text)
 
   return {
     normalized = text,
-    signals = { mixedScript = mixedScript, containsItemLinks = containsItemLinks },
+    signals = {
+      mixedScript = mixedScript,
+      containsItemLinks = containsItemLinks,
+      scriptIsland = scriptIsland,
+    },
   }
 end
 

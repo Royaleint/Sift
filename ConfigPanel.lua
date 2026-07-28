@@ -2660,7 +2660,7 @@ local function BuildFNExportText(limit)
       totalEntries,
       limit and (" (top " .. tostring(limit) .. " shown)") or ""),
     "-- Exported: " .. (date and date("%Y-%m-%d %H:%M:%S") or "?"),
-    "-- Format: [<count>x] <category>/<score> <surface> <last seen> | <raw original>",
+    "-- Format: [<count>x] <category>/<score> <surface> <last seen> [tags] | <raw original>",
     "-- Additional spellings that cleansed to the same text follow indented.",
     "",
   }
@@ -2672,12 +2672,20 @@ local function BuildFNExportText(limit)
   for i = 1, #order do
     local entry = order[i]
     local originals = type(entry.originals) == "table" and entry.originals or {}
-    lines[#lines + 1] = string.format("[%dx] %s/%s %s %s | %s",
+    -- SFT-079 capture tags, if any. They are why an otherwise unremarkable line
+    -- is worth a second look, so they belong in the line a human reads.
+    local tagLabel = ""
+    if type(entry.tags) == "table" and #entry.tags > 0 then
+      tagLabel = " [" .. table.concat(entry.tags, ",") .. "]"
+    end
+
+    lines[#lines + 1] = string.format("[%dx] %s/%s %s %s%s | %s",
       tonumber(entry.count) or 1,
       entry.category or "-",
       tostring(entry.score or 0),
       tostring(entry.surface or "?"),
       (entry.ts and date) and date("%Y-%m-%d", entry.ts) or "?",
+      tagLabel,
       tostring(originals[1] or entry.cleansed or "?"))
     for variant = 2, #originals do
       lines[#lines + 1] = "     | " .. originals[variant]
