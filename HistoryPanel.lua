@@ -1172,8 +1172,21 @@ RefreshDetail = function()
       tonumber(entry.score) or 0, tonumber(entry.threshold) or 0)
   end
   detailPane.header.statusText:SetText(statusText)
-  detailPane.header.metaText:SetText(string.format("%s   %s%s%s",
-    L(surfaceLabel), channel, linkSuffix, pauseReason))
+  -- BSP-052: name the user's own rule when one is what caught this message.
+  -- Read from the record rather than looked up live, so it still reads correctly
+  -- after the rule has been deleted. Shown on the meta line rather than as its
+  -- own row because the footer below is a fixed-height three-row layout, and the
+  -- breakdown already carries a "Custom" chip alongside this.
+  local keywordNote = ""
+  if type(entry.customRule) == "table" then
+    local rule = entry.customRule.raw or entry.customRule.cleansed
+    if rule then
+      keywordNote = "   |cffffd100" .. L("blocked by your keyword") .. ": " .. rule .. "|r"
+    end
+  end
+
+  detailPane.header.metaText:SetText(string.format("%s   %s%s%s%s",
+    L(surfaceLabel), channel, linkSuffix, pauseReason, keywordNote))
 
   RenderBodyFlex(entry)
   RenderBreakdownChips(entry.breakdown)

@@ -44,6 +44,10 @@ local SECTIONS = {
   "Surfaces",
   "Allowlist",
   "Blocked",
+  -- BSP-052 / BSP-058: the user's own keyword rules. Two sections rather than
+  -- one, because each is a full paginated list and the panel is not tall enough
+  -- to show both at once.
+  "My Keywords",
   "History",
   "UI",
   "Dev",
@@ -54,6 +58,9 @@ local SECTIONS = {
 local CATEGORY_KEYS = NS.PauseState.GetCategoryKeys()
 local CATEGORY_LABELS = {
   RMT = "Gold selling",
+  -- BSP-052: "Custom" is the internal name the score breakdown uses. On the
+  -- toggle row it is named after the section the user manages it in.
+  Custom = "My Keywords",
 }
 
 local SURFACE_KEYS = NS.PauseState.GetSurfaceKeys()
@@ -108,6 +115,9 @@ local listState = {
   allowlistAddText = "",
   blockedSearch = "",
   blockedPage = 1,
+  keywordSearch = { block = "", allow = "" },
+  keywordPage = { block = 1, allow = 1 },
+  keywordAddText = { block = "", allow = "" },
 }
 
 local function Print(message)
@@ -1335,6 +1345,25 @@ local function RegisterStaticPopups()
     hideOnEscape = true,
   }
 
+  -- BSP-052 / BSP-058: clearing a keyword list throws away typed-in user data
+  -- with no undo, so both ask first. The count comes in as the StaticPopup_Show
+  -- argument and fills the %d.
+  StaticPopupDialogs["SIFT_REMOVE_ALL_KEYWORDS"] = {
+    text = "Remove every phrase from your keyword block list (%d in total)? This cannot be undone.",
+    button1 = "Remove All",
+    button2 = "Cancel",
+    OnAccept = function()
+      local removed = NS.UserRules and NS.UserRules.RemoveAll(NS.UserRules.BLOCK) or 0
+      sectionStatus["My Keywords"] = "Removed " .. removed .. " phrase(s)."
+      if activeSection == "My Keywords" and frame and frame:IsShown() then
+        ConfigPanel.ShowSection("My Keywords")
+      end
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+  }
+
   StaticPopupDialogs["SIFT_RESET_SETTINGS"] = {
     text = "Reset Sift settings to defaults?",
     button1 = "Reset",
@@ -1889,6 +1918,197 @@ RenderBlocked = function()
   end, "Show the next page of blocked actors.")
 end
 
+-- BSP-052 / BSP-058: both keyword lists render through one function. They differ
+-- only in wording and in what a match does to a message, so a second copy of the
+-- search / add / paginate / remove scaffolding would be pure duplication.
+local KEYWORD_SECTIONS = {
+  ["My Keywords"] = {
+    kind = NS.UserRules and NS.UserRules.BLOCK or "block",
+    blurb = "Words and phrases you want hidden. Matching messages are blocked even when Sift's own filter would let them through.",
+    addLabel = "Block phrase",
+    addTooltip = "Type a word or phrase to block. It is matched against the same cleaned-up "
+      .. "text the filter uses, so it also catches spaced-out, mis-capitalised and "
+      .. "look-alike-character spellings.",
+    help = "Matching ignores spaces and punctuation, so a phrase can match across word "
+      .. "boundaries \194\183 \"tank lf\" also matches \"tank lfm dungeon\". Prefer distinctive "
+      .. "phrases. Anything blocked this way is recoverable from History.",
+    emptyLabel = "No keywords yet",
+    emptyHint = "Add a word or phrase above to start blocking it.",
+    popup = "SIFT_REMOVE_ALL_KEYWORDS",
+  },
+}
+
+local ADD_STATUS_TEXT = {
+  added          = "Added \"%s\".",
+  empty          = "Enter a word or phrase.",
+  too_short      = "Needs at least %d characters once spaces and punctuation are removed.",
+  already_exists = "\"%s\" is already in this list.",
+  full           = "This list is full (%d maximum). Remove something first.",
+  unavailable    = "Keyword rules are unavailable.",
+}
+
+local function SortedKeywords(kind, search)
+  local entries = NS.UserRules and NS.UserRules.List(kind) or {}
+  search = Lower(search)
+  if search == "" then
+    return entries
+  end
+  local out = {}
+  for _, entry in ipairs(entries) do
+    if string.find(Lower(entry.raw), search, 1, true)
+       or string.find(Lower(entry.cleansed), search, 1, true) then
+      out[#out + 1] = entry
+    end
+  end
+  return out
+end
+
+local function AddKeywordFromText(section, config, text)
+  local rules = NS.UserRules
+  if not rules then
+    sectionStatus[section] = ADD_STATUS_TEXT.unavailable
+    return
+  end
+
+  local status, entry = rules.Add(config.kind, text)
+  if status == "added" then
+    sectionStatus[section] = string.format(ADD_STATUS_TEXT.added, entry.raw)
+    listState.keywordAddText[config.kind] = ""
+  elseif status == "already_exists" then
+    sectionStatus[section] = string.format(ADD_STATUS_TEXT.already_exists, entry.raw)
+  elseif status == "too_short" then
+    sectionStatus[section] = string.format(ADD_STATUS_TEXT.too_short, rules.GetMinLength(config.kind))
+  elseif status == "full" then
+    sectionStatus[section] = string.format(ADD_STATUS_TEXT.full, rules.GetCap(config.kind))
+  else
+    sectionStatus[section] = ADD_STATUS_TEXT[status] or ADD_STATUS_TEXT.unavailable
+  end
+end
+
+local function RenderKeywordSection(section)
+  local config = KEYWORD_SECTIONS[section]
+  local kind = config.kind
+  local rules = NS.UserRules
+
+  local y = AddSectionTitle(section, config.blurb)
+  y = AddStatus(y, sectionStatus[section])
+
+  if not rules then
+    AddDisabledRow("Unavailable", "Keyword rules failed to load.", y)
+    return
+  end
+
+  AddText("Search", "GameFontNormalSmall", CONTENT_PAD, y + 2, 48)
+  local search = AddEditBox(CONTENT_PAD + 54, y + 5, 160, listState.keywordSearch[kind],
+    "Search this list", "Type to match by phrase. Click Apply to filter the list below.")
+  AddNativeButton("Apply", CONTENT_PAD + 222, y + 6, 70, function()
+    listState.keywordSearch[kind] = search:GetText() or ""
+    listState.keywordPage[kind] = 1
+    ConfigPanel.ShowSection(section)
+  end, "Apply the search box to the list below and reset to page 1.")
+  AddNativeButton("Remove All", CONTENT_PAD + 300, y + 6, 90, function()
+    local count = rules.Count(kind)
+    if count == 0 then
+      sectionStatus[section] = "Nothing to remove."
+      ConfigPanel.ShowSection(section)
+      return
+    end
+    if StaticPopup_Show then StaticPopup_Show(config.popup, count) end
+  end, "Remove every phrase in this list. Asks for confirmation first.")
+  y = y - 34
+
+  AddText(config.addLabel, "GameFontNormalSmall", CONTENT_PAD, y + 2, 90)
+  local addBox = AddEditBox(CONTENT_PAD + 98, y + 5, 194, listState.keywordAddText[kind],
+    config.addLabel, config.addTooltip)
+  local function Commit()
+    listState.keywordAddText[kind] = addBox:GetText() or ""
+    AddKeywordFromText(section, config, listState.keywordAddText[kind])
+    ConfigPanel.ShowSection(section)
+  end
+  addBox:SetScript("OnEnterPressed", Commit)
+  AddNativeButton("Add", CONTENT_PAD + 300, y + 6, 72, Commit,
+    "Add the phrase in the box to this list.")
+  y = y - 30
+
+  local help = AddText(config.help, "GameFontDisableSmall", CONTENT_PAD, y)
+  help:SetWordWrap(true)
+  y = y - 40
+
+  local entries = SortedKeywords(kind, listState.keywordSearch[kind])
+  local maxPage = MaxPage(#entries)
+  if listState.keywordPage[kind] > maxPage then listState.keywordPage[kind] = maxPage end
+  local startIndex = (listState.keywordPage[kind] - 1) * PAGE_ROWS + 1
+  local endIndex = math.min(startIndex + PAGE_ROWS - 1, #entries)
+
+  AddText(string.format("%d / %d", rules.Count(kind), rules.GetCap(kind)),
+    "GameFontNormalSmall", CONTENT_PAD, y)
+  y = y - 20
+
+  if #entries == 0 then
+    AddDisabledRow(config.emptyLabel, config.emptyHint, y)
+    return
+  end
+
+  for index = startIndex, endIndex do
+    local entry = entries[index]
+    local row = TrackNative(CreateFrame("Frame", nil, content, "BackdropTemplate"))
+    row:SetHeight(ROW_HEIGHT)
+    row:SetPoint("TOPLEFT", content, "TOPLEFT", CONTENT_PAD, y)
+    row:SetPoint("RIGHT", content, "RIGHT", -CONTENT_PAD, 0)
+    if row.SetBackdrop then
+      row:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
+      row:SetBackdropColor(0.10, 0.11, 0.13, 0.6)
+    end
+    row:Show()
+
+    local label = TrackNative(row:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+    label:SetPoint("LEFT", row, "LEFT", 8, 6)
+    label:SetText(entry.raw)
+    label:Show()
+
+    local meta = TrackNative(row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"))
+    meta:SetPoint("LEFT", row, "LEFT", 8, -8)
+    meta:SetText("matches \"" .. entry.cleansed .. "\" - added " .. RelativeTime(entry.added))
+    meta:Show()
+
+    local remove = TrackNative(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
+    remove:SetSize(72, 22)
+    remove:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+    remove:SetText("Remove")
+    remove:SetScript("OnClick", function()
+      -- Removal goes by phrase, not by row number: `entries` is the filtered
+      -- list, so under an active search its numbering does not match the store's.
+      -- A failure has to say so -- a Remove button that silently does nothing is
+      -- how the numeric-phrase bug stayed invisible.
+      if rules.Remove(kind, entry.raw) then
+        sectionStatus[section] = "Removed \"" .. entry.raw .. "\"."
+      else
+        sectionStatus[section] = "Could not remove \"" .. entry.raw .. "\"."
+      end
+      ConfigPanel.ShowSection(section)
+    end)
+    AttachTooltip(remove, "Remove phrase", "Take \"" .. entry.raw .. "\" out of this list.")
+    remove:Show()
+
+    y = y - (ROW_HEIGHT + 4)
+  end
+
+  AddText("Page " .. tostring(listState.keywordPage[kind]) .. " of " .. tostring(maxPage),
+    "GameFontDisableSmall", CONTENT_PAD, y)
+  AddNativeButton("Prev", CONTENT_PAD + 170, y + 4, 60, function()
+    if listState.keywordPage[kind] > 1 then
+      listState.keywordPage[kind] = listState.keywordPage[kind] - 1
+      ConfigPanel.ShowSection(section)
+    end
+  end, "Show the previous page.")
+  AddNativeButton("Next", CONTENT_PAD + 236, y + 4, 60, function()
+    if listState.keywordPage[kind] < maxPage then
+      listState.keywordPage[kind] = listState.keywordPage[kind] + 1
+      ConfigPanel.ShowSection(section)
+    end
+  end, "Show the next page.")
+end
+
 RenderHistory = function()
   local entries = NS.History and NS.History.GetAll and NS.History.GetAll() or {}
   local stats = GetHistoryStats()
@@ -2033,6 +2253,7 @@ local RENDERERS = {
   Surfaces = RenderSurfaces,
   Allowlist = RenderAllowlist,
   Blocked = RenderBlocked,
+  ["My Keywords"] = RenderKeywordSection,
   History = RenderHistory,
   UI = RenderUI,
   Dev = RenderDev,
@@ -2186,6 +2407,7 @@ local NAV_TOOLTIPS = {
   Surfaces   = "Toggle each chat surface between Active, Paused, and Off. Also: filter bubbles.",
   Allowlist  = "Senders Sift will always trust. Add from History or import a saved list.",
   Blocked    = "Recently blocked actors. Manage repeat offenders.",
+  ["My Keywords"] = "Your own words and phrases to block, on top of Sift's filter.",
   History    = "Retained-history limit and clear control.",
   UI         = "Minimap launcher and panel-position resets.",
   Dev        = "Developer-only diagnostics and full settings reset.",
@@ -2370,7 +2592,9 @@ function ConfigPanel.ShowSection(section)
 
   local renderer = RENDERERS[section]
   if renderer then
-    renderer()
+    -- The two keyword sections share one renderer, so it is told which one it
+    -- is. Every other renderer ignores the argument.
+    renderer(section)
   end
 end
 
