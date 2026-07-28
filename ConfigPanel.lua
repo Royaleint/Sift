@@ -2186,10 +2186,14 @@ local function BuildFrame(parent)
     frame:SetAllPoints(parent)
     embeddedMode = true
   else
-    -- Standalone: dispatcher picks PortraitFrameTemplate (Retail) or the
-    -- Plain BackdropTemplate shell (Classic-family). ApplyConfigChrome
-    -- handles Portrait-specific customization on Retail; method-existence
-    -- guards make it a no-op on Plain.
+    -- Standalone: CreateConfigFrame (BSP-041) always attempts the native
+    -- PortraitFrameTemplate first, on every client, and falls back to the
+    -- Plain BackdropTemplate shell only if that pcall probe fails.
+    -- ApplyConfigChrome's calls are all individually method-existence-guarded
+    -- (SetBorder / SetPortraitShown / SetTitle), so it safely no-ops on
+    -- Plain and safely skips any portrait sub-method a given client's
+    -- PortraitFrameTemplate mixin happens not to expose (e.g. Pandaria's
+    -- SetPortraitShown gap) without needing pcall protection of its own.
     frame = CreateConfigFrame(UIParent)
     ApplyConfigChrome(frame)
     frame:SetMovable(true)
