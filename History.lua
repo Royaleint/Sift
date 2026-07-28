@@ -11,6 +11,9 @@ local IGNORED_BREAKDOWN_KEYS = {
   -- breakdown, which counted as a spam category and dominated byCategory. The
   -- repeat count is already reported separately as stats.throttled.
   Throttle = true,
+  -- BSP-037: manual blocks carry { ManualBlock = 1 } for the same reason, and
+  -- must not land in byCategory as a category the sender never posted.
+  ManualBlock = true,
 }
 
 local function GetChar()

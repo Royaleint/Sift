@@ -77,6 +77,9 @@ local IGNORED_BREAKDOWN_KEYS = {
   BlockedActor = true,
   Flood = true,
   Throttle = true,
+  -- BSP-037: manual blocks carry { ManualBlock = 1 }, an identity decision
+  -- rather than a content category, so it is excluded on the same grounds.
+  ManualBlock = true,
 }
 
 -- Categories the user can filter by. PauseState is the single declaration.
@@ -642,8 +645,15 @@ local function RenderRow(row, entry)
   end
   row.senderText:SetText(senderLabel)
 
-  row.badgeText:SetText(cat or "?")
-  row.scoreText:SetText(tostring(entry.score or 0))
+  -- BSP-037: a manual block has no category and no score, so the usual "?" and
+  -- 0 read as a broken row. Name the reason instead.
+  if entry.reason == "manual-block" then
+    row.badgeText:SetText(L("You"))
+    row.scoreText:SetText("")
+  else
+    row.badgeText:SetText(cat or "?")
+    row.scoreText:SetText(tostring(entry.score or 0))
+  end
 end
 
 local function FindEntryById(id)
@@ -743,7 +753,18 @@ end
 local function PerformAlwaysAllow(entry)
   if not entry or not entry.guid or entry.guid == "" then return end
   if NS.Trust and NS.Trust.AddAllowlist then
-    NS.Trust.AddAllowlist(entry.guid, entry.name, entry.realm, "history")
+    local _, clearedManualBlock = NS.Trust.AddAllowlist(entry.guid, entry.name, entry.realm, "history")
+    -- BSP-037: lifting a manual block is a second, invisible consequence of
+    -- this button. Say it out loud, or the user cannot tell it happened.
+    if clearedManualBlock then
+      local message = "|cff33ff99Sift|r removed your manual block on "
+        .. tostring(entry.name or "that player") .. "."
+      if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
+        DEFAULT_CHAT_FRAME:AddMessage(message)
+      else
+        print(message)
+      end
+    end
   end
   if RefreshList then RefreshList() end
 end
@@ -1144,8 +1165,12 @@ RefreshDetail = function()
   else
     statusText = "|cffff5577" .. L("BLOCKED") .. "|r"
   end
-  statusText = statusText .. string.format("   %d / %d",
-    tonumber(entry.score) or 0, tonumber(entry.threshold) or 0)
+  if entry.reason == "manual-block" then
+    statusText = statusText .. "   " .. L("blocked by you")
+  else
+    statusText = statusText .. string.format("   %d / %d",
+      tonumber(entry.score) or 0, tonumber(entry.threshold) or 0)
+  end
   detailPane.header.statusText:SetText(statusText)
   detailPane.header.metaText:SetText(string.format("%s   %s%s%s",
     L(surfaceLabel), channel, linkSuffix, pauseReason))

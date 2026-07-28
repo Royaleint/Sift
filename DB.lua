@@ -237,19 +237,27 @@ local function CountTable(tbl)
   return count
 end
 
+-- BSP-037: entries the user blocked by hand are exempt from eviction. Dropping
+-- one would silently undo an explicit choice the user has no way to notice.
+-- Returns whether anything was removed, so a caller trimming to the cap can
+-- stop once only manual entries remain rather than looping forever.
 local function EvictOldestBlockedActor(blockedActors)
   local oldestKey
   local oldestSeen
   for key, entry in pairs(blockedActors or {}) do
-    local seen = type(entry) == "table" and tonumber(entry.lastBlockedAt) or nil
-    if not oldestSeen or (seen or 0) < oldestSeen then
-      oldestKey = key
-      oldestSeen = seen or 0
+    if not (type(entry) == "table" and entry.manual == true) then
+      local seen = type(entry) == "table" and tonumber(entry.lastBlockedAt) or nil
+      if not oldestSeen or (seen or 0) < oldestSeen then
+        oldestKey = key
+        oldestSeen = seen or 0
+      end
     end
   end
-  if oldestKey then
-    blockedActors[oldestKey] = nil
+  if not oldestKey then
+    return false
   end
+  blockedActors[oldestKey] = nil
+  return true
 end
 
 local function RepairSettings(settings)
@@ -561,10 +569,60 @@ function DB.RecordBlockedActor(record, category)
   end
 
   while CountTable(blockedActors) > BLOCKED_ACTOR_CAP do
-    EvictOldestBlockedActor(blockedActors)
+    if not EvictOldestBlockedActor(blockedActors) then
+      break
+    end
   end
 
   return true
+end
+
+-- BSP-037: block an actor by explicit user action rather than by detection.
+-- Shares the blockedActors key space with the scanner so both surfaces resolve
+-- to one entry and one undo path (Config > Blocked). `count` is left alone
+-- here: it counts messages actually suppressed, and blocking someone has not
+-- suppressed one yet. Every message the block goes on to catch increments it
+-- through RecordBlockedActor, exactly like a scanner block. Returns false when
+-- the actor is already manually blocked, so a repeat click is a no-op.
+function DB.BlockActorManually(guid, name, realm)
+  local global = DB.GetGlobal()
+  if not global or not UsableString(guid) then
+    return false
+  end
+  if type(UnitGUID) == "function" and guid == UnitGUID("player") then
+    return false
+  end
+
+  global.blockedActors = type(global.blockedActors) == "table" and global.blockedActors or {}
+  local blockedActors = global.blockedActors
+  local entry = blockedActors[guid]
+  if type(entry) == "table" and entry.manual == true then
+    return false
+  end
+
+  if type(entry) ~= "table" then
+    entry = {
+      guid = guid,
+      firstBlockedAt = Now(),
+      count = 0,
+      surfaces = {},
+      categories = {},
+    }
+    blockedActors[guid] = entry
+  end
+
+  entry.manual = true
+  entry.manualBlockedAt = Now()
+  entry.name = UsableString(name) and name or entry.name
+  entry.realm = UsableString(realm) and realm or entry.realm
+  entry.lastBlockedAt = tonumber(entry.lastBlockedAt) or entry.manualBlockedAt
+
+  return true
+end
+
+function DB.IsManuallyBlocked(guid)
+  local entry = DB.GetBlockedActor(guid)
+  return type(entry) == "table" and entry.manual == true
 end
 
 function DB.RemoveBlockedActor(guid)
