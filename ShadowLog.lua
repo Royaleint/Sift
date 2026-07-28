@@ -203,6 +203,16 @@ local function MergeSource(entry, source)
   AddUnique(entry.sources, source)
 end
 
+-- The audit lane also records WHICH allow phrase let the message through --
+-- that phrase is the actionable datum: an allowlist you cannot attribute a
+-- bypass to is an allowlist you cannot prune. Union, like tags and sources
+-- (different phrases can pass the same line over time).
+local function MergeAllowPhrase(entry, allowPhrase)
+  if type(allowPhrase) ~= "string" or allowPhrase == "" then return end
+  entry.allowPhrases = type(entry.allowPhrases) == "table" and entry.allowPhrases or {}
+  AddUnique(entry.allowPhrases, allowPhrase)
+end
+
 -- CLOCK (second-chance) eviction.
 --
 -- The store sees every line the filter lets through, so in a busy channel it is
@@ -248,7 +258,7 @@ local function EvictOne(store, entries)
   hand = hand - 1
 end
 
-local function Record(original, analysis, surface, score, source)
+local function Record(original, analysis, surface, score, source, allowPhrase)
   -- The dev-only gate lives HERE, not at the call sites. Every lane into this
   -- store has the same obligation, and a caller wiring in from somewhere else in
   -- the pipeline must not be able to forget it -- so the property is structural
@@ -287,6 +297,7 @@ local function Record(original, analysis, surface, score, source)
     end
     MergeTags(entry, tags)
     MergeSource(entry, source)
+    MergeAllowPhrase(entry, allowPhrase)
     AddVariant(entry, original)
     RefreshChances(entry)
     return entry
@@ -307,6 +318,7 @@ local function Record(original, analysis, surface, score, source)
     tags = tags,
     sources = { source },
   }
+  MergeAllowPhrase(entry, allowPhrase)
   RefreshChances(entry)
   store[#store + 1] = entry
   entries[cleansed] = entry
@@ -325,8 +337,8 @@ end
 -- where Capture never runs. Same store, different provenance: these are messages
 -- an allow rule let through, and telling them apart from ordinary misses is the
 -- whole point of auditing an allowlist. Unused until that ticket wires it up.
-function ShadowLog.CaptureAllowThrough(original, analysis, surface, score)
-  return Record(original, analysis, surface, score, SOURCE_ALLOW_AUDIT)
+function ShadowLog.CaptureAllowThrough(original, analysis, surface, score, allowPhrase)
+  return Record(original, analysis, surface, score, SOURCE_ALLOW_AUDIT, allowPhrase)
 end
 
 -- Returns references to the live records, in capture order. Callers iterate

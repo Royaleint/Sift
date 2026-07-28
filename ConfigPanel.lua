@@ -2730,6 +2730,11 @@ local function BuildFNExportText(limit)
         tagLabel = tagLabel .. " {" .. tostring(sources[s]) .. "}"
       end
     end
+    -- The allow phrase that let an audited line through -- the one datum that
+    -- makes an allowlist bypass actionable (you prune the phrase, not the line).
+    if type(entry.allowPhrases) == "table" and #entry.allowPhrases > 0 then
+      tagLabel = tagLabel .. " {allowed by: " .. table.concat(entry.allowPhrases, ", ") .. "}"
+    end
 
     lines[#lines + 1] = string.format("[%dx] %s/%s %s %s%s | %s",
       tonumber(entry.count) or 1,
