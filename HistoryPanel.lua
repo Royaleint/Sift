@@ -234,7 +234,8 @@ local tabButtons = {}
 local activeMode = "History"
 local activeConfigSection = "Detection"
 -- BSP-036: "char" (this character) or "account" (summed across every stored
--- character). Persisted per-character so each alt keeps its own last choice.
+-- character). Deliberately session-local view state, like sortMode and
+-- filterState -- it resets to "char" each login and is not persisted.
 local statsScope = "char"
 
 local function DefaultFilterState()
