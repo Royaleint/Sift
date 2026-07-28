@@ -167,7 +167,7 @@ local function BuildScoringOptions(settings)
   }
 end
 
-local function BuildHistoryRecord(event, message, sender, channelName, guid, analysis, settings, score, threshold, breakdown, reason, surface, outcome)
+local function BuildHistoryRecord(event, message, sender, channelName, guid, analysis, settings, score, threshold, breakdown, reason, surface, outcome, customRule)
   local name, realm = SplitNameRealm(sender)
   local record = {
     ts = ServerTime(),
@@ -185,6 +185,12 @@ local function BuildHistoryRecord(event, message, sender, channelName, guid, ana
     outcome = outcome or "blocked",
     reason = reason,
   }
+
+  -- BSP-052: copied by value, not referenced, so the History detail pane still
+  -- names the rule after the user deletes it. The record is the source of truth.
+  if customRule then
+    record.customRule = { raw = customRule.raw, cleansed = customRule.cleansed }
+  end
 
   if settings.devMode == true then
     record.cleansed = analysis.normalized
@@ -254,10 +260,53 @@ end
 -- a personal-preference call, not an accusation of spam, so it must never queue
 -- a Blizzard spam report. Users who do want to report get the deliberate path in
 -- SFT-083.
+-- BSP-052: the user's own keyword rules, applied only where the corpus has not
+-- already decided -- the corpus path stays sovereign, so turning Custom off can
+-- never suppress a real corpus block. Mirrors the two boosts above: mutate in
+-- place, bail if already blocked. Returns the rule that fired, which the caller
+-- needs both to gate on and to record.
+--
+-- Custom's own state is read before matching. That is correctness first -- a
+-- list switched off must not match at all -- and it also skips up to 200
+-- substring searches on every scanned line for as long as it stays off.
+--
+-- Unlike those boosts this one forces `blocked` rather than recomputing it
+-- against the threshold. The weight is still added so the breakdown sums to the
+-- recorded score, but a rule the user typed themselves has to block even when
+-- negative anti-signal weight would otherwise hold the total under threshold.
+local function ApplyCustomBlock(score, cleansed)
+  if not score or score.blocked or not NS.UserRules or not NS.UserRules.Match then
+    return nil
+  end
+  local state = (NS.PauseState and NS.PauseState.GetCategory
+    and NS.PauseState.GetCategory("Custom")) or "active"
+  if state == "off" then
+    return nil
+  end
+
+  local matched = NS.UserRules.Match(NS.UserRules.BLOCK, cleansed)
+  if not matched then
+    return nil
+  end
+
+  local threshold = tonumber(score.threshold) or 4
+  score.breakdown = type(score.breakdown) == "table" and score.breakdown or {}
+  score.breakdown.Custom = (tonumber(score.breakdown.Custom) or 0) + threshold
+  score.score = (tonumber(score.score) or 0) + threshold
+  score.threshold = threshold
+  score.blocked = true
+  return matched
+end
+
 local function AppendBlockedHistory(record, counter, suppressReport)
   local entryID = NS.History and NS.History.Append and NS.History.Append(record)
   if record and record.outcome == "blocked" and NS.DB and NS.DB.RecordBlockedActor then
-    NS.DB.RecordBlockedActor(record, DominantCategory(record.breakdown))
+    -- BSP-052: a user rule owns the attribution when it is what blocked. The
+    -- dominant corpus weight can be the larger number without having blocked
+    -- anything, and crediting it would file the actor under a category the user
+    -- never involved.
+    local category = record.customRule and "Custom" or DominantCategory(record.breakdown)
+    NS.DB.RecordBlockedActor(record, category)
   end
   if entryID and not suppressReport and NS.ReportFlow and NS.ReportFlow.QueueChatReport then
     NS.ReportFlow.QueueChatReport(entryID, counter, record.name)
@@ -306,7 +355,8 @@ local function Pipeline(
   --     Cleanse/Score step -- never between link 1 and link 2, or a keyword
   --     allow would quietly outrank an explicit manual block.
   --   link 5 (keyword-block) goes after the Score call, before the category
-  --     state gate.
+  --     state gate. When it fires, that gate reads Custom's state rather than
+  --     the dominant corpus category -- see the gate itself.
   --
   -- Manual block deliberately outranks Trust: a user who right-clicked Block on
   -- a guildmate meant it, and letting the trust rule win would make the menu
@@ -381,6 +431,7 @@ local function Pipeline(
   local score = NS.Scoring and NS.Scoring.Score and NS.Scoring.Score(analysis, BuildScoringOptions(settings))
   ApplyBlockedActorBoost(score, guid)
   ApplyFloodBoost(score, analysis.normalized)
+  local customRule = ApplyCustomBlock(score, analysis.normalized)
   if not score or not score.blocked then
     -- BSP-032: shadow capture of the misses. Placed in the not-blocked branch so
     -- it sees everything the filter lets through, score-0 included -- the set no
@@ -394,12 +445,19 @@ local function Pipeline(
     return false
   end
 
-  -- Category state gate: find the dominant scoring category (excluding MixedScript meta).
-  -- off short-circuits; paused flips outcome to pass-thru.
+  -- Category state gate: off short-circuits; paused flips outcome to pass-thru.
+  --
+  -- BSP-052: when a user keyword rule is what blocked this message, ITS state
+  -- governs, not the dominant corpus category. A corpus weight can be the larger
+  -- number without having blocked anything -- negative anti-signal weight can
+  -- hold the total under threshold -- and letting that category decide would hand
+  -- control of the user's own rule to a category they never involved. It also
+  -- means a category sitting at the shipped "paused" default could silently
+  -- downgrade an explicit user block to pass-thru.
   local breakdown = score.breakdown
-  local dominantCategory = DominantCategory(breakdown)
-  if dominantCategory then
-    local categoryState = (NS.PauseState and NS.PauseState.GetCategory and NS.PauseState.GetCategory(dominantCategory)) or "active"
+  local gateCategory = customRule and "Custom" or DominantCategory(breakdown)
+  if gateCategory then
+    local categoryState = (NS.PauseState and NS.PauseState.GetCategory and NS.PauseState.GetCategory(gateCategory)) or "active"
     if categoryState == "off" then
       return false
     end
@@ -454,9 +512,10 @@ local function Pipeline(
     score.score,
     score.threshold,
     score.breakdown,
-    "score",
+    customRule and "custom" or "score",
     surface,
-    outcome
+    outcome,
+    customRule
   ), counter)
 
   if not blockSuppressed and NS.BubbleSuppressor and NS.BubbleSuppressor.Engage then
