@@ -30,10 +30,33 @@ jobs:
     permissions:
       contents: write
     steps:
+      # A manual run that names a tag must package THAT tag. The guard and
+      # changelog steps below already read `inputs.tag`, but nothing used to
+      # check it out, so the packager built whatever ref the run was dispatched
+      # from and uploaded it under the named tag's release notes. This step runs
+      # before the checkout — there is no clone yet, so the tag is resolved
+      # through the API rather than local git — and fails loudly on a typo'd or
+      # deleted tag instead of letting the wrong build publish.
+      - name: Verify the dispatched tag exists
+        if: inputs.tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          if ! gh api "repos/${{ github.repository }}/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $TAG does not exist in this repository — nothing to release."
+            exit 1
+          fi
+          echo "Dispatched tag $TAG resolves."
+
+      # On a tag push `inputs.tag` is empty, so `ref` resolves to '' — which is
+      # actions/checkout's own default, meaning "the ref that triggered the run".
+      # The tag-push path is therefore unchanged.
       - name: Checkout
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || '' }}
 
       # Guard against a stale tag re-triggering the uploader. A bulk tag push
       # (e.g. `git push --tags`, or re-pushing previously-deleted tags) fires
@@ -44,6 +67,8 @@ jobs:
       # version tag in the repo is allowed to publish.
       # versionsort.suffix makes "vX.Y.Z-rc1" sort BEFORE "vX.Y.Z" so a final
       # release is never blocked by its own prerelease tag.
+      # --list 'v*' keeps non-version tags out of the comparison: without it any
+      # such tag could sort to the top and block every future release.
       - name: Guard — only the newest tag may publish
         id: guard
         run: |
@@ -55,7 +80,7 @@ jobs:
           ALL_TAGS=$(git -c versionsort.suffix=-alpha \
                          -c versionsort.suffix=-beta \
                          -c versionsort.suffix=-rc \
-                         tag --sort=-v:refname)
+                         tag --sort=-v:refname --list 'v*')
           NEWEST="${ALL_TAGS%%$'\n'*}"
           echo "Triggering tag:     $TAG"
           echo "Newest tag in repo: $NEWEST"
