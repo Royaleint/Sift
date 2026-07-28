@@ -49,9 +49,14 @@ local SECTIONS = {
   "Dev",
 }
 
-local CATEGORY_KEYS = { "RMT", "Boosting", "Casino", "Phishing", "Commercial", "Anti" }
+-- PauseState is the single declaration of both lists and loads ahead of this
+-- file in the TOC, so these accessors are available at file scope.
+local CATEGORY_KEYS = NS.PauseState.GetCategoryKeys()
+local CATEGORY_LABELS = {
+  RMT = "Gold selling",
+}
 
-local SURFACE_KEYS = { "chat", "whisper", "bn-whisper" }
+local SURFACE_KEYS = NS.PauseState.GetSurfaceKeys()
 local SURFACE_LABELS = {
   chat              = "Chat",
   whisper           = "Whisper",
@@ -63,10 +68,6 @@ local DEFAULT_SETTINGS = {
   enabledCategories = {
     RMT = true,
     Boosting = true,
-    Casino = true,
-    Phishing = true,
-    Commercial = true,
-    Anti = true,
   },
   mixedScriptEnabled = true,
   mixedScriptWeight = 1,
@@ -1637,7 +1638,7 @@ RenderCategories = function()
   local y = AddSectionTitle("Categories", "Three states per category: Active (block) / Paused (detect + log, don't hide) / Off (ignore).")
   y = AddStatus(y, sectionStatus.Categories)
   for _, category in ipairs(CATEGORY_KEYS) do
-    y = AddAxisPauseRow("category", category, category, y)
+    y = AddAxisPauseRow("category", category, CATEGORY_LABELS[category] or category, y)
   end
 end
 

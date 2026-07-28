@@ -55,13 +55,11 @@ local defaults = {
     blockedActors = {},
     settings = {
       threshold = 4,
+      -- SFT-080: only the user-facing categories are persisted. The retired
+      -- ones keep scoring at frozen states declared in PauseState.lua.
       enabledCategories = {
         RMT        = "active",
         Boosting   = "active",
-        Casino     = "active",
-        Phishing   = "active",
-        Commercial = "paused",
-        Anti       = "paused",
       },
       surfaces = {
         chat              = "active",
@@ -114,6 +112,13 @@ local VALID_AXIS_STATES = { active = true, paused = true, off = true }
 local DEFUNCT_KEY_PREFIX = "lf" .. "g"
 local DEFUNCT_SURFACE_KEYS = { DEFUNCT_KEY_PREFIX .. "-search", DEFUNCT_KEY_PREFIX .. "-applicant" }
 local DEFUNCT_SETTING_KEYS = { DEFUNCT_KEY_PREFIX .. "ScanEnabled" }
+
+-- SFT-080: these categories lost their Config buttons. Their rules still score,
+-- at states frozen in PauseState.lua, so nothing about detection changes -- but
+-- there is no longer a toggle to reach the stored value, which makes it dead
+-- weight in every existing profile. Pruned from settings.enabledCategories the
+-- same way BSP-061's surface keys are pruned below.
+local DEFUNCT_CATEGORY_KEYS = { "Casino", "Phishing", "Commercial", "Anti" }
 
 local migrations = {}
 -- migrations[2] is defined immediately below; migrations[3] is defined after
@@ -255,6 +260,10 @@ local function RepairSettings(settings)
     if current == nil or not (type(current) == "string" and VALID_AXIS_STATES[current]) then
       settings.enabledCategories[category] = defaultState
     end
+  end
+  -- SFT-080: drop the states of categories that no longer have a button.
+  for _, key in ipairs(DEFUNCT_CATEGORY_KEYS) do
+    settings.enabledCategories[key] = nil
   end
   settings.surfaces = type(settings.surfaces) == "table" and settings.surfaces or {}
   for surface, defaultState in pairs(defaultSettings.surfaces) do

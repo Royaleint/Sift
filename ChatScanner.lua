@@ -76,7 +76,10 @@ end
 local function BuildScoringOptions(settings)
   return {
     threshold = settings.threshold,
-    enabledCategories = settings.enabledCategories,
+    -- Not settings.enabledCategories directly: retired categories are no longer
+    -- persisted, so the stored table alone would gate their rules off. A
+    -- fallback to it would restore that bug quietly, so there is none.
+    enabledCategories = NS.PauseState.GetEffectiveCategoryStates(),
     mixedScriptWeight = settings.mixedScriptEnabled == false and 0 or settings.mixedScriptWeight,
     antiSignalCap = settings.antiSignalCap,
     patterns = NS.Patterns,
