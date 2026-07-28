@@ -33,7 +33,88 @@ local IGNORED_BREAKDOWN_KEYS = {
   MixedScript = true,
   BlockedActor = true,
   Flood = true,
+  -- BSP-029: Throttle is a dedupe mechanism, not a spam category. It reaches
+  -- DominantCategory only through the synthesized repeat record below, where
+  -- crediting it as the dominant category tagged the sender's blocked-actor
+  -- entry with a category they never actually posted.
+  Throttle = true,
+  -- BSP-037: same reasoning. A manual block is an identity decision, so it must
+  -- never be credited as a content category the sender never posted.
+  ManualBlock = true,
 }
+
+-- BSP-037: bounded lineID -> GUID cache. Blizzard's chat-name context menu
+-- hands addons a lineID but no GUID, while this filter sees both on every
+-- message. Recording the pair here is what lets the right-click "Block" entry
+-- key on the same GUID the scanner already uses, instead of matching on a name
+-- that another player could be wearing. Ring buffer with in-place slot reuse:
+-- allocation stops after the first pass, so the chat hot path stays garbage-free.
+local SENDER_CACHE_SIZE = 128
+local senderCacheSlots = {}
+local senderCacheByLine = {}
+local senderCacheCursor = 0
+
+-- Mirrors the guard in Trust.lua: chat-event payloads can carry secret values,
+-- and any string or comparison operation on one raises.
+local function IsSecret(value)
+  if type(issecretvalue) ~= "function" then
+    return false
+  end
+
+  local ok, result = pcall(issecretvalue, value)
+  return ok and result == true
+end
+
+local function IsUsableString(value)
+  if IsSecret(value) then
+    return false
+  end
+  return type(value) == "string" and value ~= ""
+end
+
+-- 0 is what several chat events pass when a line carries no ID at all. Storing
+-- it would make every such message collide on one key, and a menu lookup could
+-- then hand back an unrelated player's GUID -- a block aimed at the wrong
+-- person. Rejected on write and on read.
+local function IsUsableLineID(lineID)
+  if IsSecret(lineID) then
+    return nil
+  end
+  lineID = tonumber(lineID)
+  if not lineID or lineID <= 0 then
+    return nil
+  end
+  return lineID
+end
+
+local function RememberSender(lineID, guid)
+  lineID = IsUsableLineID(lineID)
+  if not lineID or not IsUsableString(guid) or senderCacheByLine[lineID] then
+    return
+  end
+
+  senderCacheCursor = (senderCacheCursor % SENDER_CACHE_SIZE) + 1
+  local slot = senderCacheSlots[senderCacheCursor]
+  if slot then
+    senderCacheByLine[slot.lineID] = nil
+  else
+    slot = {}
+    senderCacheSlots[senderCacheCursor] = slot
+  end
+
+  slot.lineID = lineID
+  slot.guid = guid
+  senderCacheByLine[lineID] = slot
+end
+
+-- Returns the GUID of the sender of a chat line, or nil when the line arrived on
+-- an event Sift does not scan, carried no usable line ID, or has already been
+-- pushed out of the ring by SENDER_CACHE_SIZE newer messages.
+function ChatScanner.GetSenderGUIDByLineID(lineID)
+  lineID = IsUsableLineID(lineID)
+  local slot = lineID and senderCacheByLine[lineID]
+  return slot and slot.guid or nil
+end
 
 local function DevLog(message)
   if NS.DB and NS.DB.DevLog then
@@ -76,7 +157,10 @@ end
 local function BuildScoringOptions(settings)
   return {
     threshold = settings.threshold,
-    enabledCategories = settings.enabledCategories,
+    -- Not settings.enabledCategories directly: retired categories are no longer
+    -- persisted, so the stored table alone would gate their rules off. A
+    -- fallback to it would restore that bug quietly, so there is none.
+    enabledCategories = NS.PauseState.GetEffectiveCategoryStates(),
     mixedScriptWeight = settings.mixedScriptEnabled == false and 0 or settings.mixedScriptWeight,
     antiSignalCap = settings.antiSignalCap,
     patterns = NS.Patterns,
@@ -166,12 +250,16 @@ local function ApplyFloodBoost(score, cleansed)
   score.blocked = score.score >= score.threshold
 end
 
-local function AppendBlockedHistory(record, counter)
+-- suppressReport is set for manual blocks (BSP-037). Blocking someone by hand is
+-- a personal-preference call, not an accusation of spam, so it must never queue
+-- a Blizzard spam report. Users who do want to report get the deliberate path in
+-- SFT-083.
+local function AppendBlockedHistory(record, counter, suppressReport)
   local entryID = NS.History and NS.History.Append and NS.History.Append(record)
   if record and record.outcome == "blocked" and NS.DB and NS.DB.RecordBlockedActor then
     NS.DB.RecordBlockedActor(record, DominantCategory(record.breakdown))
   end
-  if entryID and NS.ReportFlow and NS.ReportFlow.QueueChatReport then
+  if entryID and not suppressReport and NS.ReportFlow and NS.ReportFlow.QueueChatReport then
     NS.ReportFlow.QueueChatReport(entryID, counter, record.name)
   end
 end
@@ -195,6 +283,84 @@ local function Pipeline(
     return false
   end
 
+  -- Surface state gate: off short-circuits the pipeline (no detection, no history).
+  -- paused lets detection run but flips outcome to pass-thru and skips bubble suppression.
+  local surface = EVENT_TO_SURFACE[event] or "chat"
+  local surfaceState = (NS.PauseState and NS.PauseState.GetSurface and NS.PauseState.GetSurface(surface)) or "active"
+  if surfaceState == "off" then
+    return false
+  end
+  local blockSuppressed = (surfaceState == "paused")
+
+  -- BSP-037: a manual block suppresses on identity alone -- no content score,
+  -- no category gate.
+  --
+  -- PRECEDENCE (studio-canonical, do not reorder without owner sign-off):
+  --   1 manual block > 2 Trust.IsTrusted > 3 user keyword-allow
+  --   > 4 corpus block > 5 user keyword-block > pass
+  --
+  -- Anchors for the links this branch does not own (BSP-052/058):
+  --   link 1 is THIS branch, and stays directly above the link-2 Trust
+  --     short-circuit immediately below.
+  --   link 3 (keyword-allow) goes BELOW that Trust short-circuit and above the
+  --     Cleanse/Score step -- never between link 1 and link 2, or a keyword
+  --     allow would quietly outrank an explicit manual block.
+  --   link 5 (keyword-block) goes after the Score call, before the category
+  --     state gate.
+  --
+  -- Manual block deliberately outranks Trust: a user who right-clicked Block on
+  -- a guildmate meant it, and letting the trust rule win would make the menu
+  -- entry a silent no-op for exactly the people they took the trouble to name.
+  -- The check is a table lookup, so this ordering costs the hot path nothing.
+  if IsUsableString(guid) and NS.DB and NS.DB.IsManuallyBlocked and NS.DB.IsManuallyBlocked(guid) then
+    if NS.DB.IsDevMode and NS.DB.IsDevMode() then
+      DevLog("Manual block: " .. tostring(sender))
+    end
+
+    local settings = GetSettings()
+    local manualAnalysis = (NS.Cleanse and NS.Cleanse.Analyze and NS.Cleanse.Analyze(message))
+      or { signals = {}, normalized = message }
+
+    -- Route through the same dedupe every other block uses, so a chatty blocked
+    -- player counts toward the throttled tally instead of looking like a fresh
+    -- decision on every line. The reason stays "manual-block" either way: it is
+    -- still why the message went, and nothing in History condenses on the
+    -- "throttle" label, so relabelling would only cost the honest row render
+    -- (score/threshold here are 0/0, which HistoryPanel replaces with "blocked
+    -- by you" -- it would show a meaningless 0 / 0 under any other reason).
+    local throttled = NS.Frequency and NS.Frequency.CheckRepeat
+      and NS.Frequency.CheckRepeat(event, manualAnalysis.normalized, guid) or false
+
+    AppendBlockedHistory(BuildHistoryRecord(
+      event,
+      message,
+      sender,
+      channelName,
+      guid,
+      manualAnalysis,
+      settings,
+      0,
+      0,
+      { ManualBlock = 1 },
+      "manual-block",
+      surface,
+      blockSuppressed and "pass-thru" or "blocked"
+    ), counter, true)
+
+    if throttled and NS.History and NS.History.IncrementThrottled then
+      NS.History.IncrementThrottled()
+    end
+
+    if not blockSuppressed and NS.BubbleSuppressor and NS.BubbleSuppressor.Engage then
+      local engaged = NS.BubbleSuppressor.Engage(event, settings)
+      if engaged and NS.History and NS.History.IncrementBubblesSuppressed then
+        NS.History.IncrementBubblesSuppressed()
+      end
+    end
+
+    return not blockSuppressed
+  end
+
   if NS.Trust and NS.Trust.IsTrusted and NS.Trust.IsTrusted(guid, sender, flags) then
     -- BSP-047 devmode diagnostic: name which trust source skipped this sender so
     -- a trust-bypass false-negative (gold-seller short-circuiting the filter) is
@@ -206,15 +372,6 @@ local function Pipeline(
     return false
   end
 
-  -- Surface state gate: off short-circuits the pipeline (no detection, no history).
-  -- paused lets detection run but flips outcome to pass-thru and skips bubble suppression.
-  local surface = EVENT_TO_SURFACE[event] or "chat"
-  local surfaceState = (NS.PauseState and NS.PauseState.GetSurface and NS.PauseState.GetSurface(surface)) or "active"
-  if surfaceState == "off" then
-    return false
-  end
-  local blockSuppressed = (surfaceState == "paused")
-
   local analysis = NS.Cleanse and NS.Cleanse.Analyze and NS.Cleanse.Analyze(message)
   if not analysis then
     return false
@@ -225,6 +382,15 @@ local function Pipeline(
   ApplyBlockedActorBoost(score, guid)
   ApplyFloodBoost(score, analysis.normalized)
   if not score or not score.blocked then
+    -- BSP-032: shadow capture of the misses. Placed in the not-blocked branch so
+    -- it sees everything the filter lets through, score-0 included -- the set no
+    -- threshold setting can surface -- while blocked messages stay recorded in
+    -- History alone. Capture gates itself on devMode and returns immediately
+    -- when it is off; that check is deliberately not duplicated here, so every
+    -- lane into the store obeys it whether or not its caller remembered to.
+    if NS.ShadowLog then
+      NS.ShadowLog.Capture(message, analysis, surface, score)
+    end
     return false
   end
 
@@ -242,10 +408,12 @@ local function Pipeline(
     end
   end
 
-  -- Throttle runs ONLY on confirmed-spam (post-Score + post-category-gate). BSP-010 reorder
-  -- folded into BSP-008 Commit 2: previously ran before Score and could over-fire on
-  -- legitimate duplicates.
-  if NS.Throttle and NS.Throttle.Check and NS.Throttle.Check(event, analysis.normalized, guid) then
+  -- The repeat lane runs ONLY on confirmed-spam (post-Score + post-category-gate). BSP-010
+  -- reorder folded into BSP-008 Commit 2: previously ran before Score and could over-fire on
+  -- legitimate duplicates. BSP-029 moved it into Frequency; the call site stays here so the
+  -- category gate above still reads a breakdown with no repeat key in it.
+  if NS.Frequency and NS.Frequency.CheckRepeat
+     and NS.Frequency.CheckRepeat(event, analysis.normalized, guid) then
     local throttleOutcome = blockSuppressed and "pass-thru" or "blocked"
     AppendBlockedHistory(BuildHistoryRecord(
       event,
@@ -328,6 +496,13 @@ function ChatScanner.Filter(
   end
 
   local ok, blocked = xpcall(function()
+    -- Cache the sender before Pipeline runs: Pipeline returns early for trusted
+    -- senders, and those are exactly the players a user is most likely to want
+    -- to block by hand. Inside the xpcall so a surprise here degrades to "no
+    -- right-click entry" instead of killing the filter for every addon on the
+    -- chain (BSP-037).
+    RememberSender(counter, guid)
+
     return Pipeline(
       event,
       message,
