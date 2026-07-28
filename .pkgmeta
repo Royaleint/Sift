@@ -27,3 +27,10 @@ ignore:
   - CLAUDE.md
   - RELEASE_NOTES.md
   - RELEASE_NOTES.html
+  # Build-matrix dev-build files (BSP-070). Generated and gitignored, listed
+  # here too: shipping either gives every user a second TOC and a double-loaded
+  # addon. This is not belt-and-braces — check-toc-vs-zip.mjs verifies that
+  # TOC-referenced files exist, never that only one TOC does, so these two
+  # entries and the .gitignore rules are the whole defense.
+  - Sift_DevBuild.toc
+  - DevBuildGuard.lua
