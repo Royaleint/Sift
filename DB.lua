@@ -1,6 +1,37 @@
 local ADDON_NAME, NS = ...
 local DB = {}
 
+-- SavedVariables global names, derived per build (SFT-077).
+--
+-- CROSS-LANGUAGE CONTRACT with Sift_Dev/scripts/generate-devbuild-toc.mjs.
+-- That generator writes the DevBuild's TOC and appends its SV_SUFFIX to every
+-- declared global ("SiftDB" -> "SiftDB_DevBuild"). The names derived here MUST
+-- equal what it emits, or this build declares one global in its TOC and stores
+-- its data in another -- an empty store, and writes landing in the OTHER build's
+-- global. Nothing in Lua can enforce the agreement, so both sides carry this
+-- comment and both sides carry a check that runs:
+--   Lua  -- Sift_Dev/tools/run_sv_contract_tests.lua
+--   Node -- Sift_Dev/scripts/check-sv-contract.mjs
+-- Change the suffix on one side and the matching check goes red.
+--
+-- The suffix is taken from the FOLDER name relative to the live addon name, not
+-- built from the folder name directly: the generator suffixes the GLOBAL, so
+-- "Sift_DevBuild" must yield "SiftDB_DevBuild", NOT "Sift_DevBuildDB".
+local LIVE_ADDON_NAME = "Sift"
+local BASE_SV_NAME = "SiftDB"
+local LEGACY_SV_NAME = "BawrSpamDB"
+
+-- Exposed for the contract test. Pure: no upvalues beyond the constants above.
+function DB.DeriveSVNames(addonName)
+  -- A folder that is not the live name or a suffixed variant of it is an
+  -- unsupported install; fall back to the live names, which is exactly the
+  -- behaviour that shipped before this change.
+  local suffix = tostring(addonName or ""):match("^" .. LIVE_ADDON_NAME .. "(.*)$") or ""
+  return BASE_SV_NAME .. suffix, LEGACY_SV_NAME .. suffix
+end
+
+local SV_NAME, SV_LEGACY_NAME = DB.DeriveSVNames(ADDON_NAME)
+
 local CURRENT_SCHEMA_VERSION = 3
 local ADDON_VERSION = "1.3.0"
 local BLOCKED_ACTOR_CAP = 5000
@@ -278,18 +309,25 @@ function DB.Initialize()
     return false
   end
 
-  -- One-time SavedVariables migration: BawrSpam → Sift (BSP-067)
-  if type(BawrSpamDB) == "table" and (SiftDB == nil or next(SiftDB) == nil) then
-    SiftDB = BawrSpamDB
-    BawrSpamDB = nil
+  -- One-time SavedVariables migration: BawrSpam → Sift (BSP-067).
+  --
+  -- Keyed on THIS build's derived names, not the bare literals it used to read.
+  -- With the literals, a DevBuild running alongside live Sift would see live's
+  -- BawrSpamDB (live declares it, so it is a real table) and assign into live's
+  -- SiftDB -- one build writing into the other build's store, which BSP-070's C1
+  -- test proved is exactly how data gets destroyed. Derived names keep the shim
+  -- inside its own build. A DevBuild therefore never inherits pre-rename data,
+  -- because nothing declares BawrSpamDB_DevBuild; that is correct isolation.
+  local legacy = _G[SV_LEGACY_NAME]
+  if type(legacy) == "table" and (_G[SV_NAME] == nil or next(_G[SV_NAME]) == nil) then
+    _G[SV_NAME] = legacy
+    _G[SV_LEGACY_NAME] = nil
   end
 
-  -- `name` derives from the TOC vararg so a renamed build folder still passes
-  -- Foundry's IsAddOnLoaded gate (SFT-077). `sv` stays a literal on purpose: the
-  -- BSP-067 shim above reads SiftDB/BawrSpamDB as literal globals, so deriving
-  -- one and not the other would split the store. Both change together or not at
-  -- all -- see SFT-077 / BSP-070 step 3.
-  DB.db = F.DB:New({ name = ADDON_NAME, sv = "SiftDB", defaults = defaults, defaultProfile = true })
+  -- Both identity arguments derive from the TOC vararg (SFT-077): `name` so a
+  -- renamed folder still passes Foundry's IsAddOnLoaded gate, `sv` so the store
+  -- matches the global this build's TOC actually declares.
+  DB.db = F.DB:New({ name = ADDON_NAME, sv = SV_NAME, defaults = defaults, defaultProfile = true })
   RepairShape(DB.db.global, DB.db.char)
   ApplyMigrations(DB.db)
   RepairShape(DB.db.global, DB.db.char)
