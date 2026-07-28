@@ -53,6 +53,10 @@ local defaults = {
   global = {
     allowlist = {},
     blockedActors = {},
+    -- BSP-052 / BSP-058: user-authored keyword rules. Arrays so display order is
+    -- stable; contents managed entirely by UserRules.lua.
+    customBlocks = {},
+    allowKeywords = {},
     -- BSP-032: dev-only false-negative capture store. A sibling of `settings`,
     -- not a member of it -- ResetSettings replaces the whole settings subtree,
     -- and the captured corpus candidates must survive a settings reset.
@@ -65,6 +69,10 @@ local defaults = {
       enabledCategories = {
         RMT        = "active",
         Boosting   = "active",
+        -- BSP-052: the user's own keyword block list, sharing the
+        -- active/paused/off axis. It must be here or SetCategoryState rejects
+        -- the toggle -- that setter gate-checks against this table.
+        Custom     = "active",
       },
       surfaces = {
         chat              = "active",
@@ -322,6 +330,18 @@ local function RepairShape(global, char)
   global.schemaVersion = tonumber(global.schemaVersion) or CURRENT_SCHEMA_VERSION
   global.allowlist = global.allowlist or {}
   global.blockedActors = global.blockedActors or {}
+  -- BSP-052 / BSP-058: keyword rule stores. A malformed entry here would be
+  -- matched against every scanned line, so drop anything without a usable
+  -- cleansed form rather than carrying it.
+  global.customBlocks = type(global.customBlocks) == "table" and global.customBlocks or {}
+  global.allowKeywords = type(global.allowKeywords) == "table" and global.allowKeywords or {}
+  if NS.UserRules and NS.UserRules.RepairStore then
+    local dropped = NS.UserRules.RepairStore(global.customBlocks)
+      + NS.UserRules.RepairStore(global.allowKeywords)
+    if dropped > 0 then
+      DevLog("Dropped " .. dropped .. " malformed keyword rule(s).")
+    end
+  end
   global.shadowLog = global.shadowLog or {}
   global.settings = global.settings or {}
   char.history = char.history or {}
