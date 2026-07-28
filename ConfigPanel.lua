@@ -1315,6 +1315,26 @@ local function RegisterStaticPopups()
     hideOnEscape = true,
   }
 
+  StaticPopupDialogs["SIFT_CLEAR_SHADOWLOG"] = {
+    text = "Clear the captured false-negative log?",
+    button1 = "Clear",
+    button2 = "Cancel",
+    OnAccept = function()
+      if NS.ShadowLog and NS.ShadowLog.Clear then
+        local cleared = NS.ShadowLog.Clear()
+        sectionStatus.Dev = "Shadow log cleared: " .. tostring(cleared) .. " entries removed."
+      else
+        sectionStatus.Dev = "Shadow log clear API is unavailable."
+      end
+      if activeSection == "Dev" and frame and frame:IsShown() then
+        ConfigPanel.ShowSection("Dev")
+      end
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+  }
+
   StaticPopupDialogs["SIFT_RESET_SETTINGS"] = {
     text = "Reset Sift settings to defaults?",
     button1 = "Reset",
@@ -1975,7 +1995,9 @@ RenderDev = function()
   y = AddStatus(y, sectionStatus.Dev)
   y = AddCheckbox("Enable dev mode", "devMode", y, nil,
     "Enable developer-only diagnostics: extra logging, devMode-gated error reporting, " ..
-    "/bdev slash commands, and other diagnostic affordances.")
+    "/bdev slash commands, and other diagnostic affordances. " ..
+    "Also records recent chat from other players (including whispers) into your " ..
+    "account's saved data for false-negative analysis.")
   AddNativeButton("Reset Settings", CONTENT_PAD, y, 120, function()
     if StaticPopup_Show then
       StaticPopup_Show("SIFT_RESET_SETTINGS")
@@ -1990,6 +2012,19 @@ RenderDev = function()
   end, "Export false-positive entries from History as a paste-ready Lua " ..
     "negatives block for fixtures.lua. Equivalent to /bdev fpx. " ..
     "Requires devMode to be enabled.")
+  AddNativeButton("Export FN candidates", CONTENT_PAD + 290, y, 160, function()
+    ConfigPanel.OpenFNExportDialog(nil)
+  end, "Export the messages the filter let through, captured while devMode is " ..
+    "on, as corpus candidates for hand triage. Equivalent to /bdev fnx. " ..
+    "Requires devMode to be enabled.")
+  -- Second row: a fourth button on the row above would start at x=460 and end at
+  -- 580, past the right edge of the content region at MIN_WIDTH.
+  AddNativeButton("Clear FN log", CONTENT_PAD, y - ROW_HEIGHT, 120, function()
+    if StaticPopup_Show then
+      StaticPopup_Show("SIFT_CLEAR_SHADOWLOG")
+    end
+  end, "Discard every captured false-negative candidate. Equivalent to " ..
+    "/bdev fnx clear. Confirmation required.")
 end
 
 local RENDERERS = {
@@ -2595,6 +2630,136 @@ function ConfigPanel.OpenHistoryExportDialog(limit)
   ShowTextDialog(
     "Sift History Corpus Export (" .. tostring(shown) .. " unique)",
     BuildHistoryExportText(limit),
+    "Close", nil)
+end
+
+-- BSP-032: build a raw (NOT Lua-escaped) corpus-candidate export from the
+-- ShadowLog store -- the messages the filter let through. Same posture as the
+-- BSP-049 history export: plain text for hand triage into spam_master.txt, never
+-- an automatic corpus edit. Ordered by ShadowLog.Rank so the near-misses lead
+-- and the unremarkable chatter sinks. Optional `limit` caps the number of
+-- entries shown.
+--
+-- Read-only: ShadowLog.GetAll returns live record refs, so the sort runs over a
+-- local copy of the array.
+local function BuildFNExportText(limit)
+  if limit and limit <= 0 then limit = nil end
+
+  local store = NS.ShadowLog and NS.ShadowLog.GetAll and NS.ShadowLog.GetAll() or {}
+  local order = {}
+  for i = 1, #store do
+    order[i] = store[i]
+  end
+  local totalEntries = #order
+
+  -- Ordered by the same Rank the store uses to decide what to keep, so what
+  -- reads as most interesting here is what survives longest there. Score and
+  -- then repeat count break ties within a rank; capture order breaks the rest,
+  -- so the sort is deterministic.
+  local captureIndex = {}
+  for i = 1, #order do
+    captureIndex[order[i]] = i
+  end
+  local Rank = NS.ShadowLog and NS.ShadowLog.Rank
+  table.sort(order, function(a, b)
+    local aRank, bRank = Rank(a), Rank(b)
+    if aRank ~= bRank then
+      return aRank > bRank
+    end
+    local aScore, bScore = tonumber(a.score) or 0, tonumber(b.score) or 0
+    if aScore ~= bScore then
+      return aScore > bScore
+    end
+    local aCount, bCount = tonumber(a.count) or 0, tonumber(b.count) or 0
+    if aCount ~= bCount then
+      return aCount > bCount
+    end
+    return captureIndex[a] < captureIndex[b]
+  end)
+
+  if limit and #order > limit then
+    local trimmed = {}
+    for i = 1, limit do trimmed[i] = order[i] end
+    order = trimmed
+  end
+
+  local params = NS.ShadowLog and NS.ShadowLog._Params and NS.ShadowLog._Params() or {}
+  local ordinarySource = params.sourceFnCandidate
+
+  -- SFT-081: the near-miss band is the point of the export, so say up front how
+  -- much of the list carries a capture signal. They sort to the top by rank.
+  local candidates = 0
+  for i = 1, #order do
+    local tags = order[i].tags
+    if type(tags) == "table" and #tags > 0 then
+      candidates = candidates + 1
+    end
+  end
+
+  local lines = {
+    string.format("-- Sift false-negative export: %d distinct messages%s",
+      totalEntries,
+      limit and (" (top " .. tostring(limit) .. " shown)") or ""),
+    string.format("-- %d of the %d listed below carry a capture signal, and lead the list.",
+      candidates, #order),
+    "-- Exported: " .. (date and date("%Y-%m-%d %H:%M:%S") or "?"),
+    "-- Format: [<count>x] <category>/<score> <surface> <last seen> [tags] | <raw original>",
+    "-- Additional spellings that cleansed to the same text follow indented.",
+    "",
+  }
+
+  if totalEntries == 0 then
+    lines[#lines + 1] = "-- Nothing captured. Enable devMode and let chat run."
+  end
+
+  for i = 1, #order do
+    local entry = order[i]
+    local originals = type(entry.originals) == "table" and entry.originals or {}
+    -- SFT-079 capture tags, if any. They are why an otherwise unremarkable line
+    -- is worth a second look, so they belong in the line a human reads.
+    local tagLabel = ""
+    if type(entry.tags) == "table" and #entry.tags > 0 then
+      tagLabel = " [" .. table.concat(entry.tags, ",") .. "]"
+    end
+    -- Provenance is worth saying only when it is not just the ordinary lane, so
+    -- a record the allowlist also let through cannot read as a plain miss. The
+    -- lane names come from ShadowLog, not a copy of the string here.
+    local sources = type(entry.sources) == "table" and entry.sources or {}
+    for s = 1, #sources do
+      if sources[s] ~= ordinarySource then
+        tagLabel = tagLabel .. " {" .. tostring(sources[s]) .. "}"
+      end
+    end
+
+    lines[#lines + 1] = string.format("[%dx] %s/%s %s %s%s | %s",
+      tonumber(entry.count) or 1,
+      entry.category or "-",
+      tostring(entry.score or 0),
+      tostring(entry.surface or "?"),
+      (entry.ts and date) and date("%Y-%m-%d", entry.ts) or "?",
+      tagLabel,
+      tostring(originals[1] or entry.cleansed or "?"))
+    for variant = 2, #originals do
+      lines[#lines + 1] = "     | " .. originals[variant]
+    end
+  end
+
+  return table.concat(lines, "\n")
+end
+
+function ConfigPanel.OpenFNExportDialog(limit)
+  ConfigPanel.Initialize()
+  if NS.DB and NS.DB.IsDevMode and not NS.DB.IsDevMode() then
+    Print("/bdev commands require devMode. Enable in Config \194\187 Dev.")
+    return
+  end
+  if limit and limit <= 0 then limit = nil end
+  local shown = NS.ShadowLog and NS.ShadowLog.Count and NS.ShadowLog.Count() or 0
+  if limit and shown > limit then shown = limit end
+
+  ShowTextDialog(
+    "Sift FN Candidate Export (" .. tostring(shown) .. " entries)",
+    BuildFNExportText(limit),
     "Close", nil)
 end
 

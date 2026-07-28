@@ -53,6 +53,11 @@ local defaults = {
   global = {
     allowlist = {},
     blockedActors = {},
+    -- BSP-032: dev-only false-negative capture store. A sibling of `settings`,
+    -- not a member of it -- ResetSettings replaces the whole settings subtree,
+    -- and the captured corpus candidates must survive a settings reset.
+    -- Additive, so no schema bump: absent on existing profiles, backfilled here.
+    shadowLog = {},
     settings = {
       threshold = 4,
       -- SFT-080: only the user-facing categories are persisted. The retired
@@ -317,6 +322,7 @@ local function RepairShape(global, char)
   global.schemaVersion = tonumber(global.schemaVersion) or CURRENT_SCHEMA_VERSION
   global.allowlist = global.allowlist or {}
   global.blockedActors = global.blockedActors or {}
+  global.shadowLog = global.shadowLog or {}
   global.settings = global.settings or {}
   char.history = char.history or {}
   char.historyCursor = char.historyCursor or 0
