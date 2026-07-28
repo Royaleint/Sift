@@ -233,6 +233,9 @@ local configHost
 local tabButtons = {}
 local activeMode = "History"
 local activeConfigSection = "Detection"
+-- BSP-036: "char" (this character) or "account" (summed across every stored
+-- character). Persisted per-character so each alt keeps its own last choice.
+local statsScope = "char"
 
 local function DefaultFilterState()
   local cats = {}
@@ -449,7 +452,12 @@ local function GetEntries()
   return (db and db.char and db.char.history) or {}
 end
 
-local function GetHistoryStats()
+-- BSP-036: scope is "char" (this character, the long-standing default) or
+-- "account" (summed across every stored character namespace).
+local function GetHistoryStats(scope)
+  if scope == "account" and NS.History and NS.History.GetAccountStats then
+    return NS.History.GetAccountStats()
+  end
   if NS.History and NS.History.GetStats then
     return NS.History.GetStats()
   end
@@ -978,7 +986,7 @@ end
 
 local function RefreshStatsArea()
   if not detailPane or not detailPane.stats then return end
-  local stats = NS.History and NS.History.GetStats and NS.History.GetStats() or { lifetime = {}, retained = {} }
+  local stats = GetHistoryStats(statsScope)
   local lifetime = stats.lifetime or {}
 
   local detected = tonumber(lifetime.detections) or 0
@@ -1517,6 +1525,34 @@ local function BuildStatsArea(parent)
   parent.titleLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   parent.titleLabel:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, -6)
   parent.titleLabel:SetText(L("DETECTION STATS"))
+
+  -- BSP-036: this-character / account-wide scope toggle for the stat boxes.
+  local function SetStatsScope(scope)
+    statsScope = scope
+    parent.scopeCharBtn:SetEnabled(scope ~= "char")
+    parent.scopeAccountBtn:SetEnabled(scope ~= "account")
+    RefreshStatsArea()
+  end
+
+  parent.scopeCharBtn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+  parent.scopeCharBtn:SetSize(70, 16)
+  parent.scopeCharBtn:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -6, -4)
+  parent.scopeCharBtn:SetText(L("Character"))
+  parent.scopeCharBtn:SetScript("OnClick", function() SetStatsScope("char") end)
+  AttachTooltip(parent.scopeCharBtn, "Character",
+    "Show detection stats for this character only.")
+
+  parent.scopeAccountBtn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+  parent.scopeAccountBtn:SetSize(70, 16)
+  parent.scopeAccountBtn:SetPoint("RIGHT", parent.scopeCharBtn, "LEFT", -4, 0)
+  parent.scopeAccountBtn:SetText(L("Account"))
+  parent.scopeAccountBtn:SetScript("OnClick", function() SetStatsScope("account") end)
+  AttachTooltip(parent.scopeAccountBtn, "Account",
+    "Show detection stats summed across every character on this account.")
+
+  -- Default view is per-character; the char button starts disabled to show
+  -- it's the active scope.
+  parent.scopeCharBtn:SetEnabled(false)
 
   parent.tilesRow = CreateFrame("Frame", nil, parent)
   parent.tilesRow:SetHeight(38)
@@ -2278,6 +2314,7 @@ end
 function HistoryPanel.Initialize()
   filterState = DefaultFilterState()
   sortMode = "newest"
+  statsScope = "char"
   RegisterStaticPopups()
   RegisterMinimap()
 

@@ -574,11 +574,10 @@ local function MakeOptionsSlider(x, y, width, label, minValue, maxValue, step)
 end
 
 local function MakeNativeSlider(x, y, width, label, minValue, maxValue, step)
-  if NS.Compat and NS.Compat.isClassicFamily then
-    return MakeOptionsSlider(x, y, width, label, minValue, maxValue, step)
-  end
-  -- Retail path: MWS. If the template is somehow missing at runtime, fall
-  -- back gracefully so the panel still renders.
+  -- BSP-041: gate on the MWS mixin's own presence, not isClassicFamily.
+  -- TRI-048 confirmed the native ScrollBox/options primitive set passes on
+  -- Classic Era and TBC Anniversary; OptionsSliderTemplate remains the
+  -- fallback only where MinimalSliderWithSteppersMixin is genuinely absent.
   if type(MinimalSliderWithSteppersMixin) ~= "table" then
     return MakeOptionsSlider(x, y, width, label, minValue, maxValue, step)
   end
@@ -2116,17 +2115,20 @@ local function CreatePortraitConfigFrame(parent)
   if ok and f then
     return f
   end
-  -- Defensive fallback if Blizzard ever removes PortraitFrameTemplate from a
-  -- future Retail interface revision: drop the template and let ApplyConfigChrome's
-  -- method-existence guards no-op the Portrait-specific work. The frame name is
-  -- preserved so UISpecialFrames + external addon-manager lookups still resolve.
-  return CreateFrame("Frame", "SiftConfigFrame", parent)
+  -- BSP-041: now reached on any client where the pcall probe fails, not just
+  -- a hypothetical future Retail removal (Classic-family clients now route
+  -- through this same probe). The bare, untemplated fallback that used to
+  -- live here had no title bar or close button, so it failed "cleanly" only
+  -- in the no-Lua-error sense, not functionally. Route to the fully-chromed
+  -- Plain frame instead.
+  return CreatePlainConfigFrame(parent)
 end
 
+-- BSP-041: capability-based, not isRetail/isClassic. Always attempt the
+-- native Portrait frame first; CreatePortraitConfigFrame's own pcall is the
+-- capability probe for PortraitFrameTemplate and falls back to the Plain
+-- chrome path if the template errors on this client.
 local function CreateConfigFrame(parent)
-  if NS.Compat and NS.Compat.isClassicFamily then
-    return CreatePlainConfigFrame(parent)
-  end
   return CreatePortraitConfigFrame(parent)
 end
 
@@ -2241,10 +2243,14 @@ local function BuildFrame(parent)
     frame:SetAllPoints(parent)
     embeddedMode = true
   else
-    -- Standalone: dispatcher picks PortraitFrameTemplate (Retail) or the
-    -- Plain BackdropTemplate shell (Classic-family). ApplyConfigChrome
-    -- handles Portrait-specific customization on Retail; method-existence
-    -- guards make it a no-op on Plain.
+    -- Standalone: CreateConfigFrame (BSP-041) always attempts the native
+    -- PortraitFrameTemplate first, on every client, and falls back to the
+    -- Plain BackdropTemplate shell only if that pcall probe fails.
+    -- ApplyConfigChrome's calls are all individually method-existence-guarded
+    -- (SetBorder / SetPortraitShown / SetTitle), so it safely no-ops on
+    -- Plain and safely skips any portrait sub-method a given client's
+    -- PortraitFrameTemplate mixin happens not to expose (e.g. Pandaria's
+    -- SetPortraitShown gap) without needing pcall protection of its own.
     frame = CreateConfigFrame(UIParent)
     ApplyConfigChrome(frame)
     frame:SetMovable(true)
@@ -2265,16 +2271,19 @@ local function BuildFrame(parent)
     content:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -12, 12)
   end
 
-  frame:SetScript("OnSizeChanged", function()
-    sizeDirty = true
-  end)
-  frame:SetScript("OnHide", function()
-    if sizeDirty then
-      SaveSize()
-    end
-  end)
-
   if not embedded then
+    -- BSP-053: embed mode's frame:SetAllPoints(parent) means GetWidth/GetHeight
+    -- track HistoryPanel's host frame, not ConfigPanel's own geometry. Wiring
+    -- these standalone-only avoids SaveSize() writing HistoryPanel's
+    -- dimensions into ConfigPanel's per-character geometry store.
+    frame:SetScript("OnSizeChanged", function()
+      sizeDirty = true
+    end)
+    frame:SetScript("OnHide", function()
+      if sizeDirty then
+        SaveSize()
+      end
+    end)
     ApplyStoredGeometry()
   end
   if not embedded and UISpecialFrames then
