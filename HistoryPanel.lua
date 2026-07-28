@@ -63,6 +63,9 @@ local CATEGORY_COLORS = {
   Phishing   = "58a",
   Commercial = "5a7",
   Anti       = "888",
+  -- BSP-052: the player's own phrases. Teal, chosen to sit clear of the six
+  -- above rather than fall through to the grey Anti shares.
+  Custom     = "2bc",
 }
 -- Keys that describe WHY a message was caught rather than WHAT KIND of spam it
 -- is. Letting them win "dominant category" mislabels the row: a boosting ad
@@ -497,6 +500,11 @@ local function TimeWindowCutoff(label)
 end
 
 local function EntryDominantCategory(entry)
+  -- BSP-052: a phrase the player wrote owns the row when it is what caught the
+  -- message. A corpus weight can be the larger number without having blocked
+  -- anything, and letting it win would colour the row for a category the player
+  -- never involved and hide the row from their own filter chip.
+  if entry.customRule then return "Custom" end
   if type(entry.breakdown) ~= "table" then return nil end
   local bestCat, bestVal
   for c, v in pairs(entry.breakdown) do
@@ -1190,7 +1198,7 @@ RefreshDetail = function()
   if type(entry.customRule) == "table" then
     local rule = entry.customRule.raw or entry.customRule.cleansed
     if rule then
-      keywordNote = "   |cffffd100" .. L("blocked by your keyword") .. ": " .. rule .. "|r"
+      keywordNote = "   |cffffd100" .. L("caught by your keyword") .. ": " .. rule .. "|r"
     end
   end
 
@@ -1803,6 +1811,9 @@ local CHIP_MIN_WIDTH = 38
 local CHIP_LABELS = {
   RMT        = "Gold selling",
   Boosting   = "Boosting",
+  -- Named for the settings section the player manages these in, not for the
+  -- internal key the score breakdown uses.
+  Custom     = "My Keywords",
 }
 
 -- BSP-009: chip tooltip bodies. Keep the chip label terse and rely on the
@@ -1810,6 +1821,7 @@ local CHIP_LABELS = {
 local CHIP_FULL_NAMES = {
   RMT        = "Gold selling (real-money trading)",
   Boosting   = "Boosting (paid carry ads)",
+  Custom     = "My Keywords (phrases you added yourself)",
 }
 
 local function PlaceCategoryChips(strip)

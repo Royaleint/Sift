@@ -461,7 +461,9 @@ local function Pipeline(
     -- audit what their own allowlist is costing them. Same self-gating on
     -- devMode as Capture above, so no check is duplicated here.
     if NS.ShadowLog then
-      NS.ShadowLog.CaptureAllowThrough(message, analysis, surface, score)
+      -- The phrase goes in as the player typed it, not its cleaned-up form:
+      -- the export shows it back to them, and they recognise what they wrote.
+      NS.ShadowLog.CaptureAllowThrough(message, analysis, surface, score, allowRule.raw)
     end
     return false
   end

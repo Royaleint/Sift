@@ -1976,7 +1976,7 @@ local ADD_STATUS_TEXT = {
   unavailable    = "Keyword rules are unavailable.",
 }
 
-local function SortedKeywords(kind, search)
+local function FilteredKeywords(kind, search)
   local entries = NS.UserRules and NS.UserRules.List(kind) or {}
   search = Lower(search)
   if search == "" then
@@ -2063,7 +2063,7 @@ local function RenderKeywordSection(section)
   help:SetWordWrap(true)
   y = y - 40
 
-  local entries = SortedKeywords(kind, listState.keywordSearch[kind])
+  local entries = FilteredKeywords(kind, listState.keywordSearch[kind])
   local maxPage = MaxPage(#entries)
   if listState.keywordPage[kind] > maxPage then listState.keywordPage[kind] = maxPage end
   local startIndex = (listState.keywordPage[kind] - 1) * PAGE_ROWS + 1
