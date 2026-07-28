@@ -225,6 +225,14 @@ local function Pipeline(
   ApplyBlockedActorBoost(score, guid)
   ApplyFloodBoost(score, analysis.normalized)
   if not score or not score.blocked then
+    -- BSP-032: shadow capture of the misses. Placed in the not-blocked branch so
+    -- it sees everything the filter lets through, score-0 included -- the set no
+    -- threshold setting can surface -- while blocked messages stay recorded in
+    -- History alone. devMode is checked here rather than inside ShadowLog so a
+    -- normal player's chat path costs one boolean compare.
+    if settings.devMode == true and NS.ShadowLog then
+      NS.ShadowLog.Capture(message, analysis, surface, score)
+    end
     return false
   end
 

@@ -42,6 +42,13 @@ local function Initialize()
     NS.History.TrimAllCharacters()
   end
 
+  -- BSP-032: the same safety net for the shadow log. Capture enforces the cap
+  -- one entry at a time, which never catches up with a store carried over from
+  -- a build that allowed a larger one, so converge it once at load.
+  if NS.ShadowLog and NS.ShadowLog.TrimToCap then
+    NS.ShadowLog.TrimToCap()
+  end
+
   -- BSP-010: push SavedVariables throttle settings into the runtime module
   -- so the first chat event uses the persisted values, not Throttle.lua's
   -- module-local defaults. DB.Initialize's RepairSettings pass guarantees
@@ -253,6 +260,26 @@ local function ExportHistory(rest)
   end
 end
 
+-- BSP-032: /bdev fnx [N|clear] — export the shadow log of messages the filter
+-- let through, as corpus candidates for hand triage. Optional N caps to the
+-- top-N (first whitespace token, like ExportFP); `clear` empties the store,
+-- which is what makes repeated mining cycles usable once candidates have been
+-- promoted. devMode gate handled by BdevSlashHandler below.
+local function ExportFN(rest)
+  local firstToken = string.match(rest or "", "^(%S+)")
+  if firstToken and string.lower(firstToken) == "clear" then
+    local cleared = NS.ShadowLog and NS.ShadowLog.Clear and NS.ShadowLog.Clear() or 0
+    Print("shadow log cleared: " .. tostring(cleared) .. " entries removed.")
+    return
+  end
+  local limit = firstToken and tonumber(firstToken) or nil
+  if NS.ConfigPanel and NS.ConfigPanel.OpenFNExportDialog then
+    NS.ConfigPanel.OpenFNExportDialog(limit)
+  else
+    Print("FN export unavailable (ConfigPanel not loaded).")
+  end
+end
+
 -- BSP-048: /bdev perf [label] — one-shot performance snapshot for the
 -- perf-optimization pass. Prints two lines: memory (pre-GC / retained / churn)
 -- and CPU (recent/peak/session avg ms + spike counts). devMode gate handled by
@@ -373,12 +400,13 @@ end
 local DEV_COMMANDS = {
 	test = RunSyntheticTest,
 	fpx  = ExportFP,
+	fnx  = ExportFN,
 	hx   = ExportHistory,
 	perf = RunPerf,
 }
 
 local function PrintDevUsage()
-	Print("usage: /bdev [test|fpx [N]|hx [N]|perf [label]]")
+	Print("usage: /bdev [test|fpx [N]|fnx [N|clear]|hx [N]|perf [label]]")
 end
 
 local function BdevSlashHandler(msg)
