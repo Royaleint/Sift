@@ -42,18 +42,20 @@ local function Initialize()
     NS.History.TrimAllCharacters()
   end
 
-  -- BSP-010: push SavedVariables throttle settings into the runtime module
-  -- so the first chat event uses the persisted values, not Throttle.lua's
-  -- module-local defaults. DB.Initialize's RepairSettings pass guarantees
-  -- settings.throttle is well-shaped by the time we read it here.
+  -- BSP-010: push the SavedVariables repeat-dedupe toggle into the runtime
+  -- module so the first chat event uses the persisted value, not Frequency's
+  -- module-local default. DB.Initialize's RepairSettings pass guarantees
+  -- settings.throttle is well-shaped by the time we read it here. BSP-029
+  -- retired the buffer size as a setting, so only the toggle is pushed.
   local throttleSettings = NS.DB.GetSettings()
-  if throttleSettings and throttleSettings.throttle and NS.Throttle then
-    if NS.Throttle.SetEnabled then
-      NS.Throttle.SetEnabled(throttleSettings.throttle.enabled)
-    end
-    if NS.Throttle.SetBufferSize then
-      NS.Throttle.SetBufferSize(throttleSettings.throttle.bufferSize)
-    end
+  if throttleSettings and throttleSettings.throttle and NS.Frequency
+     and NS.Frequency.SetRepeatEnabled then
+    NS.Frequency.SetRepeatEnabled(throttleSettings.throttle.enabled)
+  end
+  -- BSP-039: same reasoning for the flood window, a persisted setting as of
+  -- this ticket rather than a module constant.
+  if throttleSettings and NS.Frequency and NS.Frequency.SetFloodWindow then
+    NS.Frequency.SetFloodWindow(throttleSettings.floodWindow)
   end
 
   if NS.Patterns and NS.Patterns.LoadOnInit then

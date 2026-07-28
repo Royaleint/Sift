@@ -33,6 +33,13 @@ local IGNORED_BREAKDOWN_KEYS = {
   MixedScript = true,
   BlockedActor = true,
   Flood = true,
+  -- BSP-029: Throttle is a dedupe mechanism, not a spam category. It reaches
+  -- DominantCategory only through the synthesized repeat record below, where
+  -- crediting it as the dominant category tagged the sender's blocked-actor
+  -- entry with a category they never actually posted.
+  Throttle = true,
+  -- BSP-037: same reasoning. A manual block is an identity decision, so it must
+  -- never be credited as a content category the sender never posted.
   ManualBlock = true,
 }
 
@@ -150,7 +157,10 @@ end
 local function BuildScoringOptions(settings)
   return {
     threshold = settings.threshold,
-    enabledCategories = settings.enabledCategories,
+    -- Not settings.enabledCategories directly: retired categories are no longer
+    -- persisted, so the stored table alone would gate their rules off. A
+    -- fallback to it would restore that bug quietly, so there is none.
+    enabledCategories = NS.PauseState.GetEffectiveCategoryStates(),
     mixedScriptWeight = settings.mixedScriptEnabled == false and 0 or settings.mixedScriptWeight,
     antiSignalCap = settings.antiSignalCap,
     patterns = NS.Patterns,
@@ -318,8 +328,8 @@ local function Pipeline(
     -- "throttle" label, so relabelling would only cost the honest row render
     -- (score/threshold here are 0/0, which HistoryPanel replaces with "blocked
     -- by you" -- it would show a meaningless 0 / 0 under any other reason).
-    local throttled = NS.Throttle and NS.Throttle.Check
-      and NS.Throttle.Check(event, manualAnalysis.normalized, guid) or false
+    local throttled = NS.Frequency and NS.Frequency.CheckRepeat
+      and NS.Frequency.CheckRepeat(event, manualAnalysis.normalized, guid) or false
 
     AppendBlockedHistory(BuildHistoryRecord(
       event,
@@ -389,10 +399,12 @@ local function Pipeline(
     end
   end
 
-  -- Throttle runs ONLY on confirmed-spam (post-Score + post-category-gate). BSP-010 reorder
-  -- folded into BSP-008 Commit 2: previously ran before Score and could over-fire on
-  -- legitimate duplicates.
-  if NS.Throttle and NS.Throttle.Check and NS.Throttle.Check(event, analysis.normalized, guid) then
+  -- The repeat lane runs ONLY on confirmed-spam (post-Score + post-category-gate). BSP-010
+  -- reorder folded into BSP-008 Commit 2: previously ran before Score and could over-fire on
+  -- legitimate duplicates. BSP-029 moved it into Frequency; the call site stays here so the
+  -- category gate above still reads a breakdown with no repeat key in it.
+  if NS.Frequency and NS.Frequency.CheckRepeat
+     and NS.Frequency.CheckRepeat(event, analysis.normalized, guid) then
     local throttleOutcome = blockSuppressed and "pass-thru" or "blocked"
     AppendBlockedHistory(BuildHistoryRecord(
       event,

@@ -49,9 +49,14 @@ local SECTIONS = {
   "Dev",
 }
 
-local CATEGORY_KEYS = { "RMT", "Boosting", "Casino", "Phishing", "Commercial", "Anti" }
+-- PauseState is the single declaration of both lists and loads ahead of this
+-- file in the TOC, so these accessors are available at file scope.
+local CATEGORY_KEYS = NS.PauseState.GetCategoryKeys()
+local CATEGORY_LABELS = {
+  RMT = "Gold selling",
+}
 
-local SURFACE_KEYS = { "chat", "whisper", "bn-whisper" }
+local SURFACE_KEYS = NS.PauseState.GetSurfaceKeys()
 local SURFACE_LABELS = {
   chat              = "Chat",
   whisper           = "Whisper",
@@ -63,14 +68,14 @@ local DEFAULT_SETTINGS = {
   enabledCategories = {
     RMT = true,
     Boosting = true,
-    Casino = true,
-    Phishing = true,
-    Commercial = true,
-    Anti = true,
   },
   mixedScriptEnabled = true,
   mixedScriptWeight = 1,
   antiSignalCap = -5,
+  -- Mirrors Frequency's DEFAULT_WINDOW. Not read from GetFloodWindowBounds
+  -- because this table is built at file scope, before NS.Frequency is
+  -- guaranteed present; the live slider bounds do come from the accessor.
+  floodWindow = 180,
   filterBubbles = false,
   historyMaxEntries = 300,
   historyGlobalMaxEntries = 1000,
@@ -1617,10 +1622,21 @@ RenderDetection = function()
   y = AddCheckbox("Use mixed-script detection", "mixedScriptEnabled", y, nil,
     "Enable Unicode-confusable script-mixing as a signal in scoring.")
 
-  -- BSP-010: Throttle controls. Cannot reuse AddCheckbox helper because its
+  -- BSP-039: bounds come from Frequency so the slider cannot drift away from
+  -- the clamp that actually enforces them.
+  local minWindow, maxWindow, defaultWindow = NS.Frequency.GetFloodWindowBounds()
+  y = AddSlider("Flood window (seconds)", "floodWindow", minWindow, maxWindow, 30, y,
+    "How far back Sift looks when deciding that the same message is being repeated too " ..
+    "often. A longer window catches slower, more persistent repeats; a shorter one only " ..
+    "reacts to rapid bursts. Leave at " .. defaultWindow .. " unless repeat spam is " ..
+    "slipping past.")
+
+  -- BSP-010: Throttle control. Cannot reuse AddCheckbox helper because its
   -- SettingValue(key) read is flat-keyed and throttle.enabled lives under
   -- settings.throttle.*. Use MakeNativeCheckbox directly with a custom
-  -- onChange that routes through NS.DB.SetThrottleEnabled.
+  -- onChange that routes through NS.DB.SetThrottleEnabled. BSP-029 removed the
+  -- companion buffer-size slider — how long a repeat is remembered is no longer
+  -- a user-facing knob.
   local throttle = (GetSettings() and GetSettings().throttle) or {}
 
   MakeNativeCheckbox(CONTENT_PAD, y, "Throttle confirmed-spam repeats",
@@ -1630,28 +1646,16 @@ RenderDetection = function()
         NS.DB.SetThrottleEnabled(value)
       end
     end,
-    "When the same cleansed text and sender GUID repeats inside the buffer window, " ..
-    "the second hit is auto-blocked. Only runs on messages already scored as spam \194\151 " ..
-    "legitimate repeats are unaffected.")
-  y = y - 32
-
-  local throttleSlider = MakeNativeSlider(CONTENT_PAD, y, 330, "Throttle buffer size", 5, 50, 1)
-  throttleSlider:SetValue(tonumber(throttle.bufferSize) or 20)
-  throttleSlider:SetCallback("OnValueChanged", function(_, _, value)
-    if NS.DB and NS.DB.SetThrottleBufferSize then
-      NS.DB.SetThrottleBufferSize(math.floor((tonumber(value) or 20) + 0.5))
-    end
-  end)
-  AttachTooltip(throttleSlider, "Throttle buffer size",
-    "How many recent confirmed-spam messages per surface are remembered for dedupe. " ..
-    "Larger = longer memory window. Range 5\194\17750.")
+    "When the same sender repeats the same message on the same surface, the repeat is " ..
+    "logged as one condensed history entry and counted as throttled. Only applies to " ..
+    "messages already blocked as spam \194\151 it does not change what gets blocked.")
 end
 
 RenderCategories = function()
   local y = AddSectionTitle("Categories", "Three states per category: Active (block) / Paused (detect + log, don't hide) / Off (ignore).")
   y = AddStatus(y, sectionStatus.Categories)
   for _, category in ipairs(CATEGORY_KEYS) do
-    y = AddAxisPauseRow("category", category, category, y)
+    y = AddAxisPauseRow("category", category, CATEGORY_LABELS[category] or category, y)
   end
 end
 
@@ -2438,6 +2442,11 @@ local HISTORY_EXPORT_IGNORED_KEYS = {
   MixedScript = true,
   BlockedActor = true,
   Flood = true,
+  -- BSP-029: without this, every repeat-dedupe record exported as a "Throttle"
+  -- corpus candidate — a mechanism, not a category anyone can hand-triage.
+  Throttle = true,
+  -- BSP-037: likewise a hand-blocked message is not corpus evidence. The user
+  -- blocked the person and said nothing about the text.
   ManualBlock = true,
 }
 

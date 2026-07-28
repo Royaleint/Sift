@@ -55,13 +55,11 @@ local defaults = {
     blockedActors = {},
     settings = {
       threshold = 4,
+      -- SFT-080: only the user-facing categories are persisted. The retired
+      -- ones keep scoring at frozen states declared in PauseState.lua.
       enabledCategories = {
         RMT        = "active",
         Boosting   = "active",
-        Casino     = "active",
-        Phishing   = "active",
-        Commercial = "paused",
-        Anti       = "paused",
       },
       surfaces = {
         chat              = "active",
@@ -71,17 +69,20 @@ local defaults = {
       mixedScriptEnabled = true,
       mixedScriptWeight = 1,
       antiSignalCap = -5,
+      -- BSP-039: flood window in seconds. The band is owned by Frequency.lua
+      -- and read through GetFloodWindowBounds; this is only the seed value.
+      floodWindow = 180,
       filterBubbles = false,
       showMinimapButton = true,
       historyMaxEntries = 300,
       historyGlobalMaxEntries = 1000,
       devMode = false,
       -- BSP-010: confirmed-spam-repeat dedupe. Additive — Foundry.DB backfills
-      -- nil slots from defaults on first section access. Module-level defaults
-      -- in Throttle.lua mirror these values.
+      -- nil slots from defaults on first section access. The module-level
+      -- default in Frequency.lua mirrors this value. BSP-029 retired
+      -- bufferSize as a setting; the default now lives only in Frequency.
       throttle = {
         enabled = true,
-        bufferSize = 20,
       },
     },
   },
@@ -114,6 +115,13 @@ local VALID_AXIS_STATES = { active = true, paused = true, off = true }
 local DEFUNCT_KEY_PREFIX = "lf" .. "g"
 local DEFUNCT_SURFACE_KEYS = { DEFUNCT_KEY_PREFIX .. "-search", DEFUNCT_KEY_PREFIX .. "-applicant" }
 local DEFUNCT_SETTING_KEYS = { DEFUNCT_KEY_PREFIX .. "ScanEnabled" }
+
+-- SFT-080: these categories lost their Config buttons. Their rules still score,
+-- at states frozen in PauseState.lua, so nothing about detection changes -- but
+-- there is no longer a toggle to reach the stored value, which makes it dead
+-- weight in every existing profile. Pruned from settings.enabledCategories the
+-- same way BSP-061's surface keys are pruned below.
+local DEFUNCT_CATEGORY_KEYS = { "Casino", "Phishing", "Commercial", "Anti" }
 
 local migrations = {}
 -- migrations[2] is defined immediately below; migrations[3] is defined after
@@ -197,6 +205,19 @@ local function ClampNumber(value, minValue, maxValue, fallback)
   return value
 end
 
+-- BSP-039: Frequency owns the flood-window band, so read it from there rather
+-- than repeating the numbers here. Frequency loads before this ever runs (TOC
+-- order, and every caller is post-init). If it somehow has not, return the
+-- default rather than an unclamped number — without the bounds there is no way
+-- to tell whether a supplied value is inside the band.
+local function ClampFloodWindow(value)
+  if NS.Frequency and NS.Frequency.GetFloodWindowBounds then
+    local minWindow, maxWindow = NS.Frequency.GetFloodWindowBounds()
+    return ClampNumber(value, minWindow, maxWindow, defaults.global.settings.floodWindow)
+  end
+  return defaults.global.settings.floodWindow
+end
+
 local function Now()
   if type(GetServerTime) == "function" then
     return GetServerTime()
@@ -244,6 +265,7 @@ local function RepairSettings(settings)
   settings.threshold = ClampNumber(settings.threshold, 1, 10, defaultSettings.threshold)
   settings.mixedScriptWeight = ClampNumber(settings.mixedScriptWeight, 0, 3, defaultSettings.mixedScriptWeight)
   settings.antiSignalCap = ClampNumber(settings.antiSignalCap, -10, -1, defaultSettings.antiSignalCap)
+  settings.floodWindow = ClampFloodWindow(settings.floodWindow)
   settings.historyMaxEntries = ClampNumber(settings.historyMaxEntries, 100, 5000, defaultSettings.historyMaxEntries)
   settings.historyGlobalMaxEntries = ClampNumber(settings.historyGlobalMaxEntries, 100, 5000, defaultSettings.historyGlobalMaxEntries)
   settings.mixedScriptEnabled = settings.mixedScriptEnabled ~= false
@@ -264,6 +286,10 @@ local function RepairSettings(settings)
       settings.enabledCategories[category] = defaultState
     end
   end
+  -- SFT-080: drop the states of categories that no longer have a button.
+  for _, key in ipairs(DEFUNCT_CATEGORY_KEYS) do
+    settings.enabledCategories[key] = nil
+  end
   settings.surfaces = type(settings.surfaces) == "table" and settings.surfaces or {}
   for surface, defaultState in pairs(defaultSettings.surfaces) do
     local current = settings.surfaces[surface]
@@ -277,12 +303,14 @@ local function RepairSettings(settings)
   for _, key in ipairs(DEFUNCT_SURFACE_KEYS) do
     settings.surfaces[key] = nil
   end
-  -- BSP-010: repair the throttle subtree. Junk values (string, negative,
-  -- out-of-range) clamp back to safe defaults; missing fields backfill.
+  -- BSP-010: repair the throttle subtree. Junk values clamp back to safe
+  -- defaults; missing fields backfill.
   settings.throttle = type(settings.throttle) == "table" and settings.throttle or {}
   settings.throttle.enabled = settings.throttle.enabled ~= false
-  settings.throttle.bufferSize = ClampNumber(settings.throttle.bufferSize, 5, 50,
-    defaultSettings.throttle.bufferSize)
+  -- BSP-029: the buffer size is no longer user-configurable (the flood window
+  -- is the single timing knob). Prune the key existing SavedVariables still
+  -- carry — the matching default is gone, so nothing backfills it again.
+  settings.throttle.bufferSize = nil
 end
 
 local function RepairShape(global, char)
@@ -392,6 +420,11 @@ function DB.SetSetting(key, value)
     settings.mixedScriptWeight = ClampNumber(value, 0, 3, defaults.global.settings.mixedScriptWeight)
   elseif key == "antiSignalCap" then
     settings.antiSignalCap = ClampNumber(value, -10, -1, defaults.global.settings.antiSignalCap)
+  elseif key == "floodWindow" then
+    settings.floodWindow = ClampFloodWindow(value)
+    if NS.Frequency and NS.Frequency.SetFloodWindow then
+      NS.Frequency.SetFloodWindow(settings.floodWindow)
+    end
   elseif key == "historyMaxEntries" then
     settings.historyMaxEntries = ClampNumber(value, 100, 5000, defaults.global.settings.historyMaxEntries)
   elseif key == "historyGlobalMaxEntries" then
@@ -474,10 +507,10 @@ function DB.SetCategoryState(category, state)
   return state
 end
 
--- BSP-010: throttle setters. Mirror the SetSurfaceState / SetCategoryState
+-- BSP-010: repeat-dedupe setter. Mirrors the SetSurfaceState / SetCategoryState
 -- convention (per-setter validation, returns canonical value or nil on
--- failure) and also push the new value into NS.Throttle's runtime state so
--- ConfigPanel slider/checkbox changes take effect without /reload.
+-- failure) and also pushes the new value into the runtime module so a
+-- ConfigPanel checkbox change takes effect without /reload.
 function DB.SetThrottleEnabled(value)
   local settings = DB.GetSettings()
   if not settings then
@@ -485,24 +518,10 @@ function DB.SetThrottleEnabled(value)
   end
   settings.throttle = settings.throttle or {}
   settings.throttle.enabled = value == true
-  if NS.Throttle and NS.Throttle.SetEnabled then
-    NS.Throttle.SetEnabled(settings.throttle.enabled)
+  if NS.Frequency and NS.Frequency.SetRepeatEnabled then
+    NS.Frequency.SetRepeatEnabled(settings.throttle.enabled)
   end
   return settings.throttle.enabled
-end
-
-function DB.SetThrottleBufferSize(value)
-  local settings = DB.GetSettings()
-  if not settings then
-    return nil
-  end
-  settings.throttle = settings.throttle or {}
-  settings.throttle.bufferSize = ClampNumber(value, 5, 50,
-    defaults.global.settings.throttle.bufferSize)
-  if NS.Throttle and NS.Throttle.SetBufferSize then
-    NS.Throttle.SetBufferSize(settings.throttle.bufferSize)
-  end
-  return settings.throttle.bufferSize
 end
 
 function DB.GetBlockedActor(guid)
@@ -633,6 +652,12 @@ function DB.ResetSettings()
   -- account-wide, not enforced piecemeal as each alt next logs in.
   if NS.History and NS.History.TrimAllCharacters then
     NS.History.TrimAllCharacters()
+  end
+  -- BSP-039: same reasoning as the trim above — a reset value is authoritative
+  -- immediately, not at next login. Without this the slider snaps back to 180
+  -- while the runtime keeps scanning on whatever window was set before.
+  if NS.Frequency and NS.Frequency.SetFloodWindow then
+    NS.Frequency.SetFloodWindow(global.settings.floodWindow)
   end
   return global.settings
 end
