@@ -4,7 +4,7 @@ NS.PatternsData = {
   version   = 2,
   seedLow   = 0x7D,
   seedHigh  = 0x35,
-  builtAt   = "2026-06-12T22:32:02Z",
+  builtAt   = "2026-06-21T14:38:35Z",
   ruleCount = 97,
   entries = {
     { c = "RMT", w = 10, id = "r_a7bbac55", e = "\159\157\153\140\131\129\138" },
