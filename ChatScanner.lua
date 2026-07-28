@@ -351,9 +351,13 @@ local function Pipeline(
   -- Anchors for the links this branch does not own (BSP-052/058):
   --   link 1 is THIS branch, and stays directly above the link-2 Trust
   --     short-circuit immediately below.
-  --   link 3 (keyword-allow) goes BELOW that Trust short-circuit and above the
-  --     Cleanse/Score step -- never between link 1 and link 2, or a keyword
-  --     allow would quietly outrank an explicit manual block.
+  --   link 3 (keyword-allow) sits BELOW that Trust short-circuit -- never
+  --     between link 1 and link 2, or a keyword allow would quietly outrank an
+  --     explicit manual block. BSP-058 placed it just after the score rather
+  --     than just before it, as this comment first anticipated: the precedence
+  --     is identical either way, because an allow match returns whatever the
+  --     corpus decided, but running it on the would-block path only keeps it off
+  --     the hot path and lets the shadow log record what the override beat.
   --   link 5 (keyword-block) goes after the Score call, before the category
   --     state gate. When it fires, that gate reads Custom's state rather than
   --     the dominant corpus category -- see the gate itself.
@@ -441,6 +445,23 @@ local function Pipeline(
     -- lane into the store obeys it whether or not its caller remembered to.
     if NS.ShadowLog then
       NS.ShadowLog.Capture(message, analysis, surface, score)
+    end
+    return false
+  end
+
+  -- BSP-058, precedence link 3: an allow keyword overrides everything below
+  -- Trust, a corpus block included. That is deliberate, and it is a bypass
+  -- surface -- anyone who learns the user's allow phrase can put it in a message
+  -- and walk through, which is why the override is audited rather than silent.
+  local allowRule = NS.UserRules and NS.UserRules.Match
+    and NS.UserRules.Match(NS.UserRules.ALLOW, analysis.normalized)
+  if allowRule then
+    -- BSP-032's second lane, and the reason it exists: these are messages an
+    -- allow rule let through, tagged apart from ordinary misses so the user can
+    -- audit what their own allowlist is costing them. Same self-gating on
+    -- devMode as Capture above, so no check is duplicated here.
+    if NS.ShadowLog then
+      NS.ShadowLog.CaptureAllowThrough(message, analysis, surface, score)
     end
     return false
   end

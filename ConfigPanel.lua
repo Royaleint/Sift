@@ -48,6 +48,7 @@ local SECTIONS = {
   -- one, because each is a full paginated list and the panel is not tall enough
   -- to show both at once.
   "My Keywords",
+  "Never Block",
   "History",
   "UI",
   "Dev",
@@ -1364,6 +1365,22 @@ local function RegisterStaticPopups()
     hideOnEscape = true,
   }
 
+  StaticPopupDialogs["SIFT_REMOVE_ALL_ALLOW_KEYWORDS"] = {
+    text = "Remove every phrase from your never-block list (%d in total)? This cannot be undone.",
+    button1 = "Remove All",
+    button2 = "Cancel",
+    OnAccept = function()
+      local removed = NS.UserRules and NS.UserRules.RemoveAll(NS.UserRules.ALLOW) or 0
+      sectionStatus["Never Block"] = "Removed " .. removed .. " phrase(s)."
+      if activeSection == "Never Block" and frame and frame:IsShown() then
+        ConfigPanel.ShowSection("Never Block")
+      end
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+  }
+
   StaticPopupDialogs["SIFT_RESET_SETTINGS"] = {
     text = "Reset Sift settings to defaults?",
     button1 = "Reset",
@@ -1936,6 +1953,19 @@ local KEYWORD_SECTIONS = {
     emptyHint = "Add a word or phrase above to start blocking it.",
     popup = "SIFT_REMOVE_ALL_KEYWORDS",
   },
+  ["Never Block"] = {
+    kind = NS.UserRules and NS.UserRules.ALLOW or "allow",
+    blurb = "Words and phrases that protect a message. Anything containing one is never blocked.",
+    addLabel = "Allow phrase",
+    addTooltip = "Type a word or phrase that should always come through. Matching works the "
+      .. "same way as the block list, so look-alike spellings count too.",
+    help = "|cffff6060Careful:|r these win over Sift's own filter, so a spammer who guesses "
+      .. "one of your phrases can put it in a message and walk straight through. Use long, "
+      .. "distinctive phrases, not common words. Only players on your Allowlist outrank this.",
+    emptyLabel = "No never-block phrases",
+    emptyHint = "Sift's filter decides on its own until you add one.",
+    popup = "SIFT_REMOVE_ALL_ALLOW_KEYWORDS",
+  },
 }
 
 local ADD_STATUS_TEXT = {
@@ -2254,6 +2284,7 @@ local RENDERERS = {
   Allowlist = RenderAllowlist,
   Blocked = RenderBlocked,
   ["My Keywords"] = RenderKeywordSection,
+  ["Never Block"] = RenderKeywordSection,
   History = RenderHistory,
   UI = RenderUI,
   Dev = RenderDev,
@@ -2408,6 +2439,7 @@ local NAV_TOOLTIPS = {
   Allowlist  = "Senders Sift will always trust. Add from History or import a saved list.",
   Blocked    = "Recently blocked actors. Manage repeat offenders.",
   ["My Keywords"] = "Your own words and phrases to block, on top of Sift's filter.",
+  ["Never Block"] = "Your own words and phrases that always come through, even past Sift's filter.",
   History    = "Retained-history limit and clear control.",
   UI         = "Minimap launcher and panel-position resets.",
   Dev        = "Developer-only diagnostics and full settings reset.",
