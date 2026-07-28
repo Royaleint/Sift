@@ -17,7 +17,10 @@ local SURFACE_KEYS = { "chat", "whisper", "bn-whisper" }
 -- the block/pass-thru gate behave exactly as they did while the buttons existed.
 -- Commercial is frozen "paused", not "active", because paused is what it shipped
 -- as: freezing it active would start blocking messages that pass through today.
-local CATEGORY_KEYS = { "RMT", "Boosting" }
+-- BSP-052: "Custom" is the user's own keyword block list, not a corpus category.
+-- It earns a button so the list can be paused without deleting it, and it is
+-- deliberately NOT retired -- it has no frozen state to fall back on.
+local CATEGORY_KEYS = { "RMT", "Boosting", "Custom" }
 local RETIRED_CATEGORY_STATES = {
   Casino     = "active",
   Phishing   = "active",

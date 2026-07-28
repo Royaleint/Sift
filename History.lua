@@ -32,6 +32,28 @@ local function MaxEntries()
   return value
 end
 
+-- BSP-052: a phrase the player wrote owns the attribution when it is what caught
+-- the message. The largest breakdown weight can belong to a category that never
+-- blocked anything on its own -- negative trust weight can hold a bigger number
+-- under the threshold -- so crediting it files the block under a category the
+-- player never involved, and hides it from their own filter chip.
+local function RecordCategory(record)
+  if type(record) ~= "table" then return nil end
+  if record.customRule then return "Custom" end
+
+  local breakdown = record.breakdown
+  if type(breakdown) ~= "table" then return nil end
+  local bestCat, bestVal
+  for cat, val in pairs(breakdown) do
+    local numeric = tonumber(val) or 0
+    if not IGNORED_BREAKDOWN_KEYS[cat] and numeric > 0
+       and (not bestVal or numeric > bestVal) then
+      bestCat, bestVal = cat, numeric
+    end
+  end
+  return bestCat
+end
+
 local function CountRetained(history)
   local retained = {
     detections = 0,
@@ -56,19 +78,9 @@ local function CountRetained(history)
       else
         retained.blocked = retained.blocked + 1
       end
-      local breakdown = record.breakdown
-      if type(breakdown) == "table" then
-        local bestCat, bestVal
-        for cat, val in pairs(breakdown) do
-          local numeric = tonumber(val) or 0
-          if not IGNORED_BREAKDOWN_KEYS[cat] and numeric > 0
-             and (not bestVal or numeric > bestVal) then
-            bestCat, bestVal = cat, numeric
-          end
-        end
-        if bestCat then
-          retained.byCategory[bestCat] = (retained.byCategory[bestCat] or 0) + 1
-        end
+      local bestCat = RecordCategory(record)
+      if bestCat then
+        retained.byCategory[bestCat] = (retained.byCategory[bestCat] or 0) + 1
       end
     end
   end
@@ -146,19 +158,9 @@ local function IncrementStats(char, record)
   end
   stats.bySurface[surface] = (tonumber(stats.bySurface[surface]) or 0) + 1
 
-    local breakdown = record.breakdown
-    if type(breakdown) == "table" then
-      local bestCat, bestVal
-      for cat, val in pairs(breakdown) do
-        local numeric = tonumber(val) or 0
-        if not IGNORED_BREAKDOWN_KEYS[cat] and numeric > 0
-           and (not bestVal or numeric > bestVal) then
-          bestCat, bestVal = cat, numeric
-        end
-      end
-    if bestCat then
-      stats.byCategory[bestCat] = (tonumber(stats.byCategory[bestCat]) or 0) + 1
-    end
+  local bestCat = RecordCategory(record)
+  if bestCat then
+    stats.byCategory[bestCat] = (tonumber(stats.byCategory[bestCat]) or 0) + 1
   end
 end
 

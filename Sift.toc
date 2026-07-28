@@ -15,6 +15,7 @@ Compat.lua
 DB.lua
 PauseState.lua
 Cleanse.lua
+UserRules.lua
 PatternData.lua
 Patterns.lua
 Scoring.lua
