@@ -90,6 +90,17 @@ local function InstallScanner()
   NS.ChatScanner.Install()
 end
 
+-- BSP-037: registered at login rather than in Initialize(). Initialize runs on
+-- the addon-loaded hook, and the Menu system belongs to a separate Blizzard
+-- addon that is not guaranteed to have loaded by then.
+local function InstallPlayerMenu()
+  if not initialized or not NS.PlayerMenu or not NS.PlayerMenu.Initialize then
+    return
+  end
+
+  NS.PlayerMenu.Initialize()
+end
+
 local function ToggleHistory()
   if NS.HistoryPanel and NS.HistoryPanel.Toggle then
     NS.HistoryPanel.Toggle()
@@ -174,10 +185,17 @@ local function AllowFromHistory(rest)
 		return
 	end
 
-	if NS.Trust and NS.Trust.AddAllowlist and NS.Trust.AddAllowlist(guid, name, realm, "manual") then
-		Print("allowlisted " .. tostring(name or rest) .. ".")
-	else
+	if not NS.Trust or not NS.Trust.AddAllowlist then
 		Print("sender is already allowlisted or cannot be allowlisted.")
+		return
+	end
+
+	local added, clearedManualBlock = NS.Trust.AddAllowlist(guid, name, realm, "manual")
+	local unblocked = clearedManualBlock and " Your manual block on them was removed." or ""
+	if added then
+		Print("allowlisted " .. tostring(name or rest) .. "." .. unblocked)
+	else
+		Print("sender is already allowlisted or cannot be allowlisted." .. unblocked)
 	end
 end
 
@@ -428,7 +446,10 @@ end
 --   * OnLogout -- Lifecycle ships it, but Sift has no logout teardown; deliberately unused.
 local controller = F:RequireModule("Lifecycle", 1):New(NS, ADDON_NAME)
 controller:OnAddonLoaded(function() Initialize() end)
-controller:OnLogin(function() InstallScanner() end)
+controller:OnLogin(function()
+	InstallScanner()
+	InstallPlayerMenu()
+end)
 
 SLASH_SIFT1 = "/sift"
 SlashCmdList.SIFT = SlashHandler

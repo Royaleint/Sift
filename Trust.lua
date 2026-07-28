@@ -123,9 +123,26 @@ function Trust.IsAllowlisted(guid)
   return allowlist[guid] ~= nil
 end
 
+-- Returns added, clearedManualBlock. The second value is for callers that tell
+-- the user what happened; it can be true even when the first is false, because
+-- re-allowing an already-allowlisted player still has to lift a manual block.
 function Trust.AddAllowlist(guid, name, realm, source)
-  if not IsUsableString(guid) or Trust.IsAllowlisted(guid) then
-    return false
+  if not IsUsableString(guid) then
+    return false, false
+  end
+
+  -- BSP-037: allowing someone is newer explicit intent than having blocked them
+  -- by hand, so it supersedes. Without this the manual-block check that sits
+  -- above Trust in the pipeline keeps suppressing, and "Restore + Always allow"
+  -- silently does nothing -- breaking the promise that recovery is one click.
+  local clearedManualBlock = false
+  if NS.DB and NS.DB.IsManuallyBlocked and NS.DB.IsManuallyBlocked(guid)
+     and NS.DB.RemoveBlockedActor then
+    clearedManualBlock = NS.DB.RemoveBlockedActor(guid) == true
+  end
+
+  if Trust.IsAllowlisted(guid) then
+    return false, clearedManualBlock
   end
 
   if source ~= "manual" and source ~= "history" and source ~= "import" then
@@ -148,7 +165,7 @@ function Trust.AddAllowlist(guid, name, realm, source)
     global.allowlist[guid] = entry
   end
 
-  return true
+  return true, clearedManualBlock
 end
 
 function Trust.RemoveAllowlist(guid)

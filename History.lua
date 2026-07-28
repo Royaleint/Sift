@@ -7,6 +7,7 @@ local IGNORED_BREAKDOWN_KEYS = {
   MixedScript = true,
   BlockedActor = true,
   Flood = true,
+  ManualBlock = true,
 }
 
 local function GetChar()

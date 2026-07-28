@@ -802,13 +802,15 @@ local function AddAllowlistFromText(text)
     sectionStatus.Allowlist = "Allowlist API is unavailable."
     return false
   end
-  if NS.Trust.AddAllowlist(entry.guid, entry.name, entry.realm, "manual") then
-    sectionStatus.Allowlist = "Added " .. SenderLabel(entry) .. "."
+  local added, clearedManualBlock = NS.Trust.AddAllowlist(entry.guid, entry.name, entry.realm, "manual")
+  local unblocked = clearedManualBlock and " Manual block removed." or ""
+  if added then
+    sectionStatus.Allowlist = "Added " .. SenderLabel(entry) .. "." .. unblocked
     listState.allowlistAddText = ""
     removedAllowlistEntry = nil
     return true
   end
-  sectionStatus.Allowlist = SenderLabel(entry) .. " is already allowlisted."
+  sectionStatus.Allowlist = SenderLabel(entry) .. " is already allowlisted." .. unblocked
   return false
 end
 
@@ -830,9 +832,11 @@ local function UndoAllowlistRemove()
     return
   end
   local entry = removed.entry or {}
-  NS.Trust.AddAllowlist(removed.guid, entry.name, entry.realm, entry.source or "manual")
+  local _, clearedManualBlock =
+    NS.Trust.AddAllowlist(removed.guid, entry.name, entry.realm, entry.source or "manual")
   removedAllowlistEntry = nil
   sectionStatus.Allowlist = "Restored " .. SenderLabel(entry) .. "."
+    .. (clearedManualBlock and " Manual block removed." or "")
   ConfigPanel.ShowSection("Allowlist")
 end
 
@@ -1079,6 +1083,9 @@ local function ApplyImport(entries, overwrite)
   local current = NS.Trust.GetAllowlist and NS.Trust.GetAllowlist() or {}
   local added = 0
   local skipped = 0
+  -- BSP-037: an import can silently lift manual blocks, since allowing someone
+  -- supersedes having blocked them by hand. Count them so the summary says so.
+  local lifted = 0
   for _, entry in ipairs(entries) do
     if current[entry.guid] and overwrite and NS.Trust.RemoveAllowlist then
       NS.Trust.RemoveAllowlist(entry.guid)
@@ -1086,8 +1093,13 @@ local function ApplyImport(entries, overwrite)
     end
 
     if not current[entry.guid] then
-      if NS.Trust.AddAllowlist(entry.guid, entry.name, entry.realm, entry.source or "import") then
+      local wasAdded, clearedManualBlock =
+        NS.Trust.AddAllowlist(entry.guid, entry.name, entry.realm, entry.source or "import")
+      if wasAdded then
         added = added + 1
+      end
+      if clearedManualBlock then
+        lifted = lifted + 1
       end
     else
       skipped = skipped + 1
@@ -1097,7 +1109,9 @@ local function ApplyImport(entries, overwrite)
   pendingImport = nil
   removedAllowlistEntry = nil
   sectionStatus.Allowlist = "Imported " .. tostring(added) .. " entries"
-    .. (skipped > 0 and ("; skipped " .. tostring(skipped) .. ".") or ".")
+    .. (skipped > 0 and ("; skipped " .. tostring(skipped)) or "")
+    .. (lifted > 0 and ("; lifted " .. tostring(lifted) .. " manual blocks") or "")
+    .. "."
   if activeSection == "Allowlist" and frame and frame:IsShown() then
     ConfigPanel.ShowSection("Allowlist")
   end
@@ -1778,7 +1792,7 @@ RenderBlocked = function()
     "Remove every blocked actor. Confirmation required.")
   y = y - 34
 
-  y = AddDisabledRow("Manual blocked add", "Not supported; scanners add actors after confirmed blocks.", y)
+  y = AddDisabledRow("Manual blocked add", "Right-click a player name in chat and choose Block (Sift).", y)
 
   local entries = SortedBlockedActors()
   local maxPage = MaxPage(#entries)
@@ -1813,7 +1827,11 @@ RenderBlocked = function()
 
     local meta = TrackNative(row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"))
     meta:SetPoint("LEFT", row, "LEFT", 8, -8)
-    meta:SetText("blocks " .. tostring(BlockedEntryCount(rowData.entry))
+    -- BSP-037: a hand-blocked actor can sit here with zero recorded blocks,
+    -- which on its own reads like a stray row. Say who put it there.
+    local origin = (type(rowData.entry) == "table" and rowData.entry.manual == true)
+      and "blocked by you - " or ""
+    meta:SetText(origin .. "blocks " .. tostring(BlockedEntryCount(rowData.entry))
       .. " - last " .. RelativeTime(BlockedEntryLastSeen(rowData.entry)))
     meta:Show()
 
@@ -2420,6 +2438,7 @@ local HISTORY_EXPORT_IGNORED_KEYS = {
   MixedScript = true,
   BlockedActor = true,
   Flood = true,
+  ManualBlock = true,
 }
 
 -- BSP-049: build a raw (NOT Lua-escaped) corpus-candidate export from ALL
