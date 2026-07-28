@@ -676,7 +676,16 @@ local function RenderRow(row, entry)
     row.badgeText:SetText(L("You"))
     row.scoreText:SetText("")
   else
-    row.badgeText:SetText(cat and (CATEGORY_BADGE_LABELS[cat] or cat) or "?")
+    local badge = cat and (CATEGORY_BADGE_LABELS[cat] or cat)
+    if not badge and type(entry.breakdown) == "table"
+       and (tonumber(entry.breakdown.Flood) or 0) > 0 then
+      -- A flood-only block has no content category to name (Flood is a
+      -- "why", not a "what" -- it never wins EntryDominantCategory). Name
+      -- the reason like manual blocks do instead of rendering a broken "?"
+      -- (Gate 2 finding, 2026-07-28).
+      badge = L("Flood")
+    end
+    row.badgeText:SetText(badge or "?")
     row.scoreText:SetText(tostring(entry.score or 0))
   end
 end
@@ -1057,10 +1066,11 @@ local function RefreshStatsArea()
     local hexFull = hex .. hex  -- 3-char hex doubled to 6 for color codes
     local state = NS.PauseState and NS.PauseState.GetCategory and NS.PauseState.GetCategory(cat) or "active"
     local part
+    local catLabel = CATEGORY_BADGE_LABELS[cat] or cat
     if state == "paused" or state == "off" then
-      part = string.format("|cff%s%s|r |cff888888%d|r", hexFull, L(cat), count)
+      part = string.format("|cff%s%s|r |cff888888%d|r", hexFull, L(catLabel), count)
     else
-      part = string.format("|cff%s%s|r |cffffffff%d|r", hexFull, L(cat), count)
+      part = string.format("|cff%s%s|r |cffffffff%d|r", hexFull, L(catLabel), count)
     end
     categoryParts[#categoryParts + 1] = part
   end
