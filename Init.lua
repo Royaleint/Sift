@@ -351,7 +351,7 @@ local COMMANDS = {
 }
 
 local function PrintUsage()
-	Print("usage: /bawrspam [history|config|options|allow|export|import|clearhistory|clearblocked|rebuildstats]")
+	Print("usage: /sift [history|config|options|allow|export|import|clearhistory|clearblocked|rebuildstats]")
 end
 
 local function SlashHandler(msg)
