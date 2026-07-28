@@ -170,8 +170,8 @@ local STATS_TILE_COLORS = {
 }
 
 local function RegisterStaticPopups()
-  if StaticPopupDialogs and not StaticPopupDialogs["BAWRSPAM_COPY_SENDER"] then
-    StaticPopupDialogs["BAWRSPAM_COPY_SENDER"] = {
+  if StaticPopupDialogs and not StaticPopupDialogs["SIFT_COPY_SENDER"] then
+    StaticPopupDialogs["SIFT_COPY_SENDER"] = {
       text = "Sender name (Ctrl+C to copy):",
       button1 = CLOSE or "Close",
       hasEditBox = true,
@@ -806,7 +806,7 @@ end
 
 local function ShowCopySenderPopup(entry)
   if StaticPopup_Show then
-    StaticPopup_Show("BAWRSPAM_COPY_SENDER", nil, nil, FormatSender(entry))
+    StaticPopup_Show("SIFT_COPY_SENDER", nil, nil, FormatSender(entry))
   end
 end
 
