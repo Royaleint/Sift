@@ -11,8 +11,7 @@ if not F then
         .. "to have loaded first; _G.Foundry_1_0 is missing.", 0)
 end
 -- Guarded-embedding stand-down (§2.2b): if this module is already registered on the
--- winning copy, this is a redundant embedded copy — load nothing. Silent no-op on
--- the first load (not registered yet). Zero new surface on F (HasModule already exists).
+-- winning copy, this is a redundant embedded copy — load nothing.
 if F:HasModule("Commands") then return end
 
 local Commands = {}
@@ -70,6 +69,14 @@ function Controller:Register(spec)
     if type(spec.handler) ~= "function" then
         F:RaiseDevError("Commands:Register: subcommand '" .. primary
             .. "' requires a handler function")
+        return
+    end
+    -- args is a display hint PrintHelp concatenates into the help line; a
+    -- non-string stored here would defer the type error to help-render time,
+    -- in the player's chat, long after the bad Register call.
+    if spec.args ~= nil and type(spec.args) ~= "string" then
+        F:RaiseDevError("Commands:Register: spec.args, when supplied, must be a "
+            .. "string (got " .. type(spec.args) .. ")")
         return
     end
     if primary == "help" or primary:find("^help%s") then
