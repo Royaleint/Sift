@@ -64,12 +64,36 @@ local CATEGORY_COLORS = {
   Commercial = "5a7",
   Anti       = "888",
 }
+-- Keys that describe WHY a message was caught rather than WHAT KIND of spam it
+-- is. Letting them win "dominant category" mislabels the row: a boosting ad
+-- caught during a flood would take the flood's colour and be filtered as though
+-- boosting were not its category. They stay visible as breakdown chips in the
+-- detail pane, which is where the "why" belongs. This is a superset of
+-- ChatScanner's list of the same name: Throttle is absent there on purpose,
+-- because Throttle is injected after the scanner's category gate has already
+-- read the breakdown, so it can never reach that gate. It does reach stored
+-- rows, which is why it has to be excluded here.
 local IGNORED_BREAKDOWN_KEYS = {
   MixedScript = true,
   BlockedActor = true,
+  Flood = true,
+  Throttle = true,
 }
 
-local CATEGORIES         = { "RMT", "Boosting", "Casino", "Phishing", "Commercial", "Anti" }
+-- Categories the user can filter by. PauseState is the single declaration.
+local CATEGORIES = NS.PauseState.GetCategoryKeys()
+
+-- Every category a stored row can still carry, including the retired ones.
+-- History is never rewritten, so old rows keep their categories forever and the
+-- colour legend and lifetime counts have to keep describing them.
+local DISPLAY_CATEGORIES = {}
+do
+  for _, cat in ipairs(CATEGORIES) do DISPLAY_CATEGORIES[#DISPLAY_CATEGORIES + 1] = cat end
+  local retired = {}
+  for cat in pairs(NS.PauseState.GetRetiredCategoryStates()) do retired[#retired + 1] = cat end
+  table.sort(retired)
+  for _, cat in ipairs(retired) do DISPLAY_CATEGORIES[#DISPLAY_CATEGORIES + 1] = cat end
+end
 
 -- Surface uses canonical lowercase keys ("chat", "whisper") to match what
 -- ChatScanner writes into entry.surface. SURFACE_LABELS maps the key to its
@@ -982,7 +1006,7 @@ local function RefreshStatsArea()
   -- By-category inline line; paused/off categories render muted.
   local byCategory = lifetime.byCategory or {}
   local categoryParts = {}
-  for _, cat in ipairs(CATEGORIES) do
+  for _, cat in ipairs(DISPLAY_CATEGORIES) do
     local count = tonumber(byCategory[cat]) or 0
     local hex = CATEGORY_COLORS[cat] or "888"
     local hexFull = hex .. hex  -- 3-char hex doubled to 6 for color codes
@@ -1427,7 +1451,7 @@ local function CreateListPane()
   legend:SetPoint("BOTTOMRIGHT", listPane, "BOTTOMRIGHT", 0, 0)
 
   local lx = 4
-  for _, cat in ipairs(CATEGORIES) do
+  for _, cat in ipairs(DISPLAY_CATEGORIES) do
     local hex = CATEGORY_COLORS[cat] or "888"
     local swatch = legend:CreateTexture(nil, "ARTWORK")
     swatch:SetSize(10, 10)
@@ -1700,25 +1724,18 @@ end
 local CHIP_GAP = 3
 local CHIP_MIN_WIDTH = 38
 
+-- Filter chips exist only for the categories a user can filter by, so these two
+-- maps cover CATEGORIES, not the wider DISPLAY_CATEGORIES.
 local CHIP_LABELS = {
-  RMT        = "RMT",
+  RMT        = "Gold selling",
   Boosting   = "Boosting",
-  Casino     = "Casino",
-  Phishing   = "Phishing",
-  Commercial = "Comm",  -- abbreviated to fit narrow chip widths
-  Anti       = "Anti",
 }
 
 -- BSP-009: chip tooltip bodies. Keep the chip label terse and rely on the
--- tooltip to spell out what the category covers. "Comm" → "Commercial" is
--- the load-bearing case for that abbreviation.
+-- tooltip to spell out what the category covers.
 local CHIP_FULL_NAMES = {
-  RMT        = "RMT (real-money trading)",
+  RMT        = "Gold selling (real-money trading)",
   Boosting   = "Boosting (paid carry ads)",
-  Casino     = "Casino / gambling",
-  Phishing   = "Phishing / scam links",
-  Commercial = "Commercial (ad / sale spam)",
-  Anti       = "Anti-signal (trusted indicators)",
 }
 
 local function PlaceCategoryChips(strip)
