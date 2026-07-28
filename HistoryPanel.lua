@@ -1764,22 +1764,24 @@ local CHIP_FULL_NAMES = {
 
 local function PlaceCategoryChips(strip)
   if not strip or not strip.chips then return end
-  local stripWidth = strip:GetWidth()
-  if not stripWidth or stripWidth <= 0 then return end
 
-  local count = #CATEGORIES
-  local totalGap = CHIP_GAP * (count - 1)
-  local perChip = math.floor((stripWidth - totalGap) / count)
-  if perChip < CHIP_MIN_WIDTH then perChip = CHIP_MIN_WIDTH end
-
+  -- Size each chip to its own centered label plus button chrome, rather than
+  -- dividing the strip width among the chips. Width-division was invisible
+  -- with six categories but made the two post-SFT-080 chips enormous
+  -- (Gate 2 finding, 2026-07-28). CHIP_MIN_WIDTH stays as the floor so a
+  -- short label still reads as a button.
   local x = 0
   for _, cat in ipairs(CATEGORIES) do
     local chip = strip.chips[cat]
     if chip then
-      chip:SetSize(perChip, 22)
+      local label = chip.GetFontString and chip:GetFontString()
+      local textWidth = label and label:GetStringWidth() or 0
+      local w = math.floor(textWidth + 24 + 0.5)
+      if w < CHIP_MIN_WIDTH then w = CHIP_MIN_WIDTH end
+      chip:SetSize(w, 22)
       chip:ClearAllPoints()
       chip:SetPoint("TOPLEFT", strip, "TOPLEFT", x, 0)
-      x = x + perChip + CHIP_GAP
+      x = x + w + CHIP_GAP
     end
   end
 end
