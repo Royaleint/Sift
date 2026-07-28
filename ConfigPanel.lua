@@ -2208,16 +2208,19 @@ local function BuildFrame(parent)
     content:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -12, 12)
   end
 
-  frame:SetScript("OnSizeChanged", function()
-    sizeDirty = true
-  end)
-  frame:SetScript("OnHide", function()
-    if sizeDirty then
-      SaveSize()
-    end
-  end)
-
   if not embedded then
+    -- BSP-053: embed mode's frame:SetAllPoints(parent) means GetWidth/GetHeight
+    -- track HistoryPanel's host frame, not ConfigPanel's own geometry. Wiring
+    -- these standalone-only avoids SaveSize() writing HistoryPanel's
+    -- dimensions into ConfigPanel's per-character geometry store.
+    frame:SetScript("OnSizeChanged", function()
+      sizeDirty = true
+    end)
+    frame:SetScript("OnHide", function()
+      if sizeDirty then
+        SaveSize()
+      end
+    end)
     ApplyStoredGeometry()
   end
   if not embedded and UISpecialFrames then
