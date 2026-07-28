@@ -100,10 +100,14 @@ local CATEGORIES = NS.PauseState.GetCategoryKeys()
 -- History is never rewritten, so old rows keep their categories forever and the
 -- colour legend and lifetime counts have to keep describing them.
 local DISPLAY_CATEGORIES = {}
+local RETIRED_CATEGORY_SET = {}
 do
   for _, cat in ipairs(CATEGORIES) do DISPLAY_CATEGORIES[#DISPLAY_CATEGORIES + 1] = cat end
   local retired = {}
-  for cat in pairs(NS.PauseState.GetRetiredCategoryStates()) do retired[#retired + 1] = cat end
+  for cat in pairs(NS.PauseState.GetRetiredCategoryStates()) do
+    retired[#retired + 1] = cat
+    RETIRED_CATEGORY_SET[cat] = true
+  end
   table.sort(retired)
   for _, cat in ipairs(retired) do DISPLAY_CATEGORIES[#DISPLAY_CATEGORIES + 1] = cat end
 end
@@ -1010,6 +1014,46 @@ local function RenderActions(entry)
   end
 end
 
+-- The legend under the list follows the same residue rule as the stats line:
+-- active categories always, retired ones only while this character's lifetime
+-- counts still carry them. Items are reused across rebuilds, never destroyed.
+local function RefreshLegend()
+  local legend = listPane and listPane.legend
+  if not legend then return end
+  local stats = NS.History and NS.History.GetStats and NS.History.GetStats()
+  local byCategory = stats and stats.lifetime and stats.lifetime.byCategory or {}
+  local lx = 4
+  local index = 0
+  for _, cat in ipairs(DISPLAY_CATEGORIES) do
+    local count = tonumber(byCategory[cat]) or 0
+    if count > 0 or not RETIRED_CATEGORY_SET[cat] then
+      index = index + 1
+      local item = legend.items[index]
+      if not item then
+        item = {
+          swatch = legend:CreateTexture(nil, "ARTWORK"),
+          label  = legend:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"),
+        }
+        item.swatch:SetSize(10, 10)
+        item.label:SetPoint("LEFT", item.swatch, "RIGHT", 3, 0)
+        legend.items[index] = item
+      end
+      local hex = CATEGORY_COLORS[cat] or "888"
+      item.swatch:SetColorTexture(HexNibble(hex, 1), HexNibble(hex, 2), HexNibble(hex, 3), 1)
+      item.swatch:ClearAllPoints()
+      item.swatch:SetPoint("LEFT", legend, "LEFT", lx, 0)
+      item.label:SetText(L(CATEGORY_BADGE_LABELS[cat] or cat))
+      item.swatch:Show()
+      item.label:Show()
+      lx = lx + 12 + item.label:GetStringWidth() + 8
+    end
+  end
+  for i = index + 1, #legend.items do
+    legend.items[i].swatch:Hide()
+    legend.items[i].label:Hide()
+  end
+end
+
 local function RefreshStatsArea()
   if not detailPane or not detailPane.stats then return end
   local stats = GetHistoryStats(statsScope)
@@ -1062,17 +1106,22 @@ local function RefreshStatsArea()
   local categoryParts = {}
   for _, cat in ipairs(DISPLAY_CATEGORIES) do
     local count = tonumber(byCategory[cat]) or 0
-    local hex = CATEGORY_COLORS[cat] or "888"
-    local hexFull = hex .. hex  -- 3-char hex doubled to 6 for color codes
-    local state = NS.PauseState and NS.PauseState.GetCategory and NS.PauseState.GetCategory(cat) or "active"
-    local part
-    local catLabel = CATEGORY_BADGE_LABELS[cat] or cat
-    if state == "paused" or state == "off" then
-      part = string.format("|cff%s%s|r |cff888888%d|r", hexFull, L(catLabel), count)
-    else
-      part = string.format("|cff%s%s|r |cffffffff%d|r", hexFull, L(catLabel), count)
+    -- SFT-080 residue rule (Gate 2, 2026-07-28): a retired category earns a
+    -- line item only while old rows still carry it. Zero-count retired
+    -- categories are pure noise for every profile that never saw them.
+    if count > 0 or not RETIRED_CATEGORY_SET[cat] then
+      local hex = CATEGORY_COLORS[cat] or "888"
+      local hexFull = hex .. hex  -- 3-char hex doubled to 6 for color codes
+      local state = NS.PauseState and NS.PauseState.GetCategory and NS.PauseState.GetCategory(cat) or "active"
+      local part
+      local catLabel = CATEGORY_BADGE_LABELS[cat] or cat
+      if state == "paused" or state == "off" then
+        part = string.format("|cff%s%s|r |cff888888%d|r", hexFull, L(catLabel), count)
+      else
+        part = string.format("|cff%s%s|r |cffffffff%d|r", hexFull, L(catLabel), count)
+      end
+      categoryParts[#categoryParts + 1] = part
     end
-    categoryParts[#categoryParts + 1] = part
   end
   detailPane.stats.byCategoryText:SetText(table.concat(categoryParts, "   "))
 
@@ -1081,6 +1130,10 @@ local function RefreshStatsArea()
   detailPane.stats.pipelineText:SetText(string.format(
     "%s |cffffffff%d|r   %s |cffffffff%d|r",
     L("Throttled"), throttled, L("Bubbles suppressed"), bubbles))
+
+  -- Keep the list legend in sync with the same counts (e.g. Clear history
+  -- can make a retired category's last rows disappear).
+  RefreshLegend()
 
   -- BSP-055 / Argus Nit 1: size the scrollChild to fit actual content so
   -- pathological label wrapping (zhCN/ruRU, new surfaces, new categories)
@@ -1525,23 +1578,9 @@ local function CreateListPane()
   legend:SetHeight(18)
   legend:SetPoint("BOTTOMLEFT",  listPane, "BOTTOMLEFT",  0, 0)
   legend:SetPoint("BOTTOMRIGHT", listPane, "BOTTOMRIGHT", 0, 0)
-
-  local lx = 4
-  for _, cat in ipairs(DISPLAY_CATEGORIES) do
-    local hex = CATEGORY_COLORS[cat] or "888"
-    local swatch = legend:CreateTexture(nil, "ARTWORK")
-    swatch:SetSize(10, 10)
-    swatch:SetPoint("LEFT", legend, "LEFT", lx, 0)
-    swatch:SetColorTexture(HexNibble(hex, 1), HexNibble(hex, 2), HexNibble(hex, 3), 1)
-
-    local label = legend:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    label:SetPoint("LEFT", swatch, "RIGHT", 3, 0)
-    label:SetText(cat)
-
-    lx = lx + 12 + label:GetStringWidth() + 8
-  end
-
+  legend.items = {}
   listPane.legend = legend
+  RefreshLegend()
 end
 
 local function PlaceStatsTiles(stats)
