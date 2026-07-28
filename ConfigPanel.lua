@@ -49,9 +49,14 @@ local SECTIONS = {
   "Dev",
 }
 
-local CATEGORY_KEYS = { "RMT", "Boosting", "Casino", "Phishing", "Commercial", "Anti" }
+-- PauseState is the single declaration of both lists and loads ahead of this
+-- file in the TOC, so these accessors are available at file scope.
+local CATEGORY_KEYS = NS.PauseState.GetCategoryKeys()
+local CATEGORY_LABELS = {
+  RMT = "Gold selling",
+}
 
-local SURFACE_KEYS = { "chat", "whisper", "bn-whisper" }
+local SURFACE_KEYS = NS.PauseState.GetSurfaceKeys()
 local SURFACE_LABELS = {
   chat              = "Chat",
   whisper           = "Whisper",
@@ -63,14 +68,14 @@ local DEFAULT_SETTINGS = {
   enabledCategories = {
     RMT = true,
     Boosting = true,
-    Casino = true,
-    Phishing = true,
-    Commercial = true,
-    Anti = true,
   },
   mixedScriptEnabled = true,
   mixedScriptWeight = 1,
   antiSignalCap = -5,
+  -- Mirrors Frequency's DEFAULT_WINDOW. Not read from GetFloodWindowBounds
+  -- because this table is built at file scope, before NS.Frequency is
+  -- guaranteed present; the live slider bounds do come from the accessor.
+  floodWindow = 180,
   filterBubbles = false,
   historyMaxEntries = 300,
   historyGlobalMaxEntries = 1000,
@@ -802,13 +807,15 @@ local function AddAllowlistFromText(text)
     sectionStatus.Allowlist = "Allowlist API is unavailable."
     return false
   end
-  if NS.Trust.AddAllowlist(entry.guid, entry.name, entry.realm, "manual") then
-    sectionStatus.Allowlist = "Added " .. SenderLabel(entry) .. "."
+  local added, clearedManualBlock = NS.Trust.AddAllowlist(entry.guid, entry.name, entry.realm, "manual")
+  local unblocked = clearedManualBlock and " Manual block removed." or ""
+  if added then
+    sectionStatus.Allowlist = "Added " .. SenderLabel(entry) .. "." .. unblocked
     listState.allowlistAddText = ""
     removedAllowlistEntry = nil
     return true
   end
-  sectionStatus.Allowlist = SenderLabel(entry) .. " is already allowlisted."
+  sectionStatus.Allowlist = SenderLabel(entry) .. " is already allowlisted." .. unblocked
   return false
 end
 
@@ -830,9 +837,11 @@ local function UndoAllowlistRemove()
     return
   end
   local entry = removed.entry or {}
-  NS.Trust.AddAllowlist(removed.guid, entry.name, entry.realm, entry.source or "manual")
+  local _, clearedManualBlock =
+    NS.Trust.AddAllowlist(removed.guid, entry.name, entry.realm, entry.source or "manual")
   removedAllowlistEntry = nil
   sectionStatus.Allowlist = "Restored " .. SenderLabel(entry) .. "."
+    .. (clearedManualBlock and " Manual block removed." or "")
   ConfigPanel.ShowSection("Allowlist")
 end
 
@@ -1079,6 +1088,9 @@ local function ApplyImport(entries, overwrite)
   local current = NS.Trust.GetAllowlist and NS.Trust.GetAllowlist() or {}
   local added = 0
   local skipped = 0
+  -- BSP-037: an import can silently lift manual blocks, since allowing someone
+  -- supersedes having blocked them by hand. Count them so the summary says so.
+  local lifted = 0
   for _, entry in ipairs(entries) do
     if current[entry.guid] and overwrite and NS.Trust.RemoveAllowlist then
       NS.Trust.RemoveAllowlist(entry.guid)
@@ -1086,8 +1098,13 @@ local function ApplyImport(entries, overwrite)
     end
 
     if not current[entry.guid] then
-      if NS.Trust.AddAllowlist(entry.guid, entry.name, entry.realm, entry.source or "import") then
+      local wasAdded, clearedManualBlock =
+        NS.Trust.AddAllowlist(entry.guid, entry.name, entry.realm, entry.source or "import")
+      if wasAdded then
         added = added + 1
+      end
+      if clearedManualBlock then
+        lifted = lifted + 1
       end
     else
       skipped = skipped + 1
@@ -1097,7 +1114,9 @@ local function ApplyImport(entries, overwrite)
   pendingImport = nil
   removedAllowlistEntry = nil
   sectionStatus.Allowlist = "Imported " .. tostring(added) .. " entries"
-    .. (skipped > 0 and ("; skipped " .. tostring(skipped) .. ".") or ".")
+    .. (skipped > 0 and ("; skipped " .. tostring(skipped)) or "")
+    .. (lifted > 0 and ("; lifted " .. tostring(lifted) .. " manual blocks") or "")
+    .. "."
   if activeSection == "Allowlist" and frame and frame:IsShown() then
     ConfigPanel.ShowSection("Allowlist")
   end
@@ -1289,6 +1308,26 @@ local function RegisterStaticPopups()
       sectionStatus.Blocked = "Blocked actors cleared."
       if activeSection == "Blocked" and frame and frame:IsShown() then
         ConfigPanel.ShowSection("Blocked")
+      end
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+  }
+
+  StaticPopupDialogs["SIFT_CLEAR_SHADOWLOG"] = {
+    text = "Clear the captured false-negative log?",
+    button1 = "Clear",
+    button2 = "Cancel",
+    OnAccept = function()
+      if NS.ShadowLog and NS.ShadowLog.Clear then
+        local cleared = NS.ShadowLog.Clear()
+        sectionStatus.Dev = "Shadow log cleared: " .. tostring(cleared) .. " entries removed."
+      else
+        sectionStatus.Dev = "Shadow log clear API is unavailable."
+      end
+      if activeSection == "Dev" and frame and frame:IsShown() then
+        ConfigPanel.ShowSection("Dev")
       end
     end,
     timeout = 0,
@@ -1603,10 +1642,21 @@ RenderDetection = function()
   y = AddCheckbox("Use mixed-script detection", "mixedScriptEnabled", y, nil,
     "Enable Unicode-confusable script-mixing as a signal in scoring.")
 
-  -- BSP-010: Throttle controls. Cannot reuse AddCheckbox helper because its
+  -- BSP-039: bounds come from Frequency so the slider cannot drift away from
+  -- the clamp that actually enforces them.
+  local minWindow, maxWindow, defaultWindow = NS.Frequency.GetFloodWindowBounds()
+  y = AddSlider("Flood window (seconds)", "floodWindow", minWindow, maxWindow, 30, y,
+    "How far back Sift looks when deciding that the same message is being repeated too " ..
+    "often. A longer window catches slower, more persistent repeats; a shorter one only " ..
+    "reacts to rapid bursts. Leave at " .. defaultWindow .. " unless repeat spam is " ..
+    "slipping past.")
+
+  -- BSP-010: Throttle control. Cannot reuse AddCheckbox helper because its
   -- SettingValue(key) read is flat-keyed and throttle.enabled lives under
   -- settings.throttle.*. Use MakeNativeCheckbox directly with a custom
-  -- onChange that routes through NS.DB.SetThrottleEnabled.
+  -- onChange that routes through NS.DB.SetThrottleEnabled. BSP-029 removed the
+  -- companion buffer-size slider — how long a repeat is remembered is no longer
+  -- a user-facing knob.
   local throttle = (GetSettings() and GetSettings().throttle) or {}
 
   MakeNativeCheckbox(CONTENT_PAD, y, "Throttle confirmed-spam repeats",
@@ -1616,28 +1666,16 @@ RenderDetection = function()
         NS.DB.SetThrottleEnabled(value)
       end
     end,
-    "When the same cleansed text and sender GUID repeats inside the buffer window, " ..
-    "the second hit is auto-blocked. Only runs on messages already scored as spam \194\151 " ..
-    "legitimate repeats are unaffected.")
-  y = y - 32
-
-  local throttleSlider = MakeNativeSlider(CONTENT_PAD, y, 330, "Throttle buffer size", 5, 50, 1)
-  throttleSlider:SetValue(tonumber(throttle.bufferSize) or 20)
-  throttleSlider:SetCallback("OnValueChanged", function(_, _, value)
-    if NS.DB and NS.DB.SetThrottleBufferSize then
-      NS.DB.SetThrottleBufferSize(math.floor((tonumber(value) or 20) + 0.5))
-    end
-  end)
-  AttachTooltip(throttleSlider, "Throttle buffer size",
-    "How many recent confirmed-spam messages per surface are remembered for dedupe. " ..
-    "Larger = longer memory window. Range 5\194\17750.")
+    "When the same sender repeats the same message on the same surface, the repeat is " ..
+    "logged as one condensed history entry and counted as throttled. Only applies to " ..
+    "messages already blocked as spam \194\151 it does not change what gets blocked.")
 end
 
 RenderCategories = function()
   local y = AddSectionTitle("Categories", "Three states per category: Active (block) / Paused (detect + log, don't hide) / Off (ignore).")
   y = AddStatus(y, sectionStatus.Categories)
   for _, category in ipairs(CATEGORY_KEYS) do
-    y = AddAxisPauseRow("category", category, category, y)
+    y = AddAxisPauseRow("category", category, CATEGORY_LABELS[category] or category, y)
   end
 end
 
@@ -1778,7 +1816,7 @@ RenderBlocked = function()
     "Remove every blocked actor. Confirmation required.")
   y = y - 34
 
-  y = AddDisabledRow("Manual blocked add", "Not supported; scanners add actors after confirmed blocks.", y)
+  y = AddDisabledRow("Manual blocked add", "Right-click a player name in chat and choose Block (Sift).", y)
 
   local entries = SortedBlockedActors()
   local maxPage = MaxPage(#entries)
@@ -1813,7 +1851,11 @@ RenderBlocked = function()
 
     local meta = TrackNative(row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"))
     meta:SetPoint("LEFT", row, "LEFT", 8, -8)
-    meta:SetText("blocks " .. tostring(BlockedEntryCount(rowData.entry))
+    -- BSP-037: a hand-blocked actor can sit here with zero recorded blocks,
+    -- which on its own reads like a stray row. Say who put it there.
+    local origin = (type(rowData.entry) == "table" and rowData.entry.manual == true)
+      and "blocked by you - " or ""
+    meta:SetText(origin .. "blocks " .. tostring(BlockedEntryCount(rowData.entry))
       .. " - last " .. RelativeTime(BlockedEntryLastSeen(rowData.entry)))
     meta:Show()
 
@@ -1953,7 +1995,9 @@ RenderDev = function()
   y = AddStatus(y, sectionStatus.Dev)
   y = AddCheckbox("Enable dev mode", "devMode", y, nil,
     "Enable developer-only diagnostics: extra logging, devMode-gated error reporting, " ..
-    "/bdev slash commands, and other diagnostic affordances.")
+    "/bdev slash commands, and other diagnostic affordances. " ..
+    "Also records recent chat from other players (including whispers) into your " ..
+    "account's saved data for false-negative analysis.")
   AddNativeButton("Reset Settings", CONTENT_PAD, y, 120, function()
     if StaticPopup_Show then
       StaticPopup_Show("SIFT_RESET_SETTINGS")
@@ -1968,6 +2012,19 @@ RenderDev = function()
   end, "Export false-positive entries from History as a paste-ready Lua " ..
     "negatives block for fixtures.lua. Equivalent to /bdev fpx. " ..
     "Requires devMode to be enabled.")
+  AddNativeButton("Export FN candidates", CONTENT_PAD + 290, y, 160, function()
+    ConfigPanel.OpenFNExportDialog(nil)
+  end, "Export the messages the filter let through, captured while devMode is " ..
+    "on, as corpus candidates for hand triage. Equivalent to /bdev fnx. " ..
+    "Requires devMode to be enabled.")
+  -- Second row: a fourth button on the row above would start at x=460 and end at
+  -- 580, past the right edge of the content region at MIN_WIDTH.
+  AddNativeButton("Clear FN log", CONTENT_PAD, y - ROW_HEIGHT, 120, function()
+    if StaticPopup_Show then
+      StaticPopup_Show("SIFT_CLEAR_SHADOWLOG")
+    end
+  end, "Discard every captured false-negative candidate. Equivalent to " ..
+    "/bdev fnx clear. Confirmation required.")
 end
 
 local RENDERERS = {
@@ -2420,6 +2477,12 @@ local HISTORY_EXPORT_IGNORED_KEYS = {
   MixedScript = true,
   BlockedActor = true,
   Flood = true,
+  -- BSP-029: without this, every repeat-dedupe record exported as a "Throttle"
+  -- corpus candidate — a mechanism, not a category anyone can hand-triage.
+  Throttle = true,
+  -- BSP-037: likewise a hand-blocked message is not corpus evidence. The user
+  -- blocked the person and said nothing about the text.
+  ManualBlock = true,
 }
 
 -- BSP-049: build a raw (NOT Lua-escaped) corpus-candidate export from ALL
@@ -2567,6 +2630,136 @@ function ConfigPanel.OpenHistoryExportDialog(limit)
   ShowTextDialog(
     "Sift History Corpus Export (" .. tostring(shown) .. " unique)",
     BuildHistoryExportText(limit),
+    "Close", nil)
+end
+
+-- BSP-032: build a raw (NOT Lua-escaped) corpus-candidate export from the
+-- ShadowLog store -- the messages the filter let through. Same posture as the
+-- BSP-049 history export: plain text for hand triage into spam_master.txt, never
+-- an automatic corpus edit. Ordered by ShadowLog.Rank so the near-misses lead
+-- and the unremarkable chatter sinks. Optional `limit` caps the number of
+-- entries shown.
+--
+-- Read-only: ShadowLog.GetAll returns live record refs, so the sort runs over a
+-- local copy of the array.
+local function BuildFNExportText(limit)
+  if limit and limit <= 0 then limit = nil end
+
+  local store = NS.ShadowLog and NS.ShadowLog.GetAll and NS.ShadowLog.GetAll() or {}
+  local order = {}
+  for i = 1, #store do
+    order[i] = store[i]
+  end
+  local totalEntries = #order
+
+  -- Ordered by the same Rank the store uses to decide what to keep, so what
+  -- reads as most interesting here is what survives longest there. Score and
+  -- then repeat count break ties within a rank; capture order breaks the rest,
+  -- so the sort is deterministic.
+  local captureIndex = {}
+  for i = 1, #order do
+    captureIndex[order[i]] = i
+  end
+  local Rank = NS.ShadowLog and NS.ShadowLog.Rank
+  table.sort(order, function(a, b)
+    local aRank, bRank = Rank(a), Rank(b)
+    if aRank ~= bRank then
+      return aRank > bRank
+    end
+    local aScore, bScore = tonumber(a.score) or 0, tonumber(b.score) or 0
+    if aScore ~= bScore then
+      return aScore > bScore
+    end
+    local aCount, bCount = tonumber(a.count) or 0, tonumber(b.count) or 0
+    if aCount ~= bCount then
+      return aCount > bCount
+    end
+    return captureIndex[a] < captureIndex[b]
+  end)
+
+  if limit and #order > limit then
+    local trimmed = {}
+    for i = 1, limit do trimmed[i] = order[i] end
+    order = trimmed
+  end
+
+  local params = NS.ShadowLog and NS.ShadowLog._Params and NS.ShadowLog._Params() or {}
+  local ordinarySource = params.sourceFnCandidate
+
+  -- SFT-081: the near-miss band is the point of the export, so say up front how
+  -- much of the list carries a capture signal. They sort to the top by rank.
+  local candidates = 0
+  for i = 1, #order do
+    local tags = order[i].tags
+    if type(tags) == "table" and #tags > 0 then
+      candidates = candidates + 1
+    end
+  end
+
+  local lines = {
+    string.format("-- Sift false-negative export: %d distinct messages%s",
+      totalEntries,
+      limit and (" (top " .. tostring(limit) .. " shown)") or ""),
+    string.format("-- %d of the %d listed below carry a capture signal, and lead the list.",
+      candidates, #order),
+    "-- Exported: " .. (date and date("%Y-%m-%d %H:%M:%S") or "?"),
+    "-- Format: [<count>x] <category>/<score> <surface> <last seen> [tags] | <raw original>",
+    "-- Additional spellings that cleansed to the same text follow indented.",
+    "",
+  }
+
+  if totalEntries == 0 then
+    lines[#lines + 1] = "-- Nothing captured. Enable devMode and let chat run."
+  end
+
+  for i = 1, #order do
+    local entry = order[i]
+    local originals = type(entry.originals) == "table" and entry.originals or {}
+    -- SFT-079 capture tags, if any. They are why an otherwise unremarkable line
+    -- is worth a second look, so they belong in the line a human reads.
+    local tagLabel = ""
+    if type(entry.tags) == "table" and #entry.tags > 0 then
+      tagLabel = " [" .. table.concat(entry.tags, ",") .. "]"
+    end
+    -- Provenance is worth saying only when it is not just the ordinary lane, so
+    -- a record the allowlist also let through cannot read as a plain miss. The
+    -- lane names come from ShadowLog, not a copy of the string here.
+    local sources = type(entry.sources) == "table" and entry.sources or {}
+    for s = 1, #sources do
+      if sources[s] ~= ordinarySource then
+        tagLabel = tagLabel .. " {" .. tostring(sources[s]) .. "}"
+      end
+    end
+
+    lines[#lines + 1] = string.format("[%dx] %s/%s %s %s%s | %s",
+      tonumber(entry.count) or 1,
+      entry.category or "-",
+      tostring(entry.score or 0),
+      tostring(entry.surface or "?"),
+      (entry.ts and date) and date("%Y-%m-%d", entry.ts) or "?",
+      tagLabel,
+      tostring(originals[1] or entry.cleansed or "?"))
+    for variant = 2, #originals do
+      lines[#lines + 1] = "     | " .. originals[variant]
+    end
+  end
+
+  return table.concat(lines, "\n")
+end
+
+function ConfigPanel.OpenFNExportDialog(limit)
+  ConfigPanel.Initialize()
+  if NS.DB and NS.DB.IsDevMode and not NS.DB.IsDevMode() then
+    Print("/bdev commands require devMode. Enable in Config \194\187 Dev.")
+    return
+  end
+  if limit and limit <= 0 then limit = nil end
+  local shown = NS.ShadowLog and NS.ShadowLog.Count and NS.ShadowLog.Count() or 0
+  if limit and shown > limit then shown = limit end
+
+  ShowTextDialog(
+    "Sift FN Candidate Export (" .. tostring(shown) .. " entries)",
+    BuildFNExportText(limit),
     "Close", nil)
 end
 

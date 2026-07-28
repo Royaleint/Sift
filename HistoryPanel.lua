@@ -64,12 +64,38 @@ local CATEGORY_COLORS = {
   Commercial = "5a7",
   Anti       = "888",
 }
+-- Keys that describe WHY a message was caught rather than WHAT KIND of spam it
+-- is. Letting them win "dominant category" mislabels the row: a boosting ad
+-- caught during a flood would take the flood's colour and be filtered as though
+-- boosting were not its category. They stay visible as breakdown chips in the
+-- detail pane, which is where the "why" belongs. ChatScanner keeps its own
+-- copy of this set; BSP-029 aligned the two (Throttle included in both --
+-- an earlier note here claimed ChatScanner deliberately omitted it, which
+-- stopped being true when the repeat lane moved into Frequency).
 local IGNORED_BREAKDOWN_KEYS = {
   MixedScript = true,
   BlockedActor = true,
+  Flood = true,
+  Throttle = true,
+  -- BSP-037: manual blocks carry { ManualBlock = 1 }, an identity decision
+  -- rather than a content category, so it is excluded on the same grounds.
+  ManualBlock = true,
 }
 
-local CATEGORIES         = { "RMT", "Boosting", "Casino", "Phishing", "Commercial", "Anti" }
+-- Categories the user can filter by. PauseState is the single declaration.
+local CATEGORIES = NS.PauseState.GetCategoryKeys()
+
+-- Every category a stored row can still carry, including the retired ones.
+-- History is never rewritten, so old rows keep their categories forever and the
+-- colour legend and lifetime counts have to keep describing them.
+local DISPLAY_CATEGORIES = {}
+do
+  for _, cat in ipairs(CATEGORIES) do DISPLAY_CATEGORIES[#DISPLAY_CATEGORIES + 1] = cat end
+  local retired = {}
+  for cat in pairs(NS.PauseState.GetRetiredCategoryStates()) do retired[#retired + 1] = cat end
+  table.sort(retired)
+  for _, cat in ipairs(retired) do DISPLAY_CATEGORIES[#DISPLAY_CATEGORIES + 1] = cat end
+end
 
 -- Surface uses canonical lowercase keys ("chat", "whisper") to match what
 -- ChatScanner writes into entry.surface. SURFACE_LABELS maps the key to its
@@ -619,8 +645,15 @@ local function RenderRow(row, entry)
   end
   row.senderText:SetText(senderLabel)
 
-  row.badgeText:SetText(cat or "?")
-  row.scoreText:SetText(tostring(entry.score or 0))
+  -- BSP-037: a manual block has no category and no score, so the usual "?" and
+  -- 0 read as a broken row. Name the reason instead.
+  if entry.reason == "manual-block" then
+    row.badgeText:SetText(L("You"))
+    row.scoreText:SetText("")
+  else
+    row.badgeText:SetText(cat or "?")
+    row.scoreText:SetText(tostring(entry.score or 0))
+  end
 end
 
 local function FindEntryById(id)
@@ -720,7 +753,18 @@ end
 local function PerformAlwaysAllow(entry)
   if not entry or not entry.guid or entry.guid == "" then return end
   if NS.Trust and NS.Trust.AddAllowlist then
-    NS.Trust.AddAllowlist(entry.guid, entry.name, entry.realm, "history")
+    local _, clearedManualBlock = NS.Trust.AddAllowlist(entry.guid, entry.name, entry.realm, "history")
+    -- BSP-037: lifting a manual block is a second, invisible consequence of
+    -- this button. Say it out loud, or the user cannot tell it happened.
+    if clearedManualBlock then
+      local message = "|cff33ff99Sift|r removed your manual block on "
+        .. tostring(entry.name or "that player") .. "."
+      if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
+        DEFAULT_CHAT_FRAME:AddMessage(message)
+      else
+        print(message)
+      end
+    end
   end
   if RefreshList then RefreshList() end
 end
@@ -982,7 +1026,7 @@ local function RefreshStatsArea()
   -- By-category inline line; paused/off categories render muted.
   local byCategory = lifetime.byCategory or {}
   local categoryParts = {}
-  for _, cat in ipairs(CATEGORIES) do
+  for _, cat in ipairs(DISPLAY_CATEGORIES) do
     local count = tonumber(byCategory[cat]) or 0
     local hex = CATEGORY_COLORS[cat] or "888"
     local hexFull = hex .. hex  -- 3-char hex doubled to 6 for color codes
@@ -1121,8 +1165,12 @@ RefreshDetail = function()
   else
     statusText = "|cffff5577" .. L("BLOCKED") .. "|r"
   end
-  statusText = statusText .. string.format("   %d / %d",
-    tonumber(entry.score) or 0, tonumber(entry.threshold) or 0)
+  if entry.reason == "manual-block" then
+    statusText = statusText .. "   " .. L("blocked by you")
+  else
+    statusText = statusText .. string.format("   %d / %d",
+      tonumber(entry.score) or 0, tonumber(entry.threshold) or 0)
+  end
   detailPane.header.statusText:SetText(statusText)
   detailPane.header.metaText:SetText(string.format("%s   %s%s%s",
     L(surfaceLabel), channel, linkSuffix, pauseReason))
@@ -1427,7 +1475,7 @@ local function CreateListPane()
   legend:SetPoint("BOTTOMRIGHT", listPane, "BOTTOMRIGHT", 0, 0)
 
   local lx = 4
-  for _, cat in ipairs(CATEGORIES) do
+  for _, cat in ipairs(DISPLAY_CATEGORIES) do
     local hex = CATEGORY_COLORS[cat] or "888"
     local swatch = legend:CreateTexture(nil, "ARTWORK")
     swatch:SetSize(10, 10)
@@ -1700,45 +1748,40 @@ end
 local CHIP_GAP = 3
 local CHIP_MIN_WIDTH = 38
 
+-- Filter chips exist only for the categories a user can filter by, so these two
+-- maps cover CATEGORIES, not the wider DISPLAY_CATEGORIES.
 local CHIP_LABELS = {
-  RMT        = "RMT",
+  RMT        = "Gold selling",
   Boosting   = "Boosting",
-  Casino     = "Casino",
-  Phishing   = "Phishing",
-  Commercial = "Comm",  -- abbreviated to fit narrow chip widths
-  Anti       = "Anti",
 }
 
 -- BSP-009: chip tooltip bodies. Keep the chip label terse and rely on the
--- tooltip to spell out what the category covers. "Comm" → "Commercial" is
--- the load-bearing case for that abbreviation.
+-- tooltip to spell out what the category covers.
 local CHIP_FULL_NAMES = {
-  RMT        = "RMT (real-money trading)",
+  RMT        = "Gold selling (real-money trading)",
   Boosting   = "Boosting (paid carry ads)",
-  Casino     = "Casino / gambling",
-  Phishing   = "Phishing / scam links",
-  Commercial = "Commercial (ad / sale spam)",
-  Anti       = "Anti-signal (trusted indicators)",
 }
 
 local function PlaceCategoryChips(strip)
   if not strip or not strip.chips then return end
-  local stripWidth = strip:GetWidth()
-  if not stripWidth or stripWidth <= 0 then return end
 
-  local count = #CATEGORIES
-  local totalGap = CHIP_GAP * (count - 1)
-  local perChip = math.floor((stripWidth - totalGap) / count)
-  if perChip < CHIP_MIN_WIDTH then perChip = CHIP_MIN_WIDTH end
-
+  -- Size each chip to its own centered label plus button chrome, rather than
+  -- dividing the strip width among the chips. Width-division was invisible
+  -- with six categories but made the two post-SFT-080 chips enormous
+  -- (Gate 2 finding, 2026-07-28). CHIP_MIN_WIDTH stays as the floor so a
+  -- short label still reads as a button.
   local x = 0
   for _, cat in ipairs(CATEGORIES) do
     local chip = strip.chips[cat]
     if chip then
-      chip:SetSize(perChip, 22)
+      local label = chip.GetFontString and chip:GetFontString()
+      local textWidth = label and label:GetStringWidth() or 0
+      local w = math.floor(textWidth + 24 + 0.5)
+      if w < CHIP_MIN_WIDTH then w = CHIP_MIN_WIDTH end
+      chip:SetSize(w, 22)
       chip:ClearAllPoints()
       chip:SetPoint("TOPLEFT", strip, "TOPLEFT", x, 0)
-      x = x + perChip + CHIP_GAP
+      x = x + w + CHIP_GAP
     end
   end
 end

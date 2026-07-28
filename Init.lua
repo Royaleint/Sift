@@ -42,18 +42,27 @@ local function Initialize()
     NS.History.TrimAllCharacters()
   end
 
-  -- BSP-010: push SavedVariables throttle settings into the runtime module
-  -- so the first chat event uses the persisted values, not Throttle.lua's
-  -- module-local defaults. DB.Initialize's RepairSettings pass guarantees
-  -- settings.throttle is well-shaped by the time we read it here.
+  -- BSP-032: the same safety net for the shadow log. Capture enforces the cap
+  -- one entry at a time, which never catches up with a store carried over from
+  -- a build that allowed a larger one, so converge it once at load.
+  if NS.ShadowLog and NS.ShadowLog.TrimToCap then
+    NS.ShadowLog.TrimToCap()
+  end
+
+  -- BSP-010: push the SavedVariables repeat-dedupe toggle into the runtime
+  -- module so the first chat event uses the persisted value, not Frequency's
+  -- module-local default. DB.Initialize's RepairSettings pass guarantees
+  -- settings.throttle is well-shaped by the time we read it here. BSP-029
+  -- retired the buffer size as a setting, so only the toggle is pushed.
   local throttleSettings = NS.DB.GetSettings()
-  if throttleSettings and throttleSettings.throttle and NS.Throttle then
-    if NS.Throttle.SetEnabled then
-      NS.Throttle.SetEnabled(throttleSettings.throttle.enabled)
-    end
-    if NS.Throttle.SetBufferSize then
-      NS.Throttle.SetBufferSize(throttleSettings.throttle.bufferSize)
-    end
+  if throttleSettings and throttleSettings.throttle and NS.Frequency
+     and NS.Frequency.SetRepeatEnabled then
+    NS.Frequency.SetRepeatEnabled(throttleSettings.throttle.enabled)
+  end
+  -- BSP-039: same reasoning for the flood window, a persisted setting as of
+  -- this ticket rather than a module constant.
+  if throttleSettings and NS.Frequency and NS.Frequency.SetFloodWindow then
+    NS.Frequency.SetFloodWindow(throttleSettings.floodWindow)
   end
 
   if NS.Patterns and NS.Patterns.LoadOnInit then
@@ -88,6 +97,17 @@ local function InstallScanner()
   end
 
   NS.ChatScanner.Install()
+end
+
+-- BSP-037: registered at login rather than in Initialize(). Initialize runs on
+-- the addon-loaded hook, and the Menu system belongs to a separate Blizzard
+-- addon that is not guaranteed to have loaded by then.
+local function InstallPlayerMenu()
+  if not initialized or not NS.PlayerMenu or not NS.PlayerMenu.Initialize then
+    return
+  end
+
+  NS.PlayerMenu.Initialize()
 end
 
 local function ToggleHistory()
@@ -174,10 +194,17 @@ local function AllowFromHistory(rest)
 		return
 	end
 
-	if NS.Trust and NS.Trust.AddAllowlist and NS.Trust.AddAllowlist(guid, name, realm, "manual") then
-		Print("allowlisted " .. tostring(name or rest) .. ".")
-	else
+	if not NS.Trust or not NS.Trust.AddAllowlist then
 		Print("sender is already allowlisted or cannot be allowlisted.")
+		return
+	end
+
+	local added, clearedManualBlock = NS.Trust.AddAllowlist(guid, name, realm, "manual")
+	local unblocked = clearedManualBlock and " Your manual block on them was removed." or ""
+	if added then
+		Print("allowlisted " .. tostring(name or rest) .. "." .. unblocked)
+	else
+		Print("sender is already allowlisted or cannot be allowlisted." .. unblocked)
 	end
 end
 
@@ -250,6 +277,26 @@ local function ExportHistory(rest)
     NS.ConfigPanel.OpenHistoryExportDialog(limit)
   else
     Print("history export unavailable (ConfigPanel not loaded).")
+  end
+end
+
+-- BSP-032: /bdev fnx [N|clear] — export the shadow log of messages the filter
+-- let through, as corpus candidates for hand triage. Optional N caps to the
+-- top-N (first whitespace token, like ExportFP); `clear` empties the store,
+-- which is what makes repeated mining cycles usable once candidates have been
+-- promoted. devMode gate handled by BdevSlashHandler below.
+local function ExportFN(rest)
+  local firstToken = string.match(rest or "", "^(%S+)")
+  if firstToken and string.lower(firstToken) == "clear" then
+    local cleared = NS.ShadowLog and NS.ShadowLog.Clear and NS.ShadowLog.Clear() or 0
+    Print("shadow log cleared: " .. tostring(cleared) .. " entries removed.")
+    return
+  end
+  local limit = firstToken and tonumber(firstToken) or nil
+  if NS.ConfigPanel and NS.ConfigPanel.OpenFNExportDialog then
+    NS.ConfigPanel.OpenFNExportDialog(limit)
+  else
+    Print("FN export unavailable (ConfigPanel not loaded).")
   end
 end
 
@@ -373,12 +420,13 @@ end
 local DEV_COMMANDS = {
 	test = RunSyntheticTest,
 	fpx  = ExportFP,
+	fnx  = ExportFN,
 	hx   = ExportHistory,
 	perf = RunPerf,
 }
 
 local function PrintDevUsage()
-	Print("usage: /bdev [test|fpx [N]|hx [N]|perf [label]]")
+	Print("usage: /bdev [test|fpx [N]|fnx [N|clear]|hx [N]|perf [label]]")
 end
 
 local function BdevSlashHandler(msg)
@@ -428,7 +476,10 @@ end
 --   * OnLogout -- Lifecycle ships it, but Sift has no logout teardown; deliberately unused.
 local controller = F:RequireModule("Lifecycle", 1):New(NS, ADDON_NAME)
 controller:OnAddonLoaded(function() Initialize() end)
-controller:OnLogin(function() InstallScanner() end)
+controller:OnLogin(function()
+	InstallScanner()
+	InstallPlayerMenu()
+end)
 
 SLASH_SIFT1 = "/sift"
 SlashCmdList.SIFT = SlashHandler
