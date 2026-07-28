@@ -1,4 +1,4 @@
-local _, NS = ...
+local ADDON_NAME, NS = ...
 local DB = {}
 
 local CURRENT_SCHEMA_VERSION = 3
@@ -284,7 +284,12 @@ function DB.Initialize()
     BawrSpamDB = nil
   end
 
-  DB.db = F.DB:New({ name = "Sift", sv = "SiftDB", defaults = defaults, defaultProfile = true })
+  -- `name` derives from the TOC vararg so a renamed build folder still passes
+  -- Foundry's IsAddOnLoaded gate (SFT-077). `sv` stays a literal on purpose: the
+  -- BSP-067 shim above reads SiftDB/BawrSpamDB as literal globals, so deriving
+  -- one and not the other would split the store. Both change together or not at
+  -- all -- see SFT-077 / BSP-070 step 3.
+  DB.db = F.DB:New({ name = ADDON_NAME, sv = "SiftDB", defaults = defaults, defaultProfile = true })
   RepairShape(DB.db.global, DB.db.char)
   ApplyMigrations(DB.db)
   RepairShape(DB.db.global, DB.db.char)
