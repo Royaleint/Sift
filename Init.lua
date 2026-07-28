@@ -436,6 +436,6 @@ SlashCmdList.SIFT = SlashHandler
 SLASH_BDEV1 = "/bdev"
 -- BSP-018 polish (post-Argus): defensive fallback alias against silent
 -- collision if another addon registers /bdev — last-loader-wins in
--- SlashCmdList. /bawrspamdev is verbose enough to be effectively unique.
-SLASH_BDEV2 = "/bawrspamdev"
+-- SlashCmdList. /siftdev is verbose enough to be effectively unique.
+SLASH_BDEV2 = "/siftdev"
 SlashCmdList.BDEV = BdevSlashHandler

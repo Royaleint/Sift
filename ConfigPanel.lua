@@ -1260,7 +1260,7 @@ local function RegisterStaticPopups()
   end
   popupsRegistered = true
 
-  StaticPopupDialogs["HUSH_CLEAR_HISTORY"] = {
+  StaticPopupDialogs["SIFT_CLEAR_HISTORY"] = {
     text = "Clear all Sift history?",
     button1 = "Clear",
     button2 = "Cancel",
@@ -1280,7 +1280,7 @@ local function RegisterStaticPopups()
     hideOnEscape = true,
   }
 
-  StaticPopupDialogs["HUSH_CLEAR_BLOCKED"] = {
+  StaticPopupDialogs["SIFT_CLEAR_BLOCKED"] = {
     text = "Clear all blocked actors?",
     button1 = "Clear",
     button2 = "Cancel",
@@ -1296,7 +1296,7 @@ local function RegisterStaticPopups()
     hideOnEscape = true,
   }
 
-  StaticPopupDialogs["HUSH_RESET_SETTINGS"] = {
+  StaticPopupDialogs["SIFT_RESET_SETTINGS"] = {
     text = "Reset Sift settings to defaults?",
     button1 = "Reset",
     button2 = "Cancel",
@@ -1316,7 +1316,7 @@ local function RegisterStaticPopups()
     hideOnEscape = true,
   }
 
-  StaticPopupDialogs["HUSH_IMPORT_OVERWRITE"] = {
+  StaticPopupDialogs["SIFT_IMPORT_OVERWRITE"] = {
     text = "Import includes entries that are already allowlisted. Overwrite matching entries?",
     button1 = "Overwrite",
     button2 = "Cancel",
@@ -1333,7 +1333,7 @@ local function RegisterStaticPopups()
     hideOnEscape = true,
   }
 
-  StaticPopupDialogs["HUSH_TRIM_HISTORY"] = {
+  StaticPopupDialogs["SIFT_TRIM_HISTORY"] = {
     text = "Trim history on every character down to the new maximum?",
     button1 = "Trim",
     button2 = "Cancel",
@@ -1364,7 +1364,7 @@ local function RegisterStaticPopups()
     hideOnEscape = true,
   }
 
-  StaticPopupDialogs["HUSH_TRIM_HISTORY_GLOBAL"] = {
+  StaticPopupDialogs["SIFT_TRIM_HISTORY_GLOBAL"] = {
     text = "Trim history across all characters down to the new account-wide maximum?",
     button1 = "Trim",
     button2 = "Cancel",
@@ -1882,7 +1882,7 @@ RenderHistory = function()
     if value < maxLen then
       pendingHistoryMax = value
       if StaticPopup_Show then
-        StaticPopup_Show("HUSH_TRIM_HISTORY")
+        StaticPopup_Show("SIFT_TRIM_HISTORY")
       end
     else
       SetSetting("historyMaxEntries", value)
@@ -1909,7 +1909,7 @@ RenderHistory = function()
     if value < total then
       pendingHistoryGlobalMax = value
       if StaticPopup_Show then
-        StaticPopup_Show("HUSH_TRIM_HISTORY_GLOBAL")
+        StaticPopup_Show("SIFT_TRIM_HISTORY_GLOBAL")
       end
     else
       SetSetting("historyGlobalMaxEntries", value)
@@ -1956,7 +1956,7 @@ RenderDev = function()
     "/bdev slash commands, and other diagnostic affordances.")
   AddNativeButton("Reset Settings", CONTENT_PAD, y, 120, function()
     if StaticPopup_Show then
-      StaticPopup_Show("HUSH_RESET_SETTINGS")
+      StaticPopup_Show("SIFT_RESET_SETTINGS")
     end
   end, "Reset ALL settings to defaults. Does not touch History, Allowlist, or Blocked. Confirmation required.")
   -- BSP-018: FP-export tool. Same gating semantics as /bdev fpx — the
@@ -2589,7 +2589,7 @@ function ConfigPanel.OpenImportDialog()
     CloseDialog()
     pendingImport = entries
     if ImportNeedsOverwrite(entries) and StaticPopup_Show then
-      StaticPopup_Show("HUSH_IMPORT_OVERWRITE")
+      StaticPopup_Show("SIFT_IMPORT_OVERWRITE")
     else
       ApplyImport(entries, false)
     end
@@ -2599,14 +2599,14 @@ end
 function ConfigPanel.ConfirmClearHistory()
   ConfigPanel.Initialize()
   if StaticPopup_Show then
-    StaticPopup_Show("HUSH_CLEAR_HISTORY")
+    StaticPopup_Show("SIFT_CLEAR_HISTORY")
   end
 end
 
 function ConfigPanel.ConfirmClearBlocked()
   ConfigPanel.Initialize()
   if StaticPopup_Show then
-    StaticPopup_Show("HUSH_CLEAR_BLOCKED")
+    StaticPopup_Show("SIFT_CLEAR_BLOCKED")
   end
 end
 
