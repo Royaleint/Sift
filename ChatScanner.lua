@@ -255,9 +255,9 @@ local function Pipeline(
       guid,
       analysis,
       settings,
-      settings.threshold,
-      settings.threshold,
-      { Throttle = settings.threshold },
+      score.score,
+      score.threshold,
+      score.breakdown,
       "throttle",
       surface,
       throttleOutcome
