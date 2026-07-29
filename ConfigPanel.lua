@@ -1706,12 +1706,10 @@ RenderDetection = function()
   AddDetectionReset(rowY - 10, DEFAULT_SETTINGS.mixedScriptWeight, function()
     SetSetting("mixedScriptWeight", DEFAULT_SETTINGS.mixedScriptWeight)
   end)
-  rowY = y
+  -- Checkboxes carry no reset button (Rawb, Gate 2 re-check 2026-07-28):
+  -- a two-state control IS its own reset; the buttons are for sliders.
   y = AddCheckbox("Use mixed-script detection", "mixedScriptEnabled", y, nil,
     "Enable Unicode-confusable script-mixing as a signal in scoring.")
-  AddDetectionReset(rowY, DEFAULT_SETTINGS.mixedScriptEnabled and "on" or "off", function()
-    SetSetting("mixedScriptEnabled", DEFAULT_SETTINGS.mixedScriptEnabled)
-  end)
 
   -- BSP-039: bounds come from Frequency so the slider cannot drift away from
   -- the clamp that actually enforces them.
@@ -1744,11 +1742,6 @@ RenderDetection = function()
     "When the same sender repeats the same message on the same surface, the repeat is " ..
     "logged as one condensed history entry and counted as throttled. Only applies to " ..
     "messages already blocked as spam \194\151 it does not change what gets blocked.")
-  AddDetectionReset(y, "on", function()
-    if NS.DB and NS.DB.SetThrottleEnabled then
-      NS.DB.SetThrottleEnabled(true)
-    end
-  end)
 end
 
 RenderCategories = function()
