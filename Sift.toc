@@ -1,4 +1,4 @@
-## Interface: 11509, 20506, 50504, 120007
+## Interface: 11509, 20506, 50504, 120100
 ## Title: Sift
 ## Notes: Personal chat-spam filter with recoverable history. Inspired by funkydude's BadBoy; original-work implementation.
 ## Author: Royaleint
