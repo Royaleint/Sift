@@ -1,7 +1,7 @@
 # Sift
 
-> **Version:** 1.0.0 | TOC: 120005 | WoW Retail 12.0.5+
-> **Status:** Personal-use only — public release pending.
+> **Version:** 1.3.1 | TOC: 120100 | WoW Retail 12.1+
+> **Status:** Released on CurseForge (as BawrSpam; the Sift rename ships with a future release).
 
 A personal chat-spam filter for World of Warcraft Retail with recoverable history. Blocks RMT, boost-service, casino, and phishing spam in chat, and lets you review or restore anything it blocks.
 
