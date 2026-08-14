@@ -2,7 +2,7 @@ local _, NS = ...
 local DB = {}
 
 local CURRENT_SCHEMA_VERSION = 3
-local ADDON_VERSION = "1.3.0"
+local ADDON_VERSION = "1.3.1"
 local BLOCKED_ACTOR_CAP = 5000
 
 local defaults = {

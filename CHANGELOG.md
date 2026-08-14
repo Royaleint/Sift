@@ -1,5 +1,11 @@
 # BawrSpam Changelog
 
+## v1.3.1 (2026-08-14)
+
+- Updated for patch 12.1. BawrSpam is flagged compatible with the current retail
+  client again, so it loads and shows as up to date.
+- Classic Era and Anniversary are updated for their current clients too. No other changes.
+
 ## v1.3.0 (2026-06-20)
 
 - Mists of Pandaria Classic is now supported.
