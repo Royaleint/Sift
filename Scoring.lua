@@ -22,6 +22,7 @@ function Scoring._ScoreHits(hits, analysis, options)
   local seenRules = {}
   local antiRaw = 0
   local auditHits = {}
+  local hasPositiveContentHit = false
 
   for i = 1, #hits do
     local h = hits[i]
@@ -32,8 +33,9 @@ function Scoring._ScoreHits(hits, analysis, options)
       if categoryState == true or categoryState == "active" or categoryState == "paused" then
         if h.weight < 0 then
           antiRaw = antiRaw + h.weight
-        else
+        elseif h.weight > 0 then
           breakdown[h.category] = (breakdown[h.category] or 0) + h.weight
+          hasPositiveContentHit = true
         end
       end
     end
@@ -41,7 +43,7 @@ function Scoring._ScoreHits(hits, analysis, options)
 
   local antiApplied = (antiRaw < cap) and cap or antiRaw
 
-  if analysis.signals and analysis.signals.mixedScript and mixedW > 0 then
+  if hasPositiveContentHit and analysis.signals and analysis.signals.mixedScript and mixedW > 0 then
     breakdown.MixedScript = mixedW
   end
 
