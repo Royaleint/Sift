@@ -72,6 +72,35 @@ local function TokenHasGUID(token, guid)
   return ok and unitGUID == guid
 end
 
+local function IsRosterCount(value, maximum, minimum)
+  return not IsSecret(value)
+    and type(value) == "number"
+    and value >= minimum
+    and value <= maximum
+    and value == math.floor(value)
+end
+
+local function GetRosterScan()
+  local ok, isRaid = SafeCall(rawget(_G, "IsInRaid"))
+  if not ok or IsSecret(isRaid) or type(isRaid) ~= "boolean" then
+    return nil
+  end
+
+  if isRaid then
+    local countOK, count = SafeCall(rawget(_G, "GetNumGroupMembers"))
+    if not countOK or not IsRosterCount(count, 40, 1) then
+      return nil
+    end
+    return "raid", count
+  end
+
+  local countOK, count = SafeCall(rawget(_G, "GetNumSubgroupMembers"))
+  if not countOK or not IsRosterCount(count, 4, 0) then
+    return nil
+  end
+  return "party", count
+end
+
 local function IsGrouped(guid)
   if not IsUsableString(guid) then
     return false
@@ -79,6 +108,16 @@ local function IsGrouped(guid)
 
   if TokenHasGUID("player", guid) then
     return true
+  end
+
+  local prefix, count = GetRosterScan()
+  if prefix then
+    for index = 1, count do
+      if TokenHasGUID(prefix .. index, guid) then
+        return true
+      end
+    end
+    return false
   end
 
   for index = 1, 4 do
