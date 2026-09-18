@@ -26,7 +26,6 @@ local EVENT_TO_SURFACE = {
 }
 
 local filterInstalled = {}
-local eventFrame = nil
 local filterAdd = nil
 local BLOCKED_ACTOR_BOOST = 2
 local IGNORED_BREAKDOWN_KEYS = {
@@ -53,6 +52,10 @@ local SENDER_CACHE_SIZE = 128
 local senderCacheSlots = {}
 local senderCacheByLine = {}
 local senderCacheCursor = 0
+local DECISION_CACHE_SIZE = 64
+local decisionCacheSlots = {}
+local decisionCacheByID = {}
+local decisionCacheCursor = 0
 
 -- Mirrors the guard in Trust.lua: chat-event payloads can carry secret values,
 -- and any string or comparison operation on one raises.
@@ -85,6 +88,114 @@ local function IsUsableLineID(lineID)
     return nil
   end
   return lineID
+end
+
+local function IsFinitePositiveNumber(value)
+  if IsSecret(value) or type(value) ~= "number" then return nil end
+  if value <= 0 or value ~= value or value == math.huge or value == -math.huge then return nil end
+  return value
+end
+
+local function IsSafePayloadValue(value)
+  if IsSecret(value) then return false end
+  local kind = type(value)
+  return value == nil or kind == "string" or kind == "number" or kind == "boolean"
+end
+
+local function GetFrameStamp()
+  if type(GetTime) ~= "function" then return nil end
+  local ok, stamp = pcall(GetTime)
+  if not ok or IsSecret(stamp) or type(stamp) ~= "number" then return nil end
+  if stamp ~= stamp or stamp == math.huge or stamp == -math.huge then return nil end
+  return stamp
+end
+
+local function SameCategories(slot, categories)
+  if type(categories) ~= "table" then return false end
+  for key, value in pairs(slot.categories) do
+    if categories[key] ~= value then return false end
+  end
+  for key, value in pairs(categories) do
+    if slot.categories[key] ~= value then return false end
+  end
+  return true
+end
+
+local function SameSettings(slot, settings)
+  if type(settings) ~= "table" then return false end
+  return slot.threshold == settings.threshold and slot.mixedScriptEnabled == settings.mixedScriptEnabled
+    and slot.mixedScriptWeight == settings.mixedScriptWeight and slot.antiSignalCap == settings.antiSignalCap
+    and slot.filterBubbles == settings.filterBubbles and slot.devMode == settings.devMode
+end
+
+local function CopyState(slot, settings, categories)
+  slot.threshold, slot.mixedScriptEnabled, slot.mixedScriptWeight = settings.threshold, settings.mixedScriptEnabled, settings.mixedScriptWeight
+  slot.antiSignalCap, slot.filterBubbles, slot.devMode = settings.antiSignalCap, settings.filterBubbles, settings.devMode
+  local categoryCopy = slot.categories or {}
+  slot.categories = categoryCopy
+  for key in pairs(categoryCopy) do categoryCopy[key] = nil end
+  for key, value in pairs(categories) do categoryCopy[key] = value end
+end
+
+local function GetFrequencyState()
+  local frequency = NS.Frequency
+  return frequency and frequency.IsFloodEnabled and frequency.IsFloodEnabled() or nil,
+    frequency and frequency.GetFloodWindow and frequency.GetFloodWindow() or nil,
+    frequency and frequency.IsRepeatEnabled and frequency.IsRepeatEnabled() or nil,
+    frequency and frequency.GetRepeatBufferSize and frequency.GetRepeatBufferSize() or nil
+end
+
+local function GetRuleRevision()
+  return NS.UserRules and NS.UserRules.GetRevision and NS.UserRules.GetRevision() or nil
+end
+
+local function DecisionCacheHit(id, stamp, event, message, sender, flags, channelName, guid,
+  manualBlocked, trusted, surfaceState, settings, categories, floodEnabled, floodWindow, repeatEnabled, repeatBufferSize, ruleRevision)
+  local slot = decisionCacheByID[id]
+  if not slot or slot.inProgress or slot.stamp ~= stamp then return nil end
+  if slot.event ~= event or slot.message ~= message or slot.sender ~= sender or slot.flags ~= flags
+    or slot.channelName ~= channelName or slot.guid ~= guid or slot.manualBlocked ~= manualBlocked
+    or slot.trusted ~= trusted or slot.surfaceState ~= surfaceState or slot.floodEnabled ~= floodEnabled
+    or slot.floodWindow ~= floodWindow or slot.repeatEnabled ~= repeatEnabled or slot.repeatBufferSize ~= repeatBufferSize or slot.ruleRevision ~= ruleRevision then
+    return nil
+  end
+  if not SameSettings(slot, settings) or not SameCategories(slot, categories) then return nil end
+  return slot.decision
+end
+
+local function ClaimDecisionSlot(id)
+  local existing = decisionCacheByID[id]
+  if existing and existing.inProgress then return nil end
+  decisionCacheCursor = (decisionCacheCursor % DECISION_CACHE_SIZE) + 1
+  local slot = decisionCacheSlots[decisionCacheCursor]
+  for _ = 1, DECISION_CACHE_SIZE do
+    if not slot or not slot.inProgress then break end
+    decisionCacheCursor = (decisionCacheCursor % DECISION_CACHE_SIZE) + 1
+    slot = decisionCacheSlots[decisionCacheCursor]
+  end
+  if slot and slot.inProgress then return nil end
+  if not slot then
+    slot = {}
+    decisionCacheSlots[decisionCacheCursor] = slot
+  elseif slot.id and decisionCacheByID[slot.id] == slot then
+    decisionCacheByID[slot.id] = nil
+  end
+  slot.id = id
+  slot.inProgress = true
+  slot.generation = (slot.generation or 0) + 1
+  decisionCacheByID[id] = slot
+  return slot, slot.generation
+end
+
+local function FinishDecisionSlot(slot, generation, stamp, event, message, sender, flags, channelName, guid,
+  manualBlocked, trusted, surfaceState, settings, categories, floodEnabled, floodWindow, repeatEnabled, repeatBufferSize, ruleRevision, decision)
+  if decisionCacheByID[slot.id] ~= slot or slot.generation ~= generation then return end
+  slot.stamp, slot.event, slot.message, slot.sender, slot.flags = stamp, event, message, sender, flags
+  slot.channelName, slot.guid = channelName, guid
+  slot.manualBlocked, slot.trusted, slot.surfaceState = manualBlocked, trusted, surfaceState
+  slot.floodEnabled, slot.floodWindow, slot.repeatEnabled, slot.repeatBufferSize, slot.ruleRevision = floodEnabled, floodWindow, repeatEnabled, repeatBufferSize, ruleRevision
+  slot.decision = decision == true
+  slot.inProgress = false
 end
 
 local function RememberSender(lineID, guid)
@@ -154,13 +265,13 @@ local function GetSettings()
   return NS.DB and NS.DB.GetSettings and NS.DB.GetSettings() or {}
 end
 
-local function BuildScoringOptions(settings)
+local function BuildScoringOptions(settings, categories)
   return {
     threshold = settings.threshold,
     -- Not settings.enabledCategories directly: retired categories are no longer
     -- persisted, so the stored table alone would gate their rules off. A
     -- fallback to it would restore that bug quietly, so there is none.
-    enabledCategories = NS.PauseState.GetEffectiveCategoryStates(),
+    enabledCategories = categories or NS.PauseState.GetEffectiveCategoryStates(),
     mixedScriptWeight = settings.mixedScriptEnabled == false and 0 or settings.mixedScriptWeight,
     antiSignalCap = settings.antiSignalCap,
     patterns = NS.Patterns,
@@ -326,7 +437,13 @@ local function Pipeline(
   channelName,
   _unknown2,
   counter,
-  guid
+  guid,
+  settings,
+  manualBlocked,
+  trusted,
+  surface,
+  surfaceState,
+  categories
 )
   if type(message) ~= "string" or message == "" then
     return false
@@ -334,8 +451,8 @@ local function Pipeline(
 
   -- Surface state gate: off short-circuits the pipeline (no detection, no history).
   -- paused lets detection run but flips outcome to pass-thru and skips bubble suppression.
-  local surface = EVENT_TO_SURFACE[event] or "chat"
-  local surfaceState = (NS.PauseState and NS.PauseState.GetSurface and NS.PauseState.GetSurface(surface)) or "active"
+  surface = surface or EVENT_TO_SURFACE[event] or "chat"
+  surfaceState = surfaceState or ((NS.PauseState and NS.PauseState.GetSurface and NS.PauseState.GetSurface(surface)) or "active")
   if surfaceState == "off" then
     return false
   end
@@ -366,12 +483,15 @@ local function Pipeline(
   -- a guildmate meant it, and letting the trust rule win would make the menu
   -- entry a silent no-op for exactly the people they took the trouble to name.
   -- The check is a table lookup, so this ordering costs the hot path nothing.
-  if IsUsableString(guid) and NS.DB and NS.DB.IsManuallyBlocked and NS.DB.IsManuallyBlocked(guid) then
+  if manualBlocked == nil then
+    manualBlocked = IsUsableString(guid) and NS.DB and NS.DB.IsManuallyBlocked and NS.DB.IsManuallyBlocked(guid)
+  end
+  if manualBlocked then
     if NS.DB.IsDevMode and NS.DB.IsDevMode() then
       DevLog("Manual block: " .. tostring(sender))
     end
 
-    local settings = GetSettings()
+    settings = settings or GetSettings()
     local manualAnalysis = (NS.Cleanse and NS.Cleanse.Analyze and NS.Cleanse.Analyze(message))
       or { signals = {}, normalized = message }
 
@@ -415,7 +535,10 @@ local function Pipeline(
     return not blockSuppressed
   end
 
-  if NS.Trust and NS.Trust.IsTrusted and NS.Trust.IsTrusted(guid, sender, flags) then
+  if trusted == nil then
+    trusted = NS.Trust and NS.Trust.IsTrusted and NS.Trust.IsTrusted(guid, sender, flags)
+  end
+  if trusted then
     -- BSP-047 devmode diagnostic: name which trust source skipped this sender so
     -- a trust-bypass false-negative (gold-seller short-circuiting the filter) is
     -- visible live in chat. Diagnostic only — no change to filtering behavior.
@@ -431,8 +554,8 @@ local function Pipeline(
     return false
   end
 
-  local settings = GetSettings()
-  local score = NS.Scoring and NS.Scoring.Score and NS.Scoring.Score(analysis, BuildScoringOptions(settings))
+  settings = settings or GetSettings()
+  local score = NS.Scoring and NS.Scoring.Score and NS.Scoring.Score(analysis, BuildScoringOptions(settings, categories))
   ApplyBlockedActorBoost(score, guid)
   ApplyFloodBoost(score, analysis.normalized)
   local customRule = ApplyCustomBlock(score, analysis.normalized)
@@ -585,21 +708,65 @@ function ChatScanner.Filter(
     -- chain (BSP-037).
     RememberSender(counter, guid)
 
-    return Pipeline(
-      event,
-      message,
-      sender,
-      language,
-      channelString,
-      target,
-      flags,
-      unknown,
-      channelNumber,
-      channelName,
-      unknown2,
-      counter,
-      guid
-    )
+    local settings = GetSettings()
+    local surface = EVENT_TO_SURFACE[event] or "chat"
+    local surfaceState = (NS.PauseState and NS.PauseState.GetSurface and NS.PauseState.GetSurface(surface)) or "active"
+    if surfaceState == "off" then
+      return Pipeline(event, message, sender, language, channelString, target, flags, unknown,
+        channelNumber, channelName, unknown2, counter, guid, settings, false, false, surface, surfaceState)
+    end
+    local manualBlocked = IsUsableString(guid) and NS.DB and NS.DB.IsManuallyBlocked
+      and NS.DB.IsManuallyBlocked(guid) == true or false
+    local trusted = not manualBlocked and NS.Trust and NS.Trust.IsTrusted
+      and NS.Trust.IsTrusted(guid, sender, flags) == true or false
+    if trusted then
+      return Pipeline(event, message, sender, language, channelString, target, flags, unknown,
+        channelNumber, channelName, unknown2, counter, guid, settings, manualBlocked, trusted, surface, surfaceState)
+    end
+    local lineID = IsFinitePositiveNumber(counter)
+    local stamp = GetFrameStamp()
+    local cacheable = lineID and stamp and type(event) == "string" and IsSafePayloadValue(message)
+      and IsSafePayloadValue(sender) and IsSafePayloadValue(flags) and IsSafePayloadValue(channelName)
+      and IsSafePayloadValue(guid)
+    if not cacheable then
+      return Pipeline(event, message, sender, language, channelString, target, flags, unknown,
+        channelNumber, channelName, unknown2, counter, guid, settings, manualBlocked, trusted, surface, surfaceState)
+    end
+    local categories = NS.PauseState and NS.PauseState.GetEffectiveCategoryStates
+      and NS.PauseState.GetEffectiveCategoryStates() or {}
+    if type(settings) ~= "table" or type(categories) ~= "table" then
+      return Pipeline(event, message, sender, language, channelString, target, flags, unknown,
+        channelNumber, channelName, unknown2, counter, guid, settings, manualBlocked, trusted, surface, surfaceState)
+    end
+    local floodEnabled, floodWindow, repeatEnabled, repeatBufferSize = GetFrequencyState()
+    local ruleRevision = GetRuleRevision()
+    local cached = DecisionCacheHit(lineID, stamp, event, message, sender, flags, channelName, guid,
+      manualBlocked, trusted, surfaceState, settings, categories, floodEnabled, floodWindow, repeatEnabled, repeatBufferSize, ruleRevision)
+    if cached ~= nil then return cached end
+
+    local slot, generation = ClaimDecisionSlot(lineID)
+    if slot then CopyState(slot, settings, categories) end
+    local pipelineOK, decision = pcall(Pipeline, event, message, sender, language, channelString, target, flags, unknown,
+      channelNumber, channelName, unknown2, counter, guid, settings, manualBlocked, trusted, surface, surfaceState, categories)
+    if not pipelineOK then
+      if slot and decisionCacheByID[lineID] == slot and slot.generation == generation then
+        decisionCacheByID[lineID] = nil
+        slot.inProgress = false
+      end
+      error(decision)
+    end
+    local stable = slot and SameSettings(slot, GetSettings())
+    local currentCategories = NS.PauseState and NS.PauseState.GetEffectiveCategoryStates
+      and NS.PauseState.GetEffectiveCategoryStates() or nil
+    stable = stable and SameCategories(slot, currentCategories)
+    if slot and stable then
+      FinishDecisionSlot(slot, generation, stamp, event, message, sender, flags, channelName, guid,
+        manualBlocked, trusted, surfaceState, settings, categories, floodEnabled, floodWindow, repeatEnabled, repeatBufferSize, ruleRevision, decision)
+    elseif slot and decisionCacheByID[lineID] == slot and slot.generation == generation then
+      decisionCacheByID[lineID] = nil
+      slot.inProgress = false
+    end
+    return decision
   end, ErrorHandler)
   if not ok then
     return false
@@ -647,11 +814,6 @@ function ChatScanner.Install()
     return false
   end
 
-  if not eventFrame and type(CreateFrame) == "function" then
-    eventFrame = CreateFrame("Frame")
-    eventFrame:SetScript("OnEvent", function() end)
-  end
-
   for i = 1, #CHAT_EVENTS do
     local event = CHAT_EVENTS[i]
     if not filterInstalled[event] then
@@ -661,11 +823,6 @@ function ChatScanner.Install()
       else
         DevLog("failed to install chat filter for " .. event .. ".")
       end
-    end
-
-    if eventFrame then
-      pcall(eventFrame.UnregisterEvent, eventFrame, event)
-      pcall(eventFrame.RegisterEvent, eventFrame, event)
     end
   end
 
