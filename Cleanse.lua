@@ -177,6 +177,7 @@ end
 function Cleanse._Stage6_Leetspeak(text)
   local n = #text
   if n < 3 then return text end
+  if not string.find(text, "[A-Za-z][0134578@$][A-Za-z]") then return text end
   local out = {}
   for i = 1, n do
     local c = string.sub(text, i, i)

@@ -37,6 +37,8 @@ local floodEnabled = true
 local window = DEFAULT_WINDOW
 local seen = {}           -- key -> { ascending occurrence timestamps within window }
 local distinctCount = 0
+local nextSweepAt = nil
+local lastFloodNow = nil
 
 -- Repeat lane (per-sender, per-surface, count-based).
 local DEFAULT_BUFFER_SIZE = 20
@@ -78,7 +80,8 @@ end
 
 local function sweep(cutoff)
   for key, stamps in pairs(seen) do
-    if (stamps[#stamps] or 0) < cutoff then
+    local last = stamps[#stamps] or 0
+    if last < cutoff then
       seen[key] = nil
       distinctCount = distinctCount - 1
     end
@@ -94,7 +97,14 @@ function Frequency.RecordAndCount(cleansed, now)
   now = tonumber(now) or 0
   local cutoff = now - window
 
-  if distinctCount > SOFT_CAP then sweep(cutoff) end
+  if lastFloodNow and now < lastFloodNow then
+    nextSweepAt = nil
+  end
+  lastFloodNow = now
+  if distinctCount > SOFT_CAP and nextSweepAt and now > nextSweepAt then
+    sweep(cutoff)
+    nextSweepAt = distinctCount > SOFT_CAP and now + window or nil
+  end
 
   local key = Frequency._Key(cleansed)
   local stamps = seen[key]
@@ -105,6 +115,9 @@ function Frequency.RecordAndCount(cleansed, now)
   end
   pruneFront(stamps, cutoff)
   stamps[#stamps + 1] = now
+  if distinctCount > SOFT_CAP and not nextSweepAt then
+    nextSweepAt = now + window
+  end
   return #stamps
 end
 
@@ -132,7 +145,11 @@ function Frequency.SetFloodWindow(value)
   value = tonumber(value) or DEFAULT_WINDOW
   if value < MIN_WINDOW then value = MIN_WINDOW end
   if value > MAX_WINDOW then value = MAX_WINDOW end
+  if nextSweepAt and distinctCount > SOFT_CAP and lastFloodNow then
+    sweep(lastFloodNow - window)
+  end
   window = value
+  nextSweepAt = nil
   return window
 end
 
@@ -230,6 +247,8 @@ end
 function Frequency.Reset()
   seen = {}
   distinctCount = 0
+  nextSweepAt = nil
+  lastFloodNow = nil
   for _, buffer in pairs(buffers) do
     for index = #buffer.lines, 1, -1 do
       buffer.lines[index] = nil
@@ -239,6 +258,7 @@ function Frequency.Reset()
     end
   end
 end
+
 
 -- Inspection accessor (tests / future config). Not used by the addon at runtime.
 function Frequency._Params()

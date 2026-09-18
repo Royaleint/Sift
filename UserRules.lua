@@ -1,5 +1,10 @@
 local _, NS = ...
 local UserRules = {}
+local revision = 0
+
+local function TouchRevision()
+  revision = revision + 1
+end
 
 -- BSP-052 / BSP-058: user-authored keyword rules. Two independent lists share
 -- this module because their storage, guardrails, and matching are identical --
@@ -105,6 +110,7 @@ function UserRules.Add(kind, raw)
 
   local entry = { raw = trimmed, cleansed = cleansed, added = ServerTime() }
   store[#store + 1] = entry
+  TouchRevision()
   return "added", entry
 end
 
@@ -125,6 +131,7 @@ function UserRules.Remove(kind, rawOrIndex)
       local _, found = FindByCleansed(store, cleansed)
       if found then
         table.remove(store, found)
+        TouchRevision()
         return true
       end
     end
@@ -134,6 +141,7 @@ function UserRules.Remove(kind, rawOrIndex)
   if not index or not store[index] then return false end
 
   table.remove(store, index)
+  TouchRevision()
   return true
 end
 
@@ -144,6 +152,7 @@ function UserRules.RemoveAll(kind)
   for index = removed, 1, -1 do
     store[index] = nil
   end
+  if removed > 0 then TouchRevision() end
   return removed
 end
 
@@ -220,7 +229,12 @@ function UserRules.RepairStore(store)
   for index = 1, #kept do
     store[index] = kept[index]
   end
+  if dropped > 0 then TouchRevision() end
   return dropped
+end
+
+function UserRules.GetRevision()
+  return revision
 end
 
 -- Test seams: the module is dofile-able so the standalone runners can exercise
@@ -231,6 +245,7 @@ end
 
 function UserRules.SetStoreForTest(kind, store)
   testStores[kind] = store
+  TouchRevision()
 end
 
 if NS then NS.UserRules = UserRules end
