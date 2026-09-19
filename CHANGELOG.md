@@ -1,5 +1,9 @@
 # Sift Changelog
 
+## v1.4.0 (2026-09-19)
+
+- Sift is the new name for BawrSpam.
+
 ## v1.3.0 (2026-06-20)
 
 - Mists of Pandaria Classic is now supported.

@@ -1,9 +1,9 @@
 # Sift
 
-> **Version:** 1.3.1 | TOC: 120100 | WoW Retail 12.1+
-> **Status:** Released on CurseForge (as BawrSpam; the Sift rename ships with a future release).
+> **Version:** 1.4.0
+> **Status:** Released on CurseForge (project 1549238). Supports Retail, Classic Era, TBC Anniversary, MoP Classic, and WoW Forever in the same package.
 
-A personal chat-spam filter for World of Warcraft Retail with recoverable history. Blocks RMT, boost-service, casino, and phishing spam in chat, and lets you review or restore anything it blocks.
+A personal chat-spam filter for World of Warcraft with recoverable history. Blocks RMT, boost-service, casino, and phishing spam in chat, and lets you review or restore anything it blocks.
 
 ## Features
 
@@ -12,19 +12,17 @@ A personal chat-spam filter for World of Warcraft Retail with recoverable histor
 - **Repeat-Sender Throttle** — Catches the same sender repeating the same cleansed message across surfaces (CHANNEL/WHISPER/YELL/SAY) without re-running the full scoring path.
 - **Recoverable History** — Every block lands in a per-character history table you can review, restore, or always-allow from. Stored locally; never transmitted.
 - **History Panel** — Master/detail UI with category chips, surface/time/outcome/sort filters, FauxScroll list, and surface-aware Restore / Always-allow actions.
-- **Config Panel** — Eight-section options panel covering Detection, Categories, Surfaces, Allowlist, Blocked, History, UI, and Dev. Slash subcommands hit the same surfaces.
+- **Config Panel** — Ten-section options panel covering Detection, Categories, Surfaces, Allowlist, Blocked, My Keywords, Never Block, History, UI, and Dev. Slash subcommands hit the same surfaces.
 - **Unit Tooltip Annotation** — Hover any player and see "Sift: blocked N spam messages (last Xm ago)" if you've blocked them before.
 - **Minimap Launcher** — LibDBIcon button toggles the history panel.
 
 ## Installation
 
-Personal-use only — not published to CurseForge or Wago.
+Available on CurseForge (project 1549238). For a manual/dev install:
 
 1. Clone or download this repository.
-2. Place the `Sift/` folder in `World of Warcraft/_retail_/Interface/AddOns/Sift/`.
-3. Install [Foundry-1.0](https://www.curseforge.com/wow/addons/foundry-1-0) separately (TOC dependency, not vendored).
-4. Place the vendored libraries (LibStub, CallbackHandler-1.0, LibDataBroker-1.1, LibDBIcon-1.0) in `World of Warcraft/_retail_/Interface/AddOns/` — see `Libs/ATTRIBUTION.md`.
-5. Enable in your addon list and `/reload`.
+2. Place the `Sift/` folder in your WoW client's `Interface/AddOns/` folder, so it lands at `Interface/AddOns/Sift/` (each client flavor — Retail, Classic Era, TBC Anniversary, MoP Classic, WoW Forever — has its own AddOns folder). Foundry-1.0 and the other vendored libraries (LibStub, CallbackHandler-1.0, LibDataBroker-1.1, LibDBIcon-1.0) ship embedded inside `Sift/Libs/` — no separate install — see `Libs/ATTRIBUTION.md`. A standalone install of [Foundry-1.0](https://www.curseforge.com/wow/addons/foundry-1-0) takes priority over the embedded copy if installed and enabled.
+3. Enable in your addon list and `/reload`.
 
 ## Commands
 
@@ -39,7 +37,8 @@ Personal-use only — not published to CurseForge or Wago.
 | `/sift import` | Open the import dialog |
 | `/sift clearhistory` | Confirm and clear all history |
 | `/sift clearblocked` | Confirm and clear the blocked-senders list |
-| `/sift test` | Synthetic block test (devMode only) |
+| `/sift rebuildstats` | Rebuild this character's per-category stat counts from retained history |
+| `/bdev test` | Synthetic block test (devMode only) |
 
 ## How It Works
 
@@ -57,7 +56,7 @@ The pattern data shipped in `PatternData.lua` is XOR-encoded so the addon files 
 
 ## Known Limitations
 
-- **Pattern corpus is small at v1.0** — ships with 30 hand-curated rules; expected to grow toward 100+ via personal dogfood observation.
+- **Pattern corpus grows from personal dogfood observation** — hand-curated, not a comprehensive spam database.
 - **No LFG listing scanning** — premade-group listing text is Kstring-protected on Midnight (unreadable to addons), and Blizzard filters advertisement listings natively, so Sift covers chat surfaces only.
 - **No mail-spam scanning** — chat surfaces only. Mail scanning is a v2.0 candidate.
 

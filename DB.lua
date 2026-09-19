@@ -46,7 +46,7 @@ local SV_NAME, SV_LEGACY_NAME = DB.DeriveSVNames(ADDON_NAME)
 local SV_NAME_ERROR = (not SV_NAME) and SV_LEGACY_NAME or nil
 
 local CURRENT_SCHEMA_VERSION = 3
-local ADDON_VERSION = "1.3.0"
+local ADDON_VERSION = "1.4.0"
 local BLOCKED_ACTOR_CAP = 5000
 
 local defaults = {
