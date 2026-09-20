@@ -7,7 +7,7 @@ Sift vendors a small set of WoW Lua libraries to avoid a fetch step at install t
 - **Source:** https://github.com/Royaleint/Foundry.git
 - **License:** MIT
 - **Purpose:** SavedVariables layer (Foundry.DB), addon lifecycle, slash command registry, and event dispatch. Sift's core dependency — replaces AceDB-3.0 (BSP-062), AceAddon-3.0 (BSP-060), and related Ace3 modules.
-- **Vendored at:** BSP-064 (FND-007 embedded-copy guard; v1.0.4). Standalone Foundry-1.0 wins when installed; this embed is the fallback for distributions without a separate Foundry install.
+- **Vendored at:** BSP-064 (FND-007 embedded-copy guard); consolidated to the v1.0.102 tag (SFT-076). Standalone Foundry-1.0 wins when installed; this embed is the fallback for distributions without a separate Foundry install.
 - **Update policy:** Re-vendor from source tag when a new Foundry release is needed. Pin the tag — do not track HEAD.
 
 ## LibStub
@@ -40,9 +40,8 @@ Sift vendors a small set of WoW Lua libraries to avoid a fetch step at install t
 
 ## Vendoring policy
 
-- These libraries were copied verbatim from a co-located studio addon (Homestead) which had already vendored canonical WowAce releases.
-- No modifications. Spot-check on initial vendor showed no studio-specific patches.
-- Updates: re-vendor from WowAce when the upstream lib publishes a relevant fix. Track in `Sift_Dev/BSpam_Tracker.md`.
+- LibStub, CallbackHandler-1.0, and LibDBIcon-1.0 were copied verbatim from canonical WowAce releases; no modifications. Foundry-1.0 and LibDataBroker-1.1 are sourced from their own upstream repos (see each library's Source line above), also copied verbatim.
+- Updates: re-vendor from each library's own source when the upstream publishes a relevant fix.
 
 ## Libraries removed
 

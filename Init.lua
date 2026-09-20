@@ -389,11 +389,11 @@ local COMMANDS = {
 	clearblocked = ConfirmClearBlocked,
 	rebuildstats = RebuildStats,
 	-- BSP-018 polish (post-Argus): transitional discoverability hint after
-	-- /bawrspam test → /bdev test migration. Remove this entry in a future
+	-- /sift test → /bdev test migration. Remove this entry in a future
 	-- cleanup once muscle memory has migrated; for now it's a one-line aid
 	-- so a stale habit doesn't fall through to a generic usage line.
 	test = function()
-		Print("/bawrspam test moved to /bdev test (requires devMode).")
+		Print("/sift test moved to /bdev test (requires devMode).")
 	end,
 }
 
