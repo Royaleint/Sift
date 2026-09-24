@@ -372,7 +372,7 @@ local function AddText(text, template, x, y, width)
     fs:SetPoint("RIGHT", content, "RIGHT", -CONTENT_PAD, 0)
   end
   fs:SetJustifyH("LEFT")
-  fs:SetText(text or "")
+  fs:SetText(L[text or ""])
   fs:Show()
   return fs
 end
@@ -401,7 +401,7 @@ local function AddNativeButton(label, x, y, width, onClick, tooltipBody)
   local button = TrackNative(CreateFrame("Button", nil, content, "UIPanelButtonTemplate"))
   button:SetSize(width or 120, 24)
   button:SetPoint("TOPLEFT", content, "TOPLEFT", x, y)
-  button:SetText(label)
+  button:SetText(L[label])
   button:SetScript("OnClick", onClick)
   if tooltipBody then AttachTooltip(button, label, tooltipBody) end
   button:Show()
@@ -433,13 +433,13 @@ local function AddDisabledRow(label, value, y)
   local left = TrackNative(row:CreateFontString(nil, "OVERLAY", "GameFontDisable"))
   left:SetPoint("LEFT", row, "LEFT", 8, 0)
   left:SetJustifyH("LEFT")
-  left:SetText(label)
+  left:SetText(L[label])
   left:Show()
 
   local right = TrackNative(row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"))
   right:SetPoint("RIGHT", row, "RIGHT", -8, 0)
   right:SetJustifyH("RIGHT")
-  right:SetText(value)
+  right:SetText(L[value])
   right:Show()
 
   return y - 36
@@ -591,6 +591,8 @@ local function MakeNativeSlider(x, y, width, label, minValue, maxValue, step)
   -- TRI-048 confirmed the native ScrollBox/options primitive set passes on
   -- Classic Era and TBC Anniversary; OptionsSliderTemplate remains the
   -- fallback only where MinimalSliderWithSteppersMixin is genuinely absent.
+  -- Translated once here rather than in each flavor constructor below.
+  label = L[label or ""]
   if type(MinimalSliderWithSteppersMixin) ~= "table" then
     return MakeOptionsSlider(x, y, width, label, minValue, maxValue, step)
   end
@@ -624,7 +626,7 @@ local function MakeNativeCheckbox(x, y, label, initialChecked, onChange, tooltip
   local labelFS = cb:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   labelFS:SetPoint("LEFT", cb, "RIGHT", 4, 0)
   labelFS:SetJustifyH("LEFT")
-  labelFS:SetText(label or "")
+  labelFS:SetText(L[label or ""])
 
   cb:SetScript("OnClick", function(self)
     local value = self:GetChecked() and true or false
@@ -2489,7 +2491,7 @@ local function CreateNav(parent)
     else
       button:SetPoint("TOPLEFT", nav, "TOPLEFT", 0, 0)
     end
-    button:SetText(section)
+    button:SetText(L[section])
     button:SetScript("OnClick", function()
       ConfigPanel.ShowSection(section)
     end)
