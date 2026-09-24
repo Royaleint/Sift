@@ -64,6 +64,11 @@ L["Casino"] = "Casino"
 L["Commercial"] = "Commercial"
 L["Phishing"] = "Phishing"
 
+-- History panel: breakdown-chip labels for signal keys that aren't a content
+-- category (CATEGORY_BADGE_LABELS). Throttle reuses "Throttled" below.
+L["Blocked sender"] = "Blocked sender"
+L["Manual block"] = "Manual block"
+
 -- History panel: row badges and detail-pane status text
 L["You"] = "You"
 L["Flood"] = "Flood"
@@ -170,6 +175,18 @@ L["Restored"] = "Restored"
 L["Newest"] = "Newest"
 L["Score"] = "Score"
 L["Sender"] = "Sender"
+-- History panel: list column header (the other three columns in this
+-- header reuse Score/Sender/Time above)
+L["Category"] = "Category"
+
+-- History panel: chat-event channel fallback labels (CHAT_EVENT_LABELS).
+-- Used only when entry.channelName wasn't captured live.
+L["Say"] = "Say"
+L["Yell"] = "Yell"
+L["Emote"] = "Emote"
+L["DND auto-response"] = "DND auto-response"
+L["AFK auto-response"] = "AFK auto-response"
+L["Channel"] = "Channel"
 
 -- Config panel: window chrome
 L["Sift \226\128\148 Config"] = "Sift \226\128\148 Config"
@@ -304,3 +321,9 @@ L["Discard every captured false-negative candidate. Equivalent to /bdev fnx clea
 L["Resize panel"] = "Resize panel"
 L["Drag to resize the Config panel."] = "Drag to resize the Config panel."
 L["Minimum size: 600 \195\151 400."] = "Minimum size: 600 \195\151 400."
+
+-- Init.lua: /bdev pseudolocale command
+L["pseudo-locale applied. Open a Sift panel now; a panel you already opened this session needs /reload, then run this again first."] = "pseudo-locale applied. Open a Sift panel now; a panel you already opened this session needs /reload, then run this again first."
+L["pseudo-locale is already active this session. /reload to restore English, then run it again."] = "pseudo-locale is already active this session. /reload to restore English, then run it again."
+L["the pseudolocale command is only available when devMode is enabled."] = "the pseudolocale command is only available when devMode is enabled."
+L["pseudo-locale tool is unavailable (locale table not loaded)."] = "pseudo-locale tool is unavailable (locale table not loaded)."

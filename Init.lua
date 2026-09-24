@@ -11,6 +11,10 @@ if not F then
   error("Sift requires Foundry-1.0. Please install or enable it.")
 end
 
+-- Only the /bdev pseudolocale messages below key through L[] today; every
+-- other Print() in this file is unlocalized -- a separate follow-up.
+local L = NS.L
+
 local initialized = false
 
 local function Print(message)
@@ -377,6 +381,25 @@ local function RunPerf(rest)
   ))
 end
 
+-- /bdev pseudolocale -- dev-only i18n smoke check (PseudoLocale.Apply pads
+-- NS.L in place; devMode-gated there too, matching ShadowLog's own-gate convention).
+local function RunPseudoLocale()
+  if not (NS.PseudoLocale and NS.PseudoLocale.Apply) then
+    Print(L["pseudo-locale tool is unavailable (locale table not loaded)."])
+    return
+  end
+  local ok, reason = NS.PseudoLocale.Apply()
+  if ok then
+    Print(L["pseudo-locale applied. Open a Sift panel now; a panel you already opened this session needs /reload, then run this again first."])
+  elseif reason == "already-applied" then
+    Print(L["pseudo-locale is already active this session. /reload to restore English, then run it again."])
+  elseif reason == "devMode" then
+    Print(L["the pseudolocale command is only available when devMode is enabled."])
+  else
+    Print(L["pseudo-locale tool is unavailable (locale table not loaded)."])
+  end
+end
+
 local COMMANDS = {
 	[""] = function() ToggleHistory() end,
 	history = function() ToggleHistory() end,
@@ -423,10 +446,11 @@ local DEV_COMMANDS = {
 	fnx  = ExportFN,
 	hx   = ExportHistory,
 	perf = RunPerf,
+	pseudolocale = RunPseudoLocale,
 }
 
 local function PrintDevUsage()
-	Print("usage: /bdev [test|fpx [N]|fnx [N|clear]|hx [N]|perf [label]]")
+	Print("usage: /bdev [test|fpx [N]|fnx [N|clear]|hx [N]|perf [label]|pseudolocale]")
 end
 
 local function BdevSlashHandler(msg)

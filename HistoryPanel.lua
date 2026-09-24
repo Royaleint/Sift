@@ -84,6 +84,11 @@ local CATEGORY_COLORS = {
 local CATEGORY_BADGE_LABELS = {
   RMT    = "Gold selling",
   Custom = "My Keywords",
+  -- Breakdown-chip-only signal keys (never a "dominant category" -- see
+  -- IGNORED_BREAKDOWN_KEYS below); display labels for their chip text.
+  BlockedActor = "Blocked sender",
+  Throttle     = "Throttled",
+  ManualBlock  = "Manual block",
 }
 -- Keys that describe WHY a message was caught rather than WHAT KIND of spam it
 -- is. Letting them win "dominant category" mislabels the row: a boosting ad
@@ -156,7 +161,7 @@ local function FormatChannel(entry)
     return entry.channelName
   end
   if entry.channel and CHAT_EVENT_LABELS[entry.channel] then
-    return CHAT_EVENT_LABELS[entry.channel]
+    return L[CHAT_EVENT_LABELS[entry.channel]]
   end
   return entry.channel or "\226\128\148"
 end
@@ -738,9 +743,10 @@ local function RenderRow(row, entry)
       -- "why", not a "what" -- it never wins EntryDominantCategory). Name
       -- the reason like manual blocks do instead of rendering a broken "?"
       -- (Gate 2 finding, 2026-07-28).
-      badge = L["Flood"]
+      badge = "Flood"
     end
-    row.badgeText:SetText(badge or "?")
+    -- Translated once here: badge can come from either branch above.
+    row.badgeText:SetText(badge and L[badge] or "?")
     row.scoreText:SetText(tostring(entry.score or 0))
   end
 end
@@ -1287,7 +1293,7 @@ local function RenderBreakdownChips(breakdown)
       chip:SetBackdropColor(HexNibble(hex, 1), HexNibble(hex, 2), HexNibble(hex, 3), 1)
     end
     chip.label:SetText(string.format("|cff000000%s +%d|r",
-      CATEGORY_BADGE_LABELS[item.cat] or item.cat, item.val))
+      L[CATEGORY_BADGE_LABELS[item.cat] or item.cat], item.val))
     -- Size to the label (same idiom as PlaceCategoryChips): the mapped names
     -- ("Gold selling", "My Keywords") overflow the old fixed 80px.
     local chipWidth = math.max(80, math.floor((chip.label:GetStringWidth() or 0) + 10.5))
@@ -1492,25 +1498,25 @@ local function CreateListHeader()
   header.timeLabel:SetPoint("LEFT", header, "LEFT", 10, 0)
   header.timeLabel:SetWidth(36)
   header.timeLabel:SetJustifyH("LEFT")
-  header.timeLabel:SetText("Time")
+  header.timeLabel:SetText(L["Time"])
 
   header.senderLabel = header:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   header.senderLabel:SetPoint("LEFT",  header.timeLabel, "RIGHT",  4, 0)
   header.senderLabel:SetPoint("RIGHT", header,           "RIGHT", -130, 0)
   header.senderLabel:SetJustifyH("LEFT")
-  header.senderLabel:SetText("Sender")
+  header.senderLabel:SetText(L["Sender"])
 
   header.badgeLabel = header:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   header.badgeLabel:SetPoint("RIGHT", header, "RIGHT", -69, 0)
   header.badgeLabel:SetWidth(54)
   header.badgeLabel:SetJustifyH("CENTER")
-  header.badgeLabel:SetText("Category")
+  header.badgeLabel:SetText(L["Category"])
 
   header.scoreLabel = header:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   header.scoreLabel:SetPoint("RIGHT", header, "RIGHT", -16, 0)
   header.scoreLabel:SetWidth(40)
   header.scoreLabel:SetJustifyH("RIGHT")
-  header.scoreLabel:SetText("Score")
+  header.scoreLabel:SetText(L["Score"])
 end
 
 local function CreateModernListPane()
