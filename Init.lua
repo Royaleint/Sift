@@ -114,6 +114,17 @@ local function InstallPlayerMenu()
   NS.PlayerMenu.Initialize()
 end
 
+-- SFT-099: registered at login, same gating convention as InstallPlayerMenu
+-- above -- Init's `initialized` flag, checked here rather than inside
+-- FirstRunChooser itself, so every login-hook installer follows one pattern.
+local function InstallFirstRunChooser()
+  if not initialized or not NS.FirstRunChooser or not NS.FirstRunChooser.OnLogin then
+    return
+  end
+
+  NS.FirstRunChooser.OnLogin()
+end
+
 local function ToggleHistory()
   if NS.HistoryPanel and NS.HistoryPanel.Toggle then
     NS.HistoryPanel.Toggle()
@@ -437,6 +448,19 @@ local function SlashHandler(msg)
 	end
 end
 
+-- SFT-099: /bdev chooser -- preview the first-run filter chooser on demand.
+-- Ignores the seen set for display (every row shows its shipped default),
+-- but Apply/Keep still run the real write paths. This is the only way to see
+-- the panel while Chooser.LIVE stays false, keeping it out of sight until
+-- BSP-040 gives it something worth showing.
+local function RunChooserPreview()
+  if NS.FirstRunChooser and NS.FirstRunChooser.Show then
+    NS.FirstRunChooser.Show(true)
+  else
+    Print("first-run chooser is unavailable.")
+  end
+end
+
 -- BSP-018: /bdev <subcommand> — namespace for devMode-gated commands.
 -- Universal gate at the dispatcher level; individual handlers may still
 -- defense-in-depth check IsDevMode() (e.g. RunSyntheticTest does).
@@ -447,10 +471,11 @@ local DEV_COMMANDS = {
 	hx   = ExportHistory,
 	perf = RunPerf,
 	pseudolocale = RunPseudoLocale,
+	chooser = RunChooserPreview,
 }
 
 local function PrintDevUsage()
-	Print("usage: /bdev [test|fpx [N]|fnx [N|clear]|hx [N]|perf [label]|pseudolocale]")
+	Print("usage: /bdev [test|fpx [N]|fnx [N|clear]|hx [N]|perf [label]|pseudolocale|chooser]")
 end
 
 local function BdevSlashHandler(msg)
@@ -503,6 +528,7 @@ controller:OnAddonLoaded(function() Initialize() end)
 controller:OnLogin(function()
 	InstallScanner()
 	InstallPlayerMenu()
+	InstallFirstRunChooser()
 end)
 
 SLASH_SIFT1 = "/sift"

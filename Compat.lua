@@ -16,6 +16,16 @@ local function Detect(env)
   -- correctly. (BSP-065)
   local isMistsClassic = projectID ~= nil and projectID == env.WOW_PROJECT_MISTS_CLASSIC
   local isClassicFamily = isClassicEra or isTBCAnniversary
+  -- SFT-099: which clients get an opt-in content filter pre-ticked by default.
+  -- Deliberately separate from isClassicFamily (which selects UI chrome/glyph
+  -- fallbacks, and excludes MoP): this one is a content-defaults question, and
+  -- Mists Classic ships the same era-appropriate content MoP's own filters
+  -- target, so it belongs here despite staying out of isClassicFamily. WoW
+  -- Forever content is not classic content and gets the retail default;
+  -- it identifies as WOW_PROJECT_MAINLINE or an ID none of the known
+  -- constants match, but that is unverified until the in-game P0 check
+  -- (SFT-099 Gate 2) confirms it -- see run_compat_tests.lua's case 99.
+  local classicContentDefaults = isClassicEra or isTBCAnniversary or isMistsClassic
 
   local hasModernHistoryList =
     type(env.CreateScrollBoxListLinearView) == "function"
@@ -42,6 +52,7 @@ local function Detect(env)
     isTBCAnniversary = isTBCAnniversary,
     isMistsClassic = isMistsClassic,
     isClassicFamily = isClassicFamily,
+    classicContentDefaults = classicContentDefaults,
     hasModernHistoryList = hasModernHistoryList,
     hasClassicHistoryList = hasClassicHistoryList,
     hasChatReportDialog = hasChatReportDialog,

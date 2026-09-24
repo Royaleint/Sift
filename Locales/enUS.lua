@@ -326,6 +326,14 @@ L["Resize panel"] = "Resize panel"
 L["Drag to resize the Config panel."] = "Drag to resize the Config panel."
 L["Minimum size: 600 \195\151 400."] = "Minimum size: 600 \195\151 400."
 
+-- FirstRunChooser panel (SFT-099). LIVE = false today (FirstRunChooser.lua),
+-- so reached only through /bdev chooser -- see that module for the invariant.
+L["Sift: choose what to hide"] = "Sift: choose what to hide"
+L["Pick what Sift hides. You can change these any time with /sift config."] = "Pick what Sift hides. You can change these any time with /sift config."
+L["Keep current settings"] = "Keep current settings"
+L["%s (paused)"] = "%s (paused)"
+L["Filter choices not saved. Sift will ask again next login; change them any time with /sift config."] = "Filter choices not saved. Sift will ask again next login; change them any time with /sift config."
+
 -- Init.lua: /bdev pseudolocale command
 L["pseudo-locale applied. Open a Sift panel now; a panel you already opened this session needs /reload, then run this again first."] = "pseudo-locale applied. Open a Sift panel now; a panel you already opened this session needs /reload, then run this again first."
 L["pseudo-locale is already active this session. /reload to restore English, then run it again."] = "pseudo-locale is already active this session. /reload to restore English, then run it again."
