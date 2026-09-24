@@ -33,7 +33,7 @@ local L = setmetatable({}, {
 NS.L = L
 
 -- History panel: window chrome and section headers
-L["Sift — History"] = "Sift — History"
+L["Sift History"] = "Sift History"
 L["DETECTION STATS"] = "DETECTION STATS"
 L["BY SURFACE"] = "BY SURFACE"
 L["BY CATEGORY"] = "BY CATEGORY"

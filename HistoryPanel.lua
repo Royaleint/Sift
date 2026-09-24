@@ -446,7 +446,7 @@ local function CreatePlainHistoryFrame(parent)
 
   header.TitleText = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
   header.TitleText:SetPoint("CENTER", header, "CENTER", 0, 0)
-  header.TitleText:SetText(L["Sift — History"])
+  header.TitleText:SetText(L["Sift History"])
   f.TitleContainer = header
 
   local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
@@ -480,9 +480,9 @@ local function CreateBackdropFrame(parent)
   end
   HidePortraitChrome(f)
   if f.SetTitle then
-    f:SetTitle(L["Sift — History"])
+    f:SetTitle(L["Sift History"])
   elseif f.TitleContainer and f.TitleContainer.TitleText then
-    f.TitleContainer.TitleText:SetText(L["Sift — History"])
+    f.TitleContainer.TitleText:SetText(L["Sift History"])
   end
   -- Center the title within TitleContainer (template default is LEFT-anchored).
   if f.TitleContainer and f.TitleContainer.TitleText then
