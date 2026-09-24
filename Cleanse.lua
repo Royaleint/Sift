@@ -277,9 +277,9 @@ end
 -- + a _DetectMixedScript pass that built and threw away a whole copy) — into ONE
 -- codepoint walk with one output buffer. Pure-ASCII input fast-paths past it
 -- entirely (Stages 2-5 are identity on ASCII; ASCII is never mixed-script).
--- Byte-identical to the staged pipeline, locked by run_cleanse_differential in
--- Sift_Dev/tools/. The _Stage2..5 / _DetectMixedScript functions above are
--- retained as that spec and as unit-test targets — do not delete them.
+-- Byte-identical to the staged pipeline, locked by a differential test in
+-- this addon's build tooling. The _Stage2..5 / _DetectMixedScript functions
+-- above are retained as that spec and as unit-test targets — do not delete them.
 local function _isFormatChar(cp)
   if cp == 0x00AD or cp == 0xFEFF or cp == 0x2060 then return true end
   if cp >= 0x200B and cp <= 0x200D then return true end
