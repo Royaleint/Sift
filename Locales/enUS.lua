@@ -268,6 +268,7 @@ L["Clear All"] = "Clear All"
 L["Remove every player from the Blocked list. Confirmation required."] = "Remove every player from the Blocked list. Confirmation required."
 L["Show the previous page of the Blocked list."] = "Show the previous page of the Blocked list."
 L["Show the next page of the Blocked list."] = "Show the next page of the Blocked list."
+L["%s (blocked by you)"] = "%s (blocked by you)"
 
 -- Config panel: My Keywords / Never Block sections (KEYWORD_SECTIONS)
 L["Block phrase"] = "Block phrase"

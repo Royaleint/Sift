@@ -1917,7 +1917,11 @@ RenderBlocked = function()
 
     local label = TrackNative(row:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
     label:SetPoint("LEFT", row, "LEFT", 8, 6)
-    label:SetText(rowData.label)
+    if type(rowData.entry) == "table" and rowData.entry.manual == true then
+      label:SetText(L["%s (blocked by you)"]:format(rowData.label))
+    else
+      label:SetText(rowData.label)
+    end
     label:Show()
 
     local meta = TrackNative(row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"))
