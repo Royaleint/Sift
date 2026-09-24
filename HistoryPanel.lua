@@ -525,39 +525,75 @@ local function CreatePanes(parent)
   return list, detail
 end
 
+-- Neither the row list nor the stats tiles change from a click, a filter
+-- edit, or a sort change. History.GetRevision() moves only when the stored
+-- data actually does (see its own comment in History.lua for the exact
+-- list); whenever it hasn't moved since the last fetch here, the same array
+-- and stats objects are handed back instead of walking History again. The
+-- cache lives on the HistoryPanel module table, as fields, rather than as
+-- file-scope locals.
 local function GetEntries()
-  if NS.History and NS.History.GetAll then
-    return NS.History.GetAll()
+  local revision = NS.History and NS.History.GetRevision and NS.History.GetRevision()
+  if revision ~= nil and HistoryPanel._entriesRevision == revision then
+    return HistoryPanel._entries
   end
-  local db = NS.DB and NS.DB.db
-  return (db and db.char and db.char.history) or {}
+
+  local entries
+  if NS.History and NS.History.GetAll then
+    entries = NS.History.GetAll()
+  else
+    local db = NS.DB and NS.DB.db
+    entries = (db and db.char and db.char.history) or {}
+  end
+  if revision ~= nil then
+    HistoryPanel._entries = entries
+    HistoryPanel._entriesRevision = revision
+  end
+  return entries
 end
 
 -- BSP-036: scope is "char" (this character, the long-standing default) or
--- "account" (summed across every stored character namespace).
+-- "account" (summed across every stored character namespace). The two scopes
+-- cache independently (HistoryPanel._stats is keyed by scope) since they
+-- describe different things and can both be looked at in the same session.
 local function GetHistoryStats(scope)
-  if scope == "account" and NS.History and NS.History.GetAccountStats then
-    return NS.History.GetAccountStats()
-  end
-  if NS.History and NS.History.GetStats then
-    return NS.History.GetStats()
+  scope = scope or "char"
+  local revision = NS.History and NS.History.GetRevision and NS.History.GetRevision()
+  if revision ~= nil then
+    if HistoryPanel._statsRevision ~= revision then
+      HistoryPanel._stats = {}
+      HistoryPanel._statsRevision = revision
+    end
+    local cached = HistoryPanel._stats[scope]
+    if cached then return cached end
   end
 
-  local entries = GetEntries()
-  return {
-    lifetime = {
-      detections = #entries,
-      blocked = #entries,
-      restored = 0,
-      bySurface = {},
-    },
-    retained = {
-      detections = #entries,
-      blocked = #entries,
-      restored = 0,
-      bySurface = {},
-    },
-  }
+  local result
+  if scope == "account" and NS.History and NS.History.GetAccountStats then
+    result = NS.History.GetAccountStats()
+  elseif NS.History and NS.History.GetStats then
+    result = NS.History.GetStats()
+  else
+    local entries = GetEntries()
+    result = {
+      lifetime = {
+        detections = #entries,
+        blocked = #entries,
+        restored = 0,
+        bySurface = {},
+      },
+      retained = {
+        detections = #entries,
+        blocked = #entries,
+        restored = 0,
+        bySurface = {},
+      },
+    }
+  end
+  if revision ~= nil then
+    HistoryPanel._stats[scope] = result
+  end
+  return result
 end
 
 local function UpdateHistoryStatsText()
@@ -910,9 +946,9 @@ local function RenderRow(row, entry)
   end
 end
 
-local function FindEntryById(id)
+local function FindEntryById(id, entries)
   if id == nil then return nil end
-  for _, e in ipairs(CurrentEntries()) do
+  for _, e in ipairs(entries or CurrentEntries()) do
     if e.id == id then return e end
   end
   return nil
@@ -950,11 +986,11 @@ end
 
 local RefreshDetail
 
-local function RenderSenderHistory(entry)
+local function RenderSenderHistory(entry, entries)
   if not detailPane or not detailPane.footer or not detailPane.footer.senderHistory then
     return
   end
-  local entries = CurrentEntries()
+  entries = entries or CurrentEntries()
   local count, firstSeen, lastSeen = 0, nil, nil
   for _, e in ipairs(entries) do
     local match
@@ -1274,10 +1310,14 @@ end
 -- The legend under the list follows the same residue rule as the stats line:
 -- active categories always, retired ones only while this character's lifetime
 -- counts still carry them. Items are reused across rebuilds, never destroyed.
-local function RefreshLegend()
+-- The legend always describes this character (never the account-scope
+-- aggregate), so a caller that already fetched char-scope stats for its own
+-- render can hand them over here instead of paying for the same walk twice;
+-- omitting `stats` fetches (and caches) them fresh.
+local function RefreshLegend(stats)
   local legend = listPane and listPane.legend
   if not legend then return end
-  local stats = NS.History and NS.History.GetStats and NS.History.GetStats()
+  stats = stats or GetHistoryStats("char")
   local byCategory = stats and stats.lifetime and stats.lifetime.byCategory or {}
   -- SFT-085: floodBadgeCount, not floodCount -- the swatch explains the grey
   -- stripe, and RenderRow stripes/badges Flood on ANY outcome (no blocked
@@ -1401,8 +1441,10 @@ local function RefreshStatsArea()
     L["Repeats"], throttled, L["Bubbles suppressed"], bubbles, L["Spam wave (recent)"], flood))
 
   -- Keep the list legend in sync with the same counts (e.g. Clear history
-  -- can make a retired category's last rows disappear).
-  RefreshLegend()
+  -- can make a retired category's last rows disappear). `stats` above is
+  -- already char-scoped when statsScope is "char", so hand it over directly;
+  -- account scope still needs the legend's own char-scope fetch.
+  RefreshLegend(statsScope == "char" and stats or nil)
 
   -- BSP-055 / Argus Nit 1: size the scrollChild to fit actual content so
   -- pathological label wrapping (zhCN/ruRU, new surfaces, new categories)
@@ -1503,7 +1545,7 @@ RefreshDetail = function()
   end
   ShowEmptyState(false)
 
-  local entry = FindEntryById(selectedEntryId)
+  local entry = FindEntryById(selectedEntryId, entries)
   if not entry then
     local sorted = ApplyFilterAndSort(entries)
     entry = sorted[1]
@@ -1557,7 +1599,7 @@ RefreshDetail = function()
 
   RenderBodyFlex(entry)
   RenderBreakdownChips(entry.breakdown)
-  RenderSenderHistory(entry)
+  RenderSenderHistory(entry, entries)
   RenderActions(entry)
   RefreshStatsArea()
 end
@@ -1566,6 +1608,9 @@ RefreshList = function()
   if not listPane or not listPane.listBackend then return end
 
   local allEntries = GetEntries() or {}
+  -- The revision this draw reflects, so a later classic click can tell
+  -- whether the rows on screen are still current (see SelectEntry).
+  HistoryPanel._listRevision = NS.History and NS.History.GetRevision and NS.History.GetRevision()
   currentEntriesSnapshot = allEntries
   UpdateHistoryStatsText()
   local filtered = ApplyFilterAndSort(allEntries)
@@ -1617,14 +1662,35 @@ end
 
 SelectEntry = function(id)
   selectedEntryId = id
-  if RefreshDetail then RefreshDetail() end
-  if listPane and listPane.listBackend == "classic" and RefreshList then
-    RefreshList()
+  -- Classic backend: the rows on screen were drawn from a specific History
+  -- revision (see RefreshList). Usually a click is just a selection change
+  -- and the row data underneath hasn't moved, so only the highlight needs
+  -- repainting on the rows already there. But if a message landed, or a trim
+  -- ran, while the panel was open, those rows are stale -- the clicked row
+  -- may no longer even be the one the player sees at the history cap -- so
+  -- run the real redraw once instead of trusting them.
+  if listPane and listPane.listBackend == "classic" then
+    local revision = NS.History and NS.History.GetRevision and NS.History.GetRevision()
+    if revision ~= nil and revision ~= HistoryPanel._listRevision then
+      if RefreshList then RefreshList() end
+      return
+    end
+    if RefreshDetail then RefreshDetail() end
+    local scroll = listPane.scroll
+    if scroll and scroll.rows then
+      for _, row in ipairs(scroll.rows) do
+        if row.entry then
+          row.selection:SetShown(selectedEntryId == row.entry.id)
+        end
+      end
+    end
     return
   end
-  -- Update the existing-selection visual on rendered rows without rebuilding
-  -- the data provider (which would reset scroll). Route through the controller
-  -- so the abstraction is respected and Destroy() remains reachable.
+  if RefreshDetail then RefreshDetail() end
+  -- Modern backend: update the existing-selection visual on rendered rows
+  -- without rebuilding the data provider (which would reset scroll). Route
+  -- through the controller so the abstraction is respected and Destroy()
+  -- remains reachable.
   if listPane and listPane.list then
     listPane.list:ForEachFrame(function(rowFrame, entryData)
       if rowFrame.selection then
@@ -2675,6 +2741,16 @@ local function BuildFrame()
 
   frame = CreateBackdropFrame(UIParent)
   frame:SetMovable(true)
+  -- Drop the cached entries array and stats objects (and the revisions they
+  -- were fetched at) once the panel closes, however it closes -- the close
+  -- button, Toggle, Escape. Otherwise a message that was blocked or cleared
+  -- while the panel was open, including its stored text, stays reachable
+  -- through this cache for no reason once nothing on screen needs it.
+  frame:HookScript("OnHide", function()
+    HistoryPanel._entries, HistoryPanel._entriesRevision = nil, nil
+    HistoryPanel._stats, HistoryPanel._statsRevision = nil, nil
+    HistoryPanel._listRevision = nil
+  end)
   -- BSP-055 Gate 2 followup-v2: fixed-size panel. SetResizable / SetResizeBounds
   -- removed; the resize handle is no longer constructed. The panel can still
   -- be moved by dragging the title bar.

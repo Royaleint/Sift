@@ -16,6 +16,23 @@ local IGNORED_BREAKDOWN_KEYS = {
   ManualBlock = true,
 }
 
+-- Bumped by every function below that changes a stored record or a lifetime
+-- counter, so a reader (HistoryPanel) can tell "nothing changed since I last
+-- looked" apart from "go read it again" without diffing the data itself.
+-- History is also written directly outside this file (legacy-store merge,
+-- shape repair, migrations), but only at load/login, before anything could
+-- have read a revision yet; any such direct write reachable later would need
+-- its own bump here.
+local dataRevision = 0
+
+local function BumpRevision()
+  dataRevision = dataRevision + 1
+end
+
+function History.GetRevision()
+  return dataRevision
+end
+
 local function GetChar()
   return NS.DB and NS.DB.GetChar and NS.DB.GetChar()
 end
@@ -232,6 +249,7 @@ function History.Append(record)
     table.remove(char.history, 1)
   end
 
+  BumpRevision()
   return record.id
 end
 
@@ -276,6 +294,7 @@ function History.MarkRestored(id)
         record.outcome = "restored"
         local stats = EnsureStats(char)
         stats.restored = (tonumber(stats.restored) or 0) + 1
+        BumpRevision()
       end
       return
     end
@@ -379,6 +398,7 @@ function History.Clear()
     end
   end
   char.history = history
+  BumpRevision()
   return count
 end
 
@@ -394,6 +414,7 @@ function History.TrimToMax(maxEntries)
     table.remove(history, 1)
     removed = removed + 1
   end
+  if removed > 0 then BumpRevision() end
   return removed
 end
 
@@ -471,6 +492,7 @@ function History.TrimAllCharacters()
     end
   end
   local globalRemoved = EvictToGlobalCap(charTable, globalCap)
+  if perCharRemoved > 0 or globalRemoved > 0 then BumpRevision() end
   return perCharRemoved, globalRemoved
 end
 
@@ -479,6 +501,7 @@ function History.IncrementThrottled()
   if not char then return end
   local stats = EnsureStats(char)
   stats.throttled = (tonumber(stats.throttled) or 0) + 1
+  BumpRevision()
 end
 
 function History.IncrementBubblesSuppressed()
@@ -486,6 +509,7 @@ function History.IncrementBubblesSuppressed()
   if not char then return end
   local stats = EnsureStats(char)
   stats.bubblesSuppressed = (tonumber(stats.bubblesSuppressed) or 0) + 1
+  BumpRevision()
 end
 
 function History.RetroactiveBlock(id)
@@ -498,6 +522,7 @@ function History.RetroactiveBlock(id)
       local stats = EnsureStats(char)
       stats.passThru = math.max(0, (tonumber(stats.passThru) or 0) - 1)
       stats.blocked = (tonumber(stats.blocked) or 0) + 1
+      BumpRevision()
       return true
     end
   end
@@ -514,6 +539,7 @@ function History.RebuildByCategory()
   for _, count in pairs(stats.byCategory) do
     total = total + (tonumber(count) or 0)
   end
+  BumpRevision()
   return total
 end
 
