@@ -40,9 +40,7 @@ end
 -- SFT-089: this still holds for the History tab itself -- the panel only
 -- leaves this size while the embedded Config tab is showing, and restores
 -- it on return.
-local FIXED_PANEL_WIDTH    = 940
-local FIXED_PANEL_HEIGHT   = 560
-
+--
 -- SFT-089: embedded Config auto-resize. Matches configHost's own
 -- BOTTOMRIGHT offset (see BuildFrame) so the height computed from measured
 -- content restores the same bottom margin configHost already reserves below
@@ -50,21 +48,36 @@ local FIXED_PANEL_HEIGHT   = 560
 -- (never-expected) case ConfigPanel reports no measurable content -- the nav
 -- column itself is part of that measurement, so it is what actually keeps a
 -- resize from clipping the nav, not this constant.
-local CONFIG_HOST_BOTTOM_MARGIN   = 40
-local CONFIG_MIN_EMBEDDED_HEIGHT  = 200
-
-local LIST_ROW_HEIGHT  = 26
-local SCROLLBAR_GUTTER = 22
-local LIST_MAX_ROWS    = 40
-
+--
 -- listPane is locked at DEFAULT_LIST_PANE_WIDTH after BSP-055 followup-v3
 -- (splitter no longer draggable). MIN_LIST_PANE_WIDTH is retained as a
 -- clamp on GetStoredListPaneWidth so any pre-existing too-narrow value
 -- in SavedVariables snaps up to a width where the BSP-008 legend strip
 -- and column headers still fit.
-local MIN_LIST_PANE_WIDTH   = 420
-local DEFAULT_LIST_PANE_WIDTH = 440
-local SPLITTER_WIDTH = 4
+--
+-- Every plain-number layout constant for this file lives here, one local
+-- instead of one per constant.
+local LAYOUT = {
+  PANEL_WIDTH  = 940,
+  PANEL_HEIGHT = 560,
+
+  CONFIG_HOST_BOTTOM_MARGIN  = 40,
+  CONFIG_MIN_EMBEDDED_HEIGHT = 200,
+
+  LIST_ROW_HEIGHT  = 26,
+  SCROLLBAR_GUTTER = 22,
+  LIST_MAX_ROWS    = 40,
+
+  MIN_LIST_PANE_WIDTH     = 420,
+  DEFAULT_LIST_PANE_WIDTH = 440,
+  SPLITTER_WIDTH          = 4,
+
+  DOUBLE_CLICK_WINDOW = 0.4,
+  MAX_ORIGINAL_CHARS  = 800,
+
+  CHIP_GAP       = 3,
+  CHIP_MIN_WIDTH = 38,
+}
 
 local CATEGORY_COLORS = {
   RMT        = "c44",
@@ -184,9 +197,6 @@ local SORT_LABELS = {
   sender = "Sender",
 }
 
-local DOUBLE_CLICK_WINDOW    = 0.4
-local MAX_ORIGINAL_CHARS     = 800
-
 -- BSP-008 Commit 5: stats area tile metadata (used by BuildStatsArea +
 -- RefreshStatsArea below; declared at file scope so RenderActions / other
 -- helpers don't need to forward-reference them).
@@ -304,15 +314,15 @@ end
 
 local function GetStoredListPaneWidth()
   local store = GetCharStore() or {}
-  local w = tonumber(store.listPaneWidth) or DEFAULT_LIST_PANE_WIDTH
-  if w < MIN_LIST_PANE_WIDTH then w = MIN_LIST_PANE_WIDTH end
+  local w = tonumber(store.listPaneWidth) or LAYOUT.DEFAULT_LIST_PANE_WIDTH
+  if w < LAYOUT.MIN_LIST_PANE_WIDTH then w = LAYOUT.MIN_LIST_PANE_WIDTH end
   return w
 end
 
 -- BSP-055 Gate 2 followup-v3: SaveListPaneWidth removed. The splitter is
 -- locked (CreateSplitter has no drag handler) so listPaneWidth no longer
 -- changes after the initial CreatePanes seed. The SV key keeps any older
--- value harmlessly; GetStoredListPaneWidth clamps it to MIN_LIST_PANE_WIDTH.
+-- value harmlessly; GetStoredListPaneWidth clamps it to LAYOUT.MIN_LIST_PANE_WIDTH.
 
 local function SavePosition()
   if not frame then return end
@@ -333,7 +343,7 @@ end
 local function ApplyStoredGeometry()
   local store = GetCharStore() or {}
 
-  frame:SetSize(FIXED_PANEL_WIDTH, FIXED_PANEL_HEIGHT)
+  frame:SetSize(LAYOUT.PANEL_WIDTH, LAYOUT.PANEL_HEIGHT)
 
   frame:ClearAllPoints()
   if store.x and store.y then
@@ -388,17 +398,17 @@ end
 -- footprint. Pure: takes plain numbers, calls nothing WoW-specific, so it is
 -- testable without loading either UI module.
 function HistoryPanel.ComputeConfigWindowSize(configEmbedWidth, configMinHeight, frameTop, contentBottom)
-  local width = configEmbedWidth or FIXED_PANEL_WIDTH
-  if width > FIXED_PANEL_WIDTH then width = FIXED_PANEL_WIDTH end
+  local width = configEmbedWidth or LAYOUT.PANEL_WIDTH
+  if width > LAYOUT.PANEL_WIDTH then width = LAYOUT.PANEL_WIDTH end
 
-  local height = FIXED_PANEL_HEIGHT
+  local height = LAYOUT.PANEL_HEIGHT
   if frameTop and contentBottom then
-    height = (frameTop - contentBottom) + CONFIG_HOST_BOTTOM_MARGIN
+    height = (frameTop - contentBottom) + LAYOUT.CONFIG_HOST_BOTTOM_MARGIN
   end
-  local floor = configMinHeight or CONFIG_MIN_EMBEDDED_HEIGHT
-  if floor < CONFIG_MIN_EMBEDDED_HEIGHT then floor = CONFIG_MIN_EMBEDDED_HEIGHT end
+  local floor = configMinHeight or LAYOUT.CONFIG_MIN_EMBEDDED_HEIGHT
+  if floor < LAYOUT.CONFIG_MIN_EMBEDDED_HEIGHT then floor = LAYOUT.CONFIG_MIN_EMBEDDED_HEIGHT end
   if height < floor then height = floor end
-  if height > FIXED_PANEL_HEIGHT then height = FIXED_PANEL_HEIGHT end
+  if height > LAYOUT.PANEL_HEIGHT then height = LAYOUT.PANEL_HEIGHT end
 
   return width, height
 end
@@ -519,7 +529,7 @@ local function CreatePanes(parent)
   list:SetWidth(listWidth)
 
   local detail = CreateFrame("Frame", nil, parent)
-  detail:SetPoint("TOPLEFT",     parent, "TOPLEFT",     6 + listWidth + SPLITTER_WIDTH + 4, -86)
+  detail:SetPoint("TOPLEFT",     parent, "TOPLEFT",     6 + listWidth + LAYOUT.SPLITTER_WIDTH + 4, -86)
   detail:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -6, 40)
 
   return list, detail
@@ -706,12 +716,12 @@ end
 
 local function VisibleRowCount(scroll)
   local height = scroll and scroll.GetHeight and scroll:GetHeight() or 0
-  local count = math.floor(height / LIST_ROW_HEIGHT)
+  local count = math.floor(height / LAYOUT.LIST_ROW_HEIGHT)
   if count < 1 then
     count = 1
   end
-  if count > LIST_MAX_ROWS then
-    count = LIST_MAX_ROWS
+  if count > LAYOUT.LIST_MAX_ROWS then
+    count = LAYOUT.LIST_MAX_ROWS
   end
   return count
 end
@@ -753,26 +763,33 @@ end
 -- Hover-tooltip text for the History row badges, breakdown chips, legend
 -- swatches, and column and stats-line hosts below. The resolvers below
 -- return these as raw L[] keys, resolved at hover time.
-local H_TIME = "How long ago Sift caught this message. Entries older than 90 days show the date instead."
-local H_SENDER = "The player who sent the message. A check mark means you restored it, and (pass-thru) means it was left in chat."
-local H_CATEGORY = "The kind of spam Sift found. Spam wave means the same message was posted several times in a short time, and You means you blocked the sender yourself."
-local H_SCORE = "How suspicious the message looked to Sift. Higher means more suspicious, and anything at or above your Block threshold gets caught."
-local YOU_HOVER = "You blocked this player yourself with Block (Sift) on their right-click menu."
-local SPAM_WAVE_ROW = "Sift caught this because the same message was posted several times within your Spam wave window, by one player or many."
-local QMARK_TITLE = "Kind of spam not saved"
-local QMARK_BODY = "Sift caught this but didn't save which kind of spam it was. Older versions of Sift left that out when a player repeated a message Sift had already caught."
--- RETIRED and ADDED are two lines so the row and legend tooltips can reuse
+--
+-- RETIRED and ADDED are two entries so the row and legend tooltips can reuse
 -- RETIRED without repeating the score-change sentence.
-local RETIRED = "A kind of spam Sift still catches, but it no longer has its own button to pause it or filter by it."
-local ADDED = "Added %d to this message's score."
-local CHIP_BLOCKED = "This player is on your Blocked list, so Sift added %d to the score."
-local CHIP_MANUAL = "You blocked this player yourself, so Sift caught this message whatever its score."
-local CHIP_SPAM_WAVE = "The same message was posted several times within your Spam wave window, which added %d to the score."
-local CHIP_REPEAT = "This message repeated one Sift had already caught from the same sender."
-local SPAM_WAVE_SWATCH = "Gray marks messages Sift caught because the same message was posted several times within your Spam wave window, with no spam category of their own. Players you blocked yourself, and entries marked ?, also show in gray."
-local STAT_SURFACE = "Lifetime detections split by where they came from: Chat, Whisper, and Bnet whisper. Shows this character or the whole account, depending on the Character or Account button."
-local STAT_CATEGORY = "Lifetime detections split by spam category, for this character or the whole account. A gray number means that category is currently Paused or Off."
-local STAT_PIPELINE = "Repeats counts messages that repeat spam Sift already caught from the same sender. Bubbles suppressed counts the times Sift hid a chat bubble for a blocked Say or Yell. Spam wave (recent) counts blocked messages still in your History that were caught only because the same message was posted several times, so it drops as old entries are removed."
+local TIPS = {
+  TIME     = "How long ago Sift caught this message. Entries older than 90 days show the date instead.",
+  SENDER   = "The player who sent the message. A check mark means you restored it, and (pass-thru) means it was left in chat.",
+  CATEGORY = "The kind of spam Sift found. Spam wave means the same message was posted several times in a short time, and You means you blocked the sender yourself.",
+  SCORE    = "How suspicious the message looked to Sift. Higher means more suspicious, and anything at or above your Block threshold gets caught.",
+
+  YOU_HOVER     = "You blocked this player yourself with Block (Sift) on their right-click menu.",
+  SPAM_WAVE_ROW = "Sift caught this because the same message was posted several times within your Spam wave window, by one player or many.",
+  QMARK_TITLE   = "Kind of spam not saved",
+  QMARK_BODY    = "Sift caught this but didn't save which kind of spam it was. Older versions of Sift left that out when a player repeated a message Sift had already caught.",
+
+  RETIRED = "A kind of spam Sift still catches, but it no longer has its own button to pause it or filter by it.",
+  ADDED   = "Added %d to this message's score.",
+
+  CHIP_BLOCKED      = "This player is on your Blocked list, so Sift added %d to the score.",
+  CHIP_MANUAL       = "You blocked this player yourself, so Sift caught this message whatever its score.",
+  CHIP_SPAM_WAVE    = "The same message was posted several times within your Spam wave window, which added %d to the score.",
+  CHIP_REPEAT       = "This message repeated one Sift had already caught from the same sender.",
+  SPAM_WAVE_SWATCH  = "Gray marks messages Sift caught because the same message was posted several times within your Spam wave window, with no spam category of their own. Players you blocked yourself, and entries marked ?, also show in gray.",
+
+  STAT_SURFACE  = "Lifetime detections split by where they came from: Chat, Whisper, and Bnet whisper. Shows this character or the whole account, depending on the Character or Account button.",
+  STAT_CATEGORY = "Lifetime detections split by spam category, for this character or the whole account. A gray number means that category is currently Paused or Off.",
+  STAT_PIPELINE = "Repeats counts messages that repeat spam Sift already caught from the same sender. Bubbles suppressed counts the times Sift hid a chat bubble for a blocked Say or Yell. Spam wave (recent) counts blocked messages still in your History that were caught only because the same message was posted several times, so it drops as old entries are removed.",
+}
 
 -- Pure resolvers (exported for tests). Every display goes through L[] at
 -- hover time, and %d formatting is applied after the lookup.
@@ -781,17 +798,17 @@ local STAT_PIPELINE = "Repeats counts messages that repeat spam Sift already cau
 -- disagree.
 function HistoryPanel.RowTipKeys(entry)
   if entry.reason == "manual-block" then
-    return "You", "You", YOU_HOVER
+    return "You", "You", TIPS.YOU_HOVER
   end
 
   local cat = DominantCategory(entry.breakdown)
   if cat then
     if RETIRED_CATEGORY_SET[cat] then
       -- The visible badge does not mark retired categories, so badgeKey and
-      -- titleKey are the same plain label; RETIRED is carried only as
+      -- titleKey are the same plain label; TIPS.RETIRED is carried only as
       -- bodyKey, the extra sentence the tooltip adds.
       local label = CATEGORY_BADGE_LABELS[cat] or cat
-      return label, label, RETIRED
+      return label, label, TIPS.RETIRED
     end
     if CHIP_FULL_NAMES[cat] then
       -- `or cat` fallback keeps the badge intact for a category with no
@@ -808,43 +825,43 @@ function HistoryPanel.RowTipKeys(entry)
 
   if type(entry.breakdown) == "table" and (tonumber(entry.breakdown.Flood) or 0) > 0 then
     local label = CATEGORY_BADGE_LABELS.Flood or "Flood"
-    return label, label, SPAM_WAVE_ROW
+    return label, label, TIPS.SPAM_WAVE_ROW
   end
 
   -- No category and no Flood: badgeKey stays nil so RenderRow keeps setting
   -- the literal "?" (not run through L[]).
-  return nil, QMARK_TITLE, QMARK_BODY
+  return nil, TIPS.QMARK_TITLE, TIPS.QMARK_BODY
 end
 
 function HistoryPanel.ChipTipKeys(cat, val)
   local label = CATEGORY_BADGE_LABELS[cat] or cat
   if RETIRED_CATEGORY_SET[cat] then
-    return label, RETIRED, ADDED, val
+    return label, TIPS.RETIRED, TIPS.ADDED, val
   end
   if CHIP_FULL_NAMES[cat] then
-    return CHIP_FULL_NAMES[cat], ADDED, nil, val
+    return CHIP_FULL_NAMES[cat], TIPS.ADDED, nil, val
   end
   if cat == "BlockedActor" then
-    return label, CHIP_BLOCKED, nil, val
+    return label, TIPS.CHIP_BLOCKED, nil, val
   end
   if cat == "ManualBlock" then
-    return label, CHIP_MANUAL, nil, nil
+    return label, TIPS.CHIP_MANUAL, nil, nil
   end
   if cat == "Flood" then
-    return label, CHIP_SPAM_WAVE, nil, val
+    return label, TIPS.CHIP_SPAM_WAVE, nil, val
   end
   if cat == "Throttle" then
-    return label, CHIP_REPEAT, nil, nil
+    return label, TIPS.CHIP_REPEAT, nil, nil
   end
   return label, nil, nil, nil
 end
 
 function HistoryPanel.LegendTipKeys(cat)
   if cat == "Flood" then
-    return CATEGORY_BADGE_LABELS.Flood or "Flood", SPAM_WAVE_SWATCH
+    return CATEGORY_BADGE_LABELS.Flood or "Flood", TIPS.SPAM_WAVE_SWATCH
   end
   if RETIRED_CATEGORY_SET[cat] then
-    return CATEGORY_BADGE_LABELS[cat] or cat, RETIRED
+    return CATEGORY_BADGE_LABELS[cat] or cat, TIPS.RETIRED
   end
   if CHIP_FULL_NAMES[cat] then
     return CHIP_FULL_NAMES[cat], nil
@@ -1471,8 +1488,8 @@ local function RenderBodyFlex(entry)
   if not detailPane or not detailPane.body then return end
   local body = detailPane.body
   local original = entry and entry.original or ""
-  if #original > MAX_ORIGINAL_CHARS then
-    original = original:sub(1, MAX_ORIGINAL_CHARS) .. " \226\128\166(truncated)"
+  if #original > LAYOUT.MAX_ORIGINAL_CHARS then
+    original = original:sub(1, LAYOUT.MAX_ORIGINAL_CHARS) .. " \226\128\166(truncated)"
   end
   body.text:SetText(original)
 
@@ -1625,7 +1642,7 @@ RefreshList = function()
     -- Keep the FauxScrollFrame visible even when the list is shorter than the
     -- viewport; otherwise Blizzard's template hides the frame and its rows.
     -- Hide only the scrollbar chrome when there is nothing to scroll.
-    FauxScrollFrame_Update(scroll, #filtered, visibleRows, LIST_ROW_HEIGHT,
+    FauxScrollFrame_Update(scroll, #filtered, visibleRows, LAYOUT.LIST_ROW_HEIGHT,
       nil, nil, nil, nil, nil, nil, true)
     local scrollBar = ClassicScrollBar(scroll)
     if scrollBar then
@@ -1633,7 +1650,7 @@ RefreshList = function()
     end
     local offset = scrollable and FauxScrollFrame_GetOffset(scroll) or 0
 
-    for i = 1, LIST_MAX_ROWS do
+    for i = 1, LAYOUT.LIST_MAX_ROWS do
       local row = scroll.rows[i]
       local entry = filtered[offset + i]
       if row and entry and i <= visibleRows then
@@ -1760,7 +1777,7 @@ local function CreateListHeader()
   local header = CreateFrame("Frame", nil, listPane)
   header:SetHeight(18)
   header:SetPoint("TOPLEFT",  listPane, "TOPLEFT",  0, 0)
-  header:SetPoint("TOPRIGHT", listPane, "TOPRIGHT", -SCROLLBAR_GUTTER, 0)
+  header:SetPoint("TOPRIGHT", listPane, "TOPRIGHT", -LAYOUT.SCROLLBAR_GUTTER, 0)
   listPane.columnHeader = header
 
   header.timeLabel = header:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -1799,10 +1816,10 @@ local function CreateListHeader()
     host:SetPoint("RIGHT", label, "RIGHT", 0, 0)
     AttachTooltip(host, title, body)
   end
-  AddHeaderTip(header.timeLabel,   "Time",     H_TIME)
-  AddHeaderTip(header.senderLabel, "Sender",   H_SENDER)
-  AddHeaderTip(header.badgeLabel,  "Category", H_CATEGORY)
-  AddHeaderTip(header.scoreLabel,  "Score",    H_SCORE)
+  AddHeaderTip(header.timeLabel,   "Time",     TIPS.TIME)
+  AddHeaderTip(header.senderLabel, "Sender",   TIPS.SENDER)
+  AddHeaderTip(header.badgeLabel,  "Category", TIPS.CATEGORY)
+  AddHeaderTip(header.scoreLabel,  "Score",    TIPS.SCORE)
 end
 
 local function CreateModernListPane()
@@ -1821,7 +1838,7 @@ local function CreateModernListPane()
     name        = "SiftHistoryList",
     parent      = listPane,
     elementType = "Button",
-    extent      = LIST_ROW_HEIGHT,
+    extent      = LAYOUT.LIST_ROW_HEIGHT,
     spacing     = 0,
     initializer = function(button, entry)
       InitListRow(button)
@@ -1834,7 +1851,7 @@ local function CreateModernListPane()
           return
         end
         local now = GetTime()
-        if self._lastClick and (now - self._lastClick) < DOUBLE_CLICK_WINDOW then
+        if self._lastClick and (now - self._lastClick) < LAYOUT.DOUBLE_CLICK_WINDOW then
           self._lastClick = nil
           PerformRestore(entry)
           if ContextEntryCanAllowlist(entry) then
@@ -1860,7 +1877,7 @@ local function CreateModernListPane()
   -- Re-anchor the native frames to the original HistoryPanel insets.
   -- F.List:New() sets default fill anchors; clear and reassign to match
   -- the pre-BSP-066 layout: scrollBox inset 18 px from top and 18 px from
-  -- bottom (legend strip), SCROLLBAR_GUTTER wide on the right; scrollBar
+  -- bottom (legend strip), LAYOUT.SCROLLBAR_GUTTER wide on the right; scrollBar
   -- flush against scrollBox right edge (0 offset, not F.List's default 4).
   local handles = list:GetNativeHandles()
   local scrollBox = handles.scrollBox
@@ -1868,7 +1885,7 @@ local function CreateModernListPane()
 
   scrollBox:ClearAllPoints()
   scrollBox:SetPoint("TOPLEFT",     listPane, "TOPLEFT",     0, -18)
-  scrollBox:SetPoint("BOTTOMRIGHT", listPane, "BOTTOMRIGHT", -SCROLLBAR_GUTTER, 18)
+  scrollBox:SetPoint("BOTTOMRIGHT", listPane, "BOTTOMRIGHT", -LAYOUT.SCROLLBAR_GUTTER, 18)
 
   scrollBar:ClearAllPoints()
   scrollBar:SetPoint("TOPLEFT",    scrollBox, "TOPRIGHT",    0, 0)
@@ -1889,15 +1906,15 @@ local function CreateClassicListPane()
 
   local scroll = CreateFrame("ScrollFrame", "SiftHistoryListScroll", listPane, "FauxScrollFrameTemplate")
   scroll:SetPoint("TOPLEFT",     listPane, "TOPLEFT",     0, -18)
-  scroll:SetPoint("BOTTOMRIGHT", listPane, "BOTTOMRIGHT", -SCROLLBAR_GUTTER, 18)
+  scroll:SetPoint("BOTTOMRIGHT", listPane, "BOTTOMRIGHT", -LAYOUT.SCROLLBAR_GUTTER, 18)
   scroll:SetScript("OnVerticalScroll", function(self, yOffset)
-    FauxScrollFrame_OnVerticalScroll(self, yOffset, LIST_ROW_HEIGHT, RefreshList)
+    FauxScrollFrame_OnVerticalScroll(self, yOffset, LAYOUT.LIST_ROW_HEIGHT, RefreshList)
   end)
 
   scroll.rows = {}
-  for i = 1, LIST_MAX_ROWS do
+  for i = 1, LAYOUT.LIST_MAX_ROWS do
     local row = CreateFrame("Button", nil, scroll)
-    row:SetHeight(LIST_ROW_HEIGHT)
+    row:SetHeight(LAYOUT.LIST_ROW_HEIGHT)
     row:SetPoint("LEFT",  scroll, "LEFT",  0, 0)
     row:SetPoint("RIGHT", scroll, "RIGHT", 0, 0)
     if i == 1 then
@@ -1917,7 +1934,7 @@ local function CreateClassicListPane()
         return
       end
       local now = GetTime()
-      if self._lastClick and (now - self._lastClick) < DOUBLE_CLICK_WINDOW then
+      if self._lastClick and (now - self._lastClick) < LAYOUT.DOUBLE_CLICK_WINDOW then
         self._lastClick = nil
         PerformRestore(entry)
         if ContextEntryCanAllowlist(entry) then
@@ -2078,9 +2095,9 @@ local function BuildStatsArea(parent)
     host:SetPoint("BOTTOMRIGHT", textFS, "BOTTOMRIGHT", 0, 0)
     AttachTooltip(host, title, body)
   end
-  AddStatsLineTip(parent.bySurfaceLabel,  parent.bySurfaceText,  "BY SURFACE",  STAT_SURFACE)
-  AddStatsLineTip(parent.byCategoryLabel, parent.byCategoryText, "BY CATEGORY", STAT_CATEGORY)
-  AddStatsLineTip(parent.pipelineLabel,   parent.pipelineText,   "PIPELINE",    STAT_PIPELINE)
+  AddStatsLineTip(parent.bySurfaceLabel,  parent.bySurfaceText,  "BY SURFACE",  TIPS.STAT_SURFACE)
+  AddStatsLineTip(parent.byCategoryLabel, parent.byCategoryText, "BY CATEGORY", TIPS.STAT_CATEGORY)
+  AddStatsLineTip(parent.pipelineLabel,   parent.pipelineText,   "PIPELINE",    TIPS.STAT_PIPELINE)
 end
 
 local function BuildEmptyState(parent)
@@ -2255,9 +2272,6 @@ local function UpdateChipVisual(chip, cat)
   end
 end
 
-local CHIP_GAP = 3
-local CHIP_MIN_WIDTH = 38
-
 -- Filter chips exist only for the categories a user can filter by. CHIP_LABELS
 -- covers CATEGORIES, not the wider DISPLAY_CATEGORIES.
 local CHIP_LABELS = {
@@ -2274,7 +2288,7 @@ local function PlaceCategoryChips(strip)
   -- Size each chip to its own centered label plus button chrome, rather than
   -- dividing the strip width among the chips. Width-division was invisible
   -- with six categories but made the two post-SFT-080 chips enormous
-  -- (Gate 2 finding, 2026-07-28). CHIP_MIN_WIDTH stays as the floor so a
+  -- (Gate 2 finding, 2026-07-28). LAYOUT.CHIP_MIN_WIDTH stays as the floor so a
   -- short label still reads as a button.
   local x = 0
   for _, cat in ipairs(CATEGORIES) do
@@ -2283,11 +2297,11 @@ local function PlaceCategoryChips(strip)
       local label = chip.GetFontString and chip:GetFontString()
       local textWidth = label and label:GetStringWidth() or 0
       local w = math.floor(textWidth + 24 + 0.5)
-      if w < CHIP_MIN_WIDTH then w = CHIP_MIN_WIDTH end
+      if w < LAYOUT.CHIP_MIN_WIDTH then w = LAYOUT.CHIP_MIN_WIDTH end
       chip:SetSize(w, 22)
       chip:ClearAllPoints()
       chip:SetPoint("TOPLEFT", strip, "TOPLEFT", x, 0)
-      x = x + w + CHIP_GAP
+      x = x + w + LAYOUT.CHIP_GAP
     end
   end
 end
@@ -2296,7 +2310,7 @@ local function BuildCategoryChips(strip)
   local chips = {}
   for _, cat in ipairs(CATEGORIES) do
     local chip = CreateFrame("Button", nil, strip, "UIPanelButtonTemplate")
-    chip:SetSize(CHIP_MIN_WIDTH, 22)
+    chip:SetSize(LAYOUT.CHIP_MIN_WIDTH, 22)
     chip:SetText(L[CHIP_LABELS[cat] or cat])
     chip:SetScript("OnClick", function()
       filterState.categories[cat] = (filterState.categories[cat] == false)
@@ -2442,7 +2456,7 @@ function HistoryPanel.ShowHistoryContent()
   -- SFT-089: only undo the Config-mode resize here -- an ordinary History
   -- open/toggle that was never in Config must not touch the panel's anchor.
   if wasConfig and frame then
-    HistoryPanel.ResizeKeepingTopLeft(frame, FIXED_PANEL_WIDTH, FIXED_PANEL_HEIGHT)
+    HistoryPanel.ResizeKeepingTopLeft(frame, LAYOUT.PANEL_WIDTH, LAYOUT.PANEL_HEIGHT)
   end
   UpdateSenderFilterChip()
   SetTabHighlight()
@@ -2572,7 +2586,7 @@ end
 
 -- BSP-055 Gate 2 followup-v2: ClampPanes removed. It existed to re-clamp the
 -- list/detail proportion when the user resized the panel; with the panel
--- BSP-055 Gate 2 followup-v3: splitter is locked at DEFAULT_LIST_PANE_WIDTH.
+-- BSP-055 Gate 2 followup-v3: splitter is locked at LAYOUT.DEFAULT_LIST_PANE_WIDTH.
 -- The drag, hover, tooltip, and OnUpdate scripts are gone; what remains is a
 -- purely-decorative vertical line between listPane and detailPane. The fixed
 -- panel size (940 x 560) only allowed ~20 px of useful splitter range, which
@@ -2583,7 +2597,7 @@ end
 
 local function CreateSplitter(parent)
   local splitter = CreateFrame("Frame", nil, parent)
-  splitter:SetWidth(SPLITTER_WIDTH)
+  splitter:SetWidth(LAYOUT.SPLITTER_WIDTH)
   splitter:SetPoint("TOPLEFT",    listPane, "TOPRIGHT", 0, 0)
   splitter:SetPoint("BOTTOMLEFT", listPane, "BOTTOMRIGHT", 0, 0)
 
@@ -2791,7 +2805,7 @@ local function BuildFrame()
   -- resize is the one runtime exception -- see ResizeForConfig -- and it is
   -- never saved, so this wiring still doesn't need to exist); ClampPanes
   -- (still called from the splitter drag handler) keeps the list/detail
-  -- proportion within MIN_LIST_PANE_WIDTH..MIN_DETAIL_PANE_WIDTH bounds
+  -- proportion within LAYOUT.MIN_LIST_PANE_WIDTH..MIN_DETAIL_PANE_WIDTH bounds
   -- derived from the fixed panel width.
 
   ApplyStoredGeometry()
@@ -2938,13 +2952,13 @@ end
 
 function HistoryPanel.ResetPosition()
 	-- BSP-055 Gate 2 followup-v2: panel is fixed-size. Reset clears the
-	-- stored position only and recenters; size is always FIXED_PANEL_WIDTH x
-	-- FIXED_PANEL_HEIGHT regardless of any older width/height in the store.
+	-- stored position only and recenters; size is always LAYOUT.PANEL_WIDTH x
+	-- LAYOUT.PANEL_HEIGHT regardless of any older width/height in the store.
 	-- SFT-089: this forces the History size even if called while the Config
 	-- tab happens to be showing -- ResetPosition doesn't check activeMode.
 	ClearStoredGeometry()
 	if frame then
-		frame:SetSize(FIXED_PANEL_WIDTH, FIXED_PANEL_HEIGHT)
+		frame:SetSize(LAYOUT.PANEL_WIDTH, LAYOUT.PANEL_HEIGHT)
 		frame:ClearAllPoints()
 		frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
 	end
