@@ -1673,9 +1673,14 @@ SelectEntry = function(id)
     local revision = NS.History and NS.History.GetRevision and NS.History.GetRevision()
     if revision ~= nil and revision ~= HistoryPanel._listRevision then
       if RefreshList then RefreshList() end
-      return
+      -- RefreshList paints its own row highlights against the id just
+      -- clicked, but the RefreshDetail it runs afterward can still move the
+      -- selection (the clicked row itself may be the one that trimmed away,
+      -- which falls back to the first visible entry). Repaint below, now
+      -- that selectedEntryId has settled, instead of trusting that pass.
+    else
+      if RefreshDetail then RefreshDetail() end
     end
-    if RefreshDetail then RefreshDetail() end
     local scroll = listPane.scroll
     if scroll and scroll.rows then
       for _, row in ipairs(scroll.rows) do
@@ -2846,7 +2851,11 @@ function HistoryPanel.Initialize()
   if NS.PauseState and NS.PauseState.RegisterListener then
     NS.PauseState.RegisterListener(function(axis, key, state)
       if HistoryPanel.RefreshPauseRow then HistoryPanel.RefreshPauseRow() end
-      if axis == "category" and RefreshDetail then RefreshDetail() end
+      -- A hidden panel has nothing on screen to update, so this would only
+      -- pull History back into the entries/stats cache for no reader.
+      if axis == "category" and RefreshDetail and frame and frame:IsShown() then
+        RefreshDetail()
+      end
     end)
   end
 
