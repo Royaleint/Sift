@@ -62,6 +62,14 @@ local defaults = {
     -- and the captured corpus candidates must survive a settings reset.
     -- Additive, so no schema bump: absent on existing profiles, backfilled here.
     shadowLog = {},
+    -- SFT-099: which first-run chooser rows this player has already decided
+    -- (Apply or Keep current settings), keyed by the row's registry key. Only
+    -- a value of `true` counts as seen; never a key with any other value, and
+    -- never seeded with a key here -- Foundry's applyDefaults backfills a
+    -- fresh SavedVariables table by copying this default in wholesale, so a
+    -- pre-populated key here would mark that row seen on a fresh install that
+    -- never showed the panel.
+    chooserSeen = {},
     settings = {
       threshold = 4,
       -- SFT-080: only the user-facing categories are persisted. The retired
@@ -343,6 +351,10 @@ local function RepairShape(global, char)
     end
   end
   global.shadowLog = global.shadowLog or {}
+  -- SFT-099: type-checked, not just presence-checked, like customBlocks above
+  -- -- a second line of defense lives in DB.GetChooserSeen too, but this is
+  -- what actually fixes a junk value in the saved store.
+  global.chooserSeen = type(global.chooserSeen) == "table" and global.chooserSeen or {}
   global.settings = global.settings or {}
   char.history = char.history or {}
   char.historyCursor = char.historyCursor or 0
@@ -691,6 +703,25 @@ end
 function DB.IsDevMode()
   local settings = DB.GetSettings()
   return settings and settings.devMode == true
+end
+
+-- SFT-099: second line of defense alongside RepairShape's chooserSeen backfill
+-- -- returns the live table when it's already well-shaped, or a disposable
+-- {} otherwise rather than handing a caller a non-table to index into.
+function DB.GetChooserSeen()
+  local global = DB.GetGlobal()
+  local seen = global and global.chooserSeen
+  return type(seen) == "table" and seen or {}
+end
+
+function DB.MarkChooserSeen(key)
+  local global = DB.GetGlobal()
+  if not global or not UsableString(key) then
+    return false
+  end
+  global.chooserSeen = type(global.chooserSeen) == "table" and global.chooserSeen or {}
+  global.chooserSeen[key] = true
+  return true
 end
 
 function DB.Log(message)

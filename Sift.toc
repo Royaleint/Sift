@@ -32,4 +32,5 @@ ChatScanner.lua
 PlayerMenu.lua
 HistoryPanel.lua
 ConfigPanel.lua
+FirstRunChooser.lua
 Init.lua

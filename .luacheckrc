@@ -8,6 +8,7 @@ globals = {
     -- Named UI frames (require global for UISpecialFrames + Blizz close behavior)
     "SiftHistoryFrame",
     "SiftConfigFrame",
+    "SiftFirstRunFrame",
     "SiftConfigDialog",
     "SiftConfigOptionsPanel",
     "SiftContextMenu",
@@ -86,6 +87,7 @@ read_globals = {
     "GetTime",
     "UpdateAddOnMemoryUsage",
     "hooksecurefunc",
+    "InCombatLockdown",
     "IsPlayerInGuildFromGUID",
     "issecretvalue",
     "UnitGUID",
