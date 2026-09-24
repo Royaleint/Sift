@@ -3,15 +3,15 @@ local DB = {}
 
 -- SavedVariables global names, derived per build (SFT-077).
 --
--- CROSS-LANGUAGE CONTRACT with Sift_Dev/scripts/generate-devbuild-toc.mjs.
+-- CROSS-LANGUAGE CONTRACT with the DevBuild TOC generator.
 -- That generator writes the DevBuild's TOC and appends its SV_SUFFIX to every
 -- declared global ("SiftDB" -> "SiftDB_DevBuild"). The names derived here MUST
 -- equal what it emits, or this build declares one global in its TOC and stores
 -- its data in another -- an empty store, and writes landing in the OTHER build's
 -- global. Nothing in Lua can enforce the agreement, so both sides carry this
--- comment and both sides carry a check that runs:
---   Lua  -- Sift_Dev/tools/run_sv_contract_tests.lua
---   Node -- Sift_Dev/scripts/check-sv-contract.mjs
+-- comment and both sides carry a contract check:
+--   Lua  -- a test against this file's derived names
+--   Node -- a matching check against the TOC generator's output
 -- Change the suffix on one side and the matching check goes red.
 --
 -- The suffix is taken from the FOLDER name relative to the live addon name, not

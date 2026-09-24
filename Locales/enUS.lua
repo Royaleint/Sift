@@ -96,7 +96,7 @@ L["This block has already been undone. No further action needed."] = "This block
 L["This sender is on the allowlist. Future messages from them bypass scanning."] = "This sender is on the allowlist. Future messages from them bypass scanning."
 L["Mark this pass-thru as blocked. The original message stays in chat (can't un-print), but the entry is reclassified and a Blizzard report is sent if applicable."] = "Mark this pass-thru as blocked. The original message stays in chat (can't un-print), but the entry is reclassified and a Blizzard report is sent if applicable."
 L["Add this sender to the allowlist. Future messages from them bypass scanning."] = "Add this sender to the allowlist. Future messages from them bypass scanning."
-L["Un-block this message. Note: the original chat text was never injected, so it stays out of the chat scroll \194\151 restored entries appear here only."] = "Un-block this message. Note: the original chat text was never injected, so it stays out of the chat scroll \194\151 restored entries appear here only."
+L["Un-block this message. Note: the original chat text was never injected, so it stays out of the chat scroll; restored entries appear here only."] = "Un-block this message. Note: the original chat text was never injected, so it stays out of the chat scroll; restored entries appear here only."
 L["Report Spam"] = "Report Spam"
 L["Send a Blizzard spam report for this message."] = "Send a Blizzard spam report for this message."
 L["Un-block this message. Sender is already on the allowlist."] = "Un-block this message. Sender is already on the allowlist."
@@ -191,6 +191,10 @@ L["Channel"] = "Channel"
 -- Config panel: window chrome
 L["Sift \226\128\148 Config"] = "Sift \226\128\148 Config"
 
+-- Config panel: Interface Options launcher stub (RegisterInterfaceOptions)
+L["Sift Configuration"] = "Sift Configuration"
+L["Open Sift Config..."] = "Open Sift Config..."
+
 -- Config panel: remove-row tooltips (format strings -- the row's own text,
 -- a sender label or a keyword, is a %s argument, never part of the key)
 L["Take %s off the allowlist. Use Undo above to revert."] = "Take %s off the allowlist. Use Undo above to revert."
@@ -225,13 +229,13 @@ L["Messages scoring at or above this value are blocked. Higher = stricter."] = "
 L["Anti-signal cap"] = "Anti-signal cap"
 L["Maximum negative score one anti-signal (e.g. guild affiliation) can contribute. Limits how much a single trusted indicator offsets spam weight."] = "Maximum negative score one anti-signal (e.g. guild affiliation) can contribute. Limits how much a single trusted indicator offsets spam weight."
 L["Mixed-script weight"] = "Mixed-script weight"
-L["Score weight added when a message mixes Latin with another script (Cyrillic, etc.) \194\151 the classic Unicode-confusable pattern. Set 0 to disable."] = "Score weight added when a message mixes Latin with another script (Cyrillic, etc.) \194\151 the classic Unicode-confusable pattern. Set 0 to disable."
+L["Score weight added when a message mixes Latin with another script (Cyrillic, etc.): the classic Unicode-confusable pattern. Set 0 to disable."] = "Score weight added when a message mixes Latin with another script (Cyrillic, etc.): the classic Unicode-confusable pattern. Set 0 to disable."
 L["Reset"] = "Reset"
 L["Use mixed-script detection"] = "Use mixed-script detection"
 L["Enable Unicode-confusable script-mixing as a signal in scoring."] = "Enable Unicode-confusable script-mixing as a signal in scoring."
 L["Flood window (seconds)"] = "Flood window (seconds)"
 L["Throttle confirmed-spam repeats"] = "Throttle confirmed-spam repeats"
-L["When the same sender repeats the same message on the same surface, the repeat is logged as one condensed history entry and counted as throttled. Only applies to messages already blocked as spam \194\151 it does not change what gets blocked."] = "When the same sender repeats the same message on the same surface, the repeat is logged as one condensed history entry and counted as throttled. Only applies to messages already blocked as spam \194\151 it does not change what gets blocked."
+L["When the same sender repeats the same message on the same surface, the repeat is logged as one condensed history entry and counted as throttled. Only applies to messages already blocked as spam; it does not change what gets blocked."] = "When the same sender repeats the same message on the same surface, the repeat is logged as one condensed history entry and counted as throttled. Only applies to messages already blocked as spam; it does not change what gets blocked."
 
 -- Config panel: per-surface / per-category pause rows (AddAxisPauseRow's
 -- displayLabel dedupes against the History-panel entries above; stateBody
@@ -256,7 +260,7 @@ L["Export the entire allowlist to a text blob you can copy from a dialog."] = "E
 L["Import"] = "Import"
 L["Paste a previously exported allowlist blob to merge entries into your current set."] = "Paste a previously exported allowlist blob to merge entries into your current set."
 L["Add from History"] = "Add from History"
-L["Enter as Name-Realm. The sender must already appear in your History \194\151 you can't allowlist arbitrary names, only ones Sift has actually seen."] = "Enter as Name-Realm. The sender must already appear in your History \194\151 you can't allowlist arbitrary names, only ones Sift has actually seen."
+L["Enter as Name-Realm. The sender must already appear in your History. You can't allowlist arbitrary names, only ones Sift has actually seen."] = "Enter as Name-Realm. The sender must already appear in your History. You can't allowlist arbitrary names, only ones Sift has actually seen."
 L["Add"] = "Add"
 L["Add the Name-Realm in the box to the allowlist."] = "Add the Name-Realm in the box to the allowlist."
 L["Undo"] = "Undo"

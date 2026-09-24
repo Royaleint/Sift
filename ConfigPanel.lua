@@ -1494,12 +1494,12 @@ local function RegisterInterfaceOptions()
 
   local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
   title:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -16)
-  title:SetText("Sift Configuration")
+  title:SetText(L["Sift Configuration"])
 
   local button = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
   button:SetSize(190, 24)
   button:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -18)
-  button:SetText("Open Sift Config...")
+  button:SetText(L["Open Sift Config..."])
   button:SetScript("OnClick", function()
     -- BSP-055 Gate 2 followup: don't try to dismiss the Settings panel
     -- from addon code. The previous pcall(SettingsPanel.Close, ...) +
@@ -1705,7 +1705,7 @@ RenderDetection = function()
   end)
   rowY = y
   y = AddSlider("Mixed-script weight", "mixedScriptWeight", 0, 3, 1, y,
-    "Score weight added when a message mixes Latin with another script (Cyrillic, etc.) \194\151 " ..
+    "Score weight added when a message mixes Latin with another script (Cyrillic, etc.): " ..
     "the classic Unicode-confusable pattern. Set 0 to disable.")
   AddDetectionReset(rowY - 10, DEFAULT_SETTINGS.mixedScriptWeight, function()
     SetSetting("mixedScriptWeight", DEFAULT_SETTINGS.mixedScriptWeight)
@@ -1745,7 +1745,7 @@ RenderDetection = function()
     end,
     "When the same sender repeats the same message on the same surface, the repeat is " ..
     "logged as one condensed history entry and counted as throttled. Only applies to " ..
-    "messages already blocked as spam \194\151 it does not change what gets blocked.")
+    "messages already blocked as spam; it does not change what gets blocked.")
 end
 
 RenderCategories = function()
@@ -1793,7 +1793,7 @@ RenderAllowlist = function()
   AddText("Add from History", "GameFontNormalSmall", CONTENT_PAD, y + 2, 104)
   local addBox = AddEditBox(CONTENT_PAD + 112, y + 5, 180, listState.allowlistAddText,
     "Add from History",
-    "Enter as Name-Realm. The sender must already appear in your History \194\151 you can't " ..
+    "Enter as Name-Realm. The sender must already appear in your History. You can't " ..
     "allowlist arbitrary names, only ones Sift has actually seen.")
   AddNativeButton("Add", CONTENT_PAD + 300, y + 6, 72, function()
     listState.allowlistAddText = addBox:GetText() or ""
@@ -2723,7 +2723,7 @@ local function BuildFPExportText(limit)
   end
 
   local lines = {
-    "-- Sift FP-export (negative fixtures for Sift_Dev/patterns/fixtures.lua)",
+    "-- Sift FP-export (negative fixtures)",
     "-- Exported: " .. (date and date("%Y-%m-%d %H:%M:%S") or "?"),
     "-- Entries:  " .. tostring(#restored)
       .. (limit and (" (limited to last " .. tostring(limit) .. ")") or ""),

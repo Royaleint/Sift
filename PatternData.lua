@@ -1,4 +1,4 @@
--- PatternData.lua (GENERATED — do not hand-edit; regenerate via Sift_Dev/tools/build_patterns.lua)
+-- PatternData.lua (GENERATED; do not hand-edit)
 local _, NS = ...
 NS.PatternsData = {
   version   = 2,
