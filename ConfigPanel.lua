@@ -1494,12 +1494,12 @@ local function RegisterInterfaceOptions()
 
   local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
   title:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -16)
-  title:SetText("Sift Configuration")
+  title:SetText(L["Sift Configuration"])
 
   local button = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
   button:SetSize(190, 24)
   button:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -18)
-  button:SetText("Open Sift Config...")
+  button:SetText(L["Open Sift Config..."])
   button:SetScript("OnClick", function()
     -- BSP-055 Gate 2 followup: don't try to dismiss the Settings panel
     -- from addon code. The previous pcall(SettingsPanel.Close, ...) +

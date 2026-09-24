@@ -191,6 +191,10 @@ L["Channel"] = "Channel"
 -- Config panel: window chrome
 L["Sift \226\128\148 Config"] = "Sift \226\128\148 Config"
 
+-- Config panel: Interface Options launcher stub (RegisterInterfaceOptions)
+L["Sift Configuration"] = "Sift Configuration"
+L["Open Sift Config..."] = "Open Sift Config..."
+
 -- Config panel: remove-row tooltips (format strings -- the row's own text,
 -- a sender label or a keyword, is a %s argument, never part of the key)
 L["Take %s off the allowlist. Use Undo above to revert."] = "Take %s off the allowlist. Use Undo above to revert."
