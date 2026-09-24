@@ -419,7 +419,11 @@ local function AddEditBox(x, y, width, initialText, tooltipTitle, tooltipBody)
   return editBox
 end
 
-local function AddDisabledRow(label, value, y)
+-- SFT-104: tooltipTitle/tooltipBody are optional -- most disabled rows are a
+-- plain label/value pair with nothing to add. When given, they attach the
+-- same AttachTooltip hover the rest of the panel uses, on the row frame
+-- itself (a disabled row has no other mouse-enabled child to hang it on).
+local function AddDisabledRow(label, value, y, tooltipTitle, tooltipBody)
   local row = TrackNative(CreateFrame("Frame", nil, content, "BackdropTemplate"))
   row:SetHeight(30)
   row:SetPoint("TOPLEFT", content, "TOPLEFT", CONTENT_PAD, y)
@@ -441,6 +445,10 @@ local function AddDisabledRow(label, value, y)
   right:SetJustifyH("RIGHT")
   right:SetText(L[value])
   right:Show()
+
+  if tooltipTitle then
+    AttachTooltip(row, tooltipTitle, tooltipBody)
+  end
 
   return y - 36
 end
@@ -1647,7 +1655,7 @@ local function AddAxisPauseRow(axis, key, displayLabel, y)
         and "Active \194\183 detected spam on this surface is blocked from chat."
         or  "Active \194\183 messages in this category are blocked."
     elseif state == "paused" then
-      stateBody = "Paused \194\183 detected spam is logged to History but stays visible."
+      stateBody = "Paused \194\183 detected spam is logged to History but stays in chat."
     else
       stateBody = (axis == "surface")
         and "Off \194\183 this surface is not scanned at all."
@@ -1692,28 +1700,31 @@ RenderDetection = function()
   y = AddStatus(y, sectionStatus.Detection)
   local rowY = y
   y = AddSlider("Block threshold", "threshold", 1, 10, 1, y,
-    "Messages scoring at or above this value are blocked. Higher = stricter.")
+    "Messages that score at or above this number are blocked. A lower number blocks more " ..
+    "messages, and a higher number blocks fewer.")
   AddDetectionReset(rowY - 10, DEFAULT_SETTINGS.threshold, function()
     SetSetting("threshold", DEFAULT_SETTINGS.threshold)
   end)
   rowY = y
   y = AddSlider("Anti-signal cap", "antiSignalCap", -10, -1, 1, y,
-    "Maximum negative score one anti-signal (e.g. guild affiliation) can contribute. " ..
-    "Limits how much a single trusted indicator offsets spam weight.")
+    "Some wording makes a message less likely to be spam and lowers its score. This sets " ..
+    "the most that wording can lower a score, all together. Closer to 0 makes Sift stricter.")
   AddDetectionReset(rowY - 10, DEFAULT_SETTINGS.antiSignalCap, function()
     SetSetting("antiSignalCap", DEFAULT_SETTINGS.antiSignalCap)
   end)
   rowY = y
   y = AddSlider("Mixed-script weight", "mixedScriptWeight", 0, 3, 1, y,
-    "Score weight added when a message mixes Latin with another script (Cyrillic, etc.): " ..
-    "the classic Unicode-confusable pattern. Set 0 to disable.")
+    "Adds this much to the score of a message that already looks like spam when its words " ..
+    "mix alphabets, such as Latin letters swapped for look-alike Cyrillic or Greek ones. " ..
+    "Set to 0 to turn this off.")
   AddDetectionReset(rowY - 10, DEFAULT_SETTINGS.mixedScriptWeight, function()
     SetSetting("mixedScriptWeight", DEFAULT_SETTINGS.mixedScriptWeight)
   end)
   -- Checkboxes carry no reset button (Rawb, Gate 2 re-check 2026-07-28):
   -- a two-state control IS its own reset; the buttons are for sliders.
   y = AddCheckbox("Use mixed-script detection", "mixedScriptEnabled", y, nil,
-    "Enable Unicode-confusable script-mixing as a signal in scoring.")
+    "Watch for words that mix alphabets, such as Latin letters swapped for look-alike " ..
+    "Cyrillic ones. When this is off, Mixed-script weight has no effect.")
 
   -- BSP-039: bounds come from Frequency so the slider cannot drift away from
   -- the clamp that actually enforces them.
@@ -1743,9 +1754,9 @@ RenderDetection = function()
         NS.DB.SetThrottleEnabled(value)
       end
     end,
-    "When the same sender repeats the same message on the same surface, the repeat is " ..
-    "logged as one condensed history entry and counted as throttled. Only applies to " ..
-    "messages already blocked as spam; it does not change what gets blocked.")
+    "When the same sender repeats spam Sift already caught, in the same kind of chat, the " ..
+    "repeat is counted under Throttled in the History stats. Each repeat still gets its " ..
+    "own History entry. This never changes what gets blocked.")
 end
 
 RenderCategories = function()
@@ -1765,8 +1776,9 @@ RenderSurfaces = function()
   end
   -- Preserved settings (live toggles, not part of the pause taxonomy).
   AddCheckbox("Filter bubbles", "filterBubbles", y, SetFilterBubblesEnabled,
-    "Hide blocked Say / Yell text from chat bubbles via a Blizzard cvar toggle. " ..
-    "Auto-restores after each suppressed message and on logout.")
+    "Also hides the chat bubble for blocked Say and Yell messages. To do this, Sift " ..
+    "briefly turns off the game's chat bubbles, then turns them back on with the next " ..
+    "chat message and when you log out.")
 end
 
 RenderAllowlist = function()
@@ -1776,7 +1788,8 @@ RenderAllowlist = function()
   AddText("Search", "GameFontNormalSmall", CONTENT_PAD, y + 2, 48)
   local search = AddEditBox(CONTENT_PAD + 54, y + 5, 160, listState.allowlistSearch,
     "Search allowlist",
-    "Type to match by sender name, realm, GUID, or source. Click Apply to filter the list below.")
+    "Type part of a name or realm, then click Apply to filter the list below. You can also " ..
+    "search the word shown under each name: manual, history, or import.")
   AddNativeButton("Apply", CONTENT_PAD + 222, y + 6, 70, function()
     listState.allowlistSearch = search:GetText() or ""
     listState.allowlistPage = 1
@@ -1785,9 +1798,9 @@ RenderAllowlist = function()
   y = y - 34
 
   AddNativeButton("Export", CONTENT_PAD, y + 6, 72, ConfigPanel.OpenExportDialog,
-    "Export the entire allowlist to a text blob you can copy from a dialog.")
+    "Open a window with your entire allowlist as text you can copy and save.")
   AddNativeButton("Import", CONTENT_PAD + 82, y + 6, 72, ConfigPanel.OpenImportDialog,
-    "Paste a previously exported allowlist blob to merge entries into your current set.")
+    "Paste in a previously exported allowlist to add those entries to your current one.")
   y = y - 34
 
   AddText("Add from History", "GameFontNormalSmall", CONTENT_PAD, y + 2, 104)
@@ -1853,7 +1866,7 @@ RenderAllowlist = function()
     remove:SetScript("OnClick", function()
       RemoveAllowlist(rowData.guid, rowData.entry)
     end)
-    AttachTooltip(remove, "Remove from allowlist",
+    AttachTooltip(remove, "Remove",
       L["Take %s off the allowlist. Use Undo above to revert."]:format(SenderLabel(rowData.entry)))
     remove:Show()
 
@@ -1883,7 +1896,7 @@ RenderBlocked = function()
   AddText("Search", "GameFontNormalSmall", CONTENT_PAD, y + 2, 48)
   local search = AddEditBox(CONTENT_PAD + 54, y + 5, 160, listState.blockedSearch,
     "Search blocked actors",
-    "Type to match by sender label or key. Click Apply to filter the list below.")
+    "Type part of a name to filter the list below, then click Apply.")
   AddNativeButton("Apply", CONTENT_PAD + 222, y + 6, 70, function()
     listState.blockedSearch = search:GetText() or ""
     listState.blockedPage = 1
@@ -1943,7 +1956,7 @@ RenderBlocked = function()
     remove:SetScript("OnClick", function()
       RemoveBlocked(rowData.key)
     end)
-    AttachTooltip(remove, "Remove blocked actor",
+    AttachTooltip(remove, "Remove",
       L["Take %s off the blocked-actors list."]:format(rowData.label))
     remove:Show()
 
@@ -1987,8 +2000,8 @@ local KEYWORD_SECTIONS = {
     kind = NS.UserRules and NS.UserRules.ALLOW or "allow",
     blurb = "Words and phrases that protect a message. Anything containing one is never blocked.",
     addLabel = "Allow phrase",
-    addTooltip = "Type a word or phrase that should always come through. Matching works the "
-      .. "same way as the block list.",
+    addTooltip = "Type a word or phrase that should always come through, unless you blocked "
+      .. "the sender yourself. Matching works the same way as My Keywords.",
     help = "|cffff6060Careful:|r these win over Sift's own filter, so a spammer who guesses "
       .. "one of your phrases can put it in a message and walk straight through. Use long, "
       .. "distinctive phrases, not common words. Only your Allowlist and the players you "
@@ -2061,7 +2074,7 @@ local function RenderKeywordSection(section)
 
   AddText("Search", "GameFontNormalSmall", CONTENT_PAD, y + 2, 48)
   local search = AddEditBox(CONTENT_PAD + 54, y + 5, 160, listState.keywordSearch[kind],
-    "Search this list", "Type to match by phrase. Click Apply to filter the list below.")
+    "Search", "Type to match by phrase. Click Apply to filter the list below.")
   AddNativeButton("Apply", CONTENT_PAD + 222, y + 6, 70, function()
     listState.keywordSearch[kind] = search:GetText() or ""
     listState.keywordPage[kind] = 1
@@ -2148,7 +2161,7 @@ local function RenderKeywordSection(section)
       end
       ConfigPanel.ShowSection(section)
     end)
-    AttachTooltip(remove, "Remove phrase", L["Take \"%s\" out of this list."]:format(entry.raw))
+    AttachTooltip(remove, "Remove", L["Take \"%s\" out of this list."]:format(entry.raw))
     remove:Show()
 
     y = y - (ROW_HEIGHT + 4)
@@ -2177,9 +2190,19 @@ RenderHistory = function()
   local retained = stats and stats.retained or {}
   local y = AddSectionTitle("History", "Control retained block history.")
   y = AddStatus(y, sectionStatus.History)
-  y = AddDisabledRow("Total detections", tostring(tonumber(lifetime.detections) or 0), y)
-  y = AddDisabledRow("Total blocks", tostring(tonumber(lifetime.blocked) or 0), y)
-  y = AddDisabledRow("Total restores", tostring(tonumber(lifetime.restored) or 0), y)
+  y = AddDisabledRow("Total detections", tostring(tonumber(lifetime.detections) or 0), y,
+    "Total detections",
+    "Every message Sift has caught, including messages from players you blocked yourself, " ..
+    "ones left in chat because a category or surface was Paused, and ones you restored. " ..
+    "Clearing History does not reset this.")
+  y = AddDisabledRow("Total blocks", tostring(tonumber(lifetime.blocked) or 0), y,
+    "Total blocks",
+    "Spam messages Sift hid from chat on this character. Messages left in chat because a " ..
+    "category or surface was Paused are not counted, unless you later used Block " ..
+    "retroactively on them.")
+  y = AddDisabledRow("Total restores", tostring(tonumber(lifetime.restored) or 0), y,
+    "Total restores",
+    "Blocked messages you restored in History on this character.")
   AddText("Retained entries: " .. tostring(tonumber(retained.detections) or #entries),
     "GameFontNormalSmall", CONTENT_PAD, y)
   y = y - 28
@@ -2212,8 +2235,8 @@ RenderHistory = function()
     end
   end)
   AttachTooltip(slider, "Maximum history entries",
-    "Cap retained History at this many entries. Oldest entries are trimmed first. " ..
-    "Lifetime stats counters are unaffected.")
+    "The most History entries Sift keeps for each character. The oldest are removed " ..
+    "first, and lifetime totals are not affected.")
   y = y - 52
 
   -- BSP-063: show the current account-wide count on render, not only after
@@ -2239,8 +2262,9 @@ RenderHistory = function()
     end
   end)
   AttachTooltip(globalSlider, "Account total",
-    "Maximum spam-history records retained across all characters combined. " ..
-    "Lowering this trims oldest records account-wide on next login.")
+    "The most History entries Sift keeps across all your characters combined. If " ..
+    "lowering it would remove entries, Sift asks first and then trims the oldest right " ..
+    "away. The limit is also checked each time you log in.")
   y = y - 52
 
   AddNativeButton("Clear History", CONTENT_PAD, y, 120, ConfigPanel.ConfirmClearHistory,
@@ -2263,12 +2287,14 @@ RenderUI = function()
       sectionStatus.UI = "History panel reset API is unavailable."
     end
     ConfigPanel.ShowSection("UI")
-  end, "Reset the History panel size and position to defaults (centered, 940 \195\151 560).")
+  end, "Moves this panel back to the middle of the screen at its normal size. History " ..
+    "and Config share one panel, so this resets both.")
   AddNativeButton("Reset Config Panel", CONTENT_PAD + 160, y, 150, function()
     ConfigPanel.ResetPosition()
     sectionStatus.UI = "Config panel position reset."
     ConfigPanel.ShowSection("UI")
-  end, "Reset the Config panel size and position to defaults (centered, 700 \195\151 500).")
+  end, "Moves this panel back to the middle of the screen at its normal size. Config " ..
+    "and History share one panel, so this does the same as Reset History Panel.")
 end
 
 RenderDev = function()
@@ -2282,7 +2308,9 @@ RenderDev = function()
     if StaticPopup_Show then
       StaticPopup_Show("SIFT_RESET_SETTINGS")
     end
-  end, "Reset ALL settings to defaults. Does not touch History, Allowlist, or Blocked. Confirmation required.")
+  end, "Puts every setting back to its default, and asks first. Your Allowlist, Blocked " ..
+    "list, My Keywords, and Never Block are kept, but if you had raised Maximum history " ..
+    "entries or Account total, the oldest History entries are removed right away.")
   -- BSP-018: FP-export tool. Same gating semantics as /bdev fpx — the
   -- OpenFPExportDialog function checks devMode and prints a status message
   -- if off, so the button is visible always (discoverability) but only
@@ -2464,15 +2492,15 @@ end
 
 -- BSP-009: per-section hover help for the left nav.
 local NAV_TOOLTIPS = {
-  Detection  = "Score threshold, mixed-script signal weight, anti-signal cap.",
+  Detection  = "How strict Sift is when deciding what counts as spam. Also covers look-alike letters, wording that lowers a message's score, and repeated messages.",
   Categories = "Toggle each spam category between Active (block), Paused (log only), and Off (ignore).",
-  Surfaces   = "Toggle each chat surface between Active, Paused, and Off. Also: filter bubbles.",
-  Allowlist  = "Senders Sift will always trust. Add from History or import a saved list.",
-  Blocked    = "Recently blocked actors. Manage repeat offenders.",
+  Surfaces   = "Choose how Sift handles each kind of chat: Chat, Whisper, and Bnet whisper. Also has the option to hide chat bubbles for blocked messages.",
+  Allowlist  = "Players whose messages Sift doesn't check. Add them from History or import a saved list. If you block one of them yourself, their messages are still hidden.",
+  Blocked    = "Players Sift has blocked before, plus anyone you blocked yourself. Sift is a little stricter with messages from players on this list.",
   ["My Keywords"] = "Your own words and phrases to block, on top of Sift's filter.",
-  ["Never Block"] = "Your own words and phrases that always come through, even past Sift's filter.",
-  History    = "Retained-history limit and clear control.",
-  UI         = "Minimap launcher and panel-position resets.",
+  ["Never Block"] = "Your own words and phrases that let a message through, even past Sift's filter. Messages from players you blocked yourself are still hidden.",
+  History    = "How much History Sift keeps, your lifetime totals, and the button to clear it.",
+  UI         = "Show or hide the minimap button, and reset the Config and History panels to their default size and position.",
   Dev        = "Developer-only diagnostics and full settings reset.",
 }
 

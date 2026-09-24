@@ -193,13 +193,14 @@ local STATS_TILE_LABELS = {
 local STATS_TILE_TOOLTIPS = {
   detected = {
     title = "Detected",
-    body  = "Lifetime count of messages Sift scored as spam. " ..
-            "Includes blocked, pass-thru, and restored entries.",
+    body  = "Lifetime count of messages Sift caught, including messages from players you " ..
+            "blocked yourself. Includes blocked, pass-thru, and restored entries.",
   },
   blocked = {
     title = "Blocked",
-    body  = "Lifetime count of spam messages hidden from chat. " ..
-            "Does not include pass-thru (paused surface/category) detections.",
+    body  = "Lifetime count of messages Sift blocked. Messages left in chat because a " ..
+            "category or surface was Paused are not counted, unless you later used Block " ..
+            "retroactively on them.",
   },
   passThru = {
     title = "Pass-thru",
@@ -208,8 +209,7 @@ local STATS_TILE_TOOLTIPS = {
   },
   restored = {
     title = "Restored",
-    body  = "Blocks you have manually undone via the action panel. " ..
-            "These count against the false-positive rate.",
+    body  = "Blocks you have undone in History. These count toward the false-positive rate.",
   },
   falsePositives = {
     title = "False positives",
@@ -812,7 +812,7 @@ local function RenderSenderHistory(entry)
   end
 
   detailPane.footer.senderHistory:SetText(string.format(
-    "Total blocks: %d   \194\183   First seen: %s   \194\183   Last seen: %s",
+    "In History: %d   \194\183   First seen: %s   \194\183   Last seen: %s",
     count,
     firstSeen and RelativeTime(firstSeen) or "\226\128\148",
     lastSeen  and RelativeTime(lastSeen)  or "\226\128\148"))
@@ -1002,8 +1002,8 @@ local function RenderActions(entry)
     end)
     actions.btn1:Show()
     actions.btn1.tipTitle = "Block retroactively"
-    actions.btn1.tipBody  = "Mark this pass-thru as blocked. The original message stays in chat " ..
-      "(can't un-print), but the entry is reclassified and a Blizzard report is sent if applicable."
+    actions.btn1.tipBody  = "Mark this message as blocked. It already appeared in chat and " ..
+      "stays there, but Sift opens Blizzard's spam report window for it when it can."
     local allowable = (entry.surface == "chat" or entry.surface == "whisper" or entry.surface == "bn-whisper")
       and entry.guid and entry.guid ~= ""
     if allowable and not (NS.Trust and NS.Trust.IsAllowlisted and NS.Trust.IsAllowlisted(entry.guid)) then
@@ -1026,13 +1026,13 @@ local function RenderActions(entry)
     actions.btn1:SetScript("OnClick", function() PerformRestore(entry) end)
     actions.btn1:Show()
     actions.btn1.tipTitle = "Restore"
-    actions.btn1.tipBody  = "Un-block this message. Note: the original chat text was never injected, " ..
-      "so it stays out of the chat scroll; restored entries appear here only."
+    actions.btn1.tipBody  = "Undo this block. The message won't reappear in chat, only here " ..
+      "in History, and you can no longer report it."
     actions.btn2:SetText(L[reportLabel])
     actions.btn2:SetScript("OnClick", function() PerformReport(entry) end)
     actions.btn2:Show()
     actions.btn2.tipTitle = reportLabel
-    actions.btn2.tipBody  = "Send a Blizzard spam report for this message."
+    actions.btn2.tipBody  = "Open Blizzard's spam report window for this message."
     return
   end
 
@@ -1045,7 +1045,8 @@ local function RenderActions(entry)
       actions.btn1:SetScript("OnClick", function() PerformRestore(entry) end)
       actions.btn1:Show()
       actions.btn1.tipTitle = "Restore"
-      actions.btn1.tipBody  = "Un-block this message. Sender is already on the allowlist."
+      actions.btn1.tipBody  = "Undo this block. The message won't reappear in chat, and " ..
+        "the sender is already on the allowlist."
     else
       actions.btn1:SetText(L["Restore + Always allow"])
       actions.btn1:SetScript("OnClick", function()
@@ -1054,20 +1055,22 @@ local function RenderActions(entry)
       end)
       actions.btn1:Show()
       actions.btn1.tipTitle = "Restore + Always allow"
-      actions.btn1.tipBody  = "Un-block this message and add the sender to the allowlist " ..
-        "so future messages from them bypass scanning."
+      actions.btn1.tipBody  = "Undo this block and add the sender to the allowlist, so Sift " ..
+        "stops checking their messages. The message won't reappear in chat."
       actions.btn2:SetText(L["Restore only"])
       actions.btn2:SetScript("OnClick", function() PerformRestore(entry) end)
       actions.btn2:Show()
       actions.btn2.tipTitle = "Restore only"
-      actions.btn2.tipBody  = "Un-block this message without changing the allowlist."
+      actions.btn2.tipBody  = "Undo this block without changing the allowlist. The message " ..
+        "won't reappear in chat."
     end
   else
     actions.btn1:SetText(L["Restore"])
     actions.btn1:SetScript("OnClick", function() PerformRestore(entry) end)
     actions.btn1:Show()
     actions.btn1.tipTitle = "Restore"
-    actions.btn1.tipBody  = "Un-block this message. This surface cannot be allowlisted."
+    actions.btn1.tipBody  = "Undo this block. The message won't reappear in chat, and this " ..
+      "surface can't be allowlisted."
   end
 end
 
@@ -2230,29 +2233,29 @@ local function CreateHeaderFilters()
     function() return filterState.surface end,
     function(v) filterState.surface = v; if RefreshList then RefreshList() end end)
   ddBand.surfaceDD:SetPoint("LEFT", ddBand, "LEFT", 0, 0)
-  AttachTooltip(ddBand.surfaceDD, "Surface filter",
+  AttachTooltip(ddBand.surfaceDD, "Surface",
     "Restrict the list to detections from one chat surface. \"All\" clears the filter.")
 
   ddBand.timeDD = CreateModernDropdown(ddBand, "Time", TIME_WINDOW_VALUES, nil,
     function() return filterState.timeWindow end,
     function(v) filterState.timeWindow = v; if RefreshList then RefreshList() end end)
   ddBand.timeDD:SetPoint("LEFT", ddBand.surfaceDD, "RIGHT", 4, 0)
-  AttachTooltip(ddBand.timeDD, "Time window",
+  AttachTooltip(ddBand.timeDD, "Time",
     "Restrict the list to detections inside a recent time window.")
 
   ddBand.outcomeDD = CreateModernDropdown(ddBand, "Outcome", OUTCOME_VALUES, nil,
     function() return filterState.outcome end,
     function(v) filterState.outcome = v; if RefreshList then RefreshList() end end)
   ddBand.outcomeDD:SetPoint("LEFT", ddBand.timeDD, "RIGHT", 4, 0)
-  AttachTooltip(ddBand.outcomeDD, "Outcome filter",
-    "Blocked = hidden from chat. Restored = un-blocked via the action panel. " ..
-    "Pass-thru = scored as spam but logged-only because the surface or category was paused.")
+  AttachTooltip(ddBand.outcomeDD, "Outcome",
+    "Blocked means hidden from chat. Restored means you undid the block. Pass-thru means " ..
+    "it looked like spam but was left in chat because its surface or category was Paused.")
 
   ddBand.sortDD = CreateModernDropdown(ddBand, "Sort", SORT_VALUES, SORT_LABELS,
     function() return sortMode end,
     function(v) sortMode = v; if RefreshList then RefreshList() end end)
   ddBand.sortDD:SetPoint("LEFT", ddBand.outcomeDD, "RIGHT", 4, 0)
-  AttachTooltip(ddBand.sortDD, "Sort order",
+  AttachTooltip(ddBand.sortDD, "Sort",
     "Newest first \194\183 by Score (highest first) \194\183 by Sender (groups repeat offenders).")
 
   local refresh = CreateFrame("Button", nil, ddBand, "UIPanelButtonTemplate")
@@ -2262,8 +2265,9 @@ local function CreateHeaderFilters()
   refresh:SetScript("OnClick", function()
     if RefreshList then RefreshList() end
   end)
-  AttachTooltip(refresh, "Refresh list",
-    "Reload entries from history. Use after a Clear, Import, or external SavedVariables edit.")
+  AttachTooltip(refresh, "Refresh",
+    "Reload the list to show messages Sift caught since you opened this window, or after " ..
+    "clearing History.")
   ddBand.refresh = refresh
 
   -- Preserve legacy lookup keys. Show/Hide on frame.filterStrip is used by
