@@ -118,9 +118,6 @@ L["off"] = "off"
 L["Active \194\183 detected spam is blocked from chat."] = "Active \194\183 detected spam is blocked from chat."
 L["Paused \194\183 detected spam is logged to History but stays in chat."] = "Paused \194\183 detected spam is logged to History but stays in chat."
 L["Off \194\183 this surface is not scanned."] = "Off \194\183 this surface is not scanned."
--- History panel: sender-history footer label (SFT-104). Not routed through
--- L[] at its call site (string.format builds it directly), so it carries no
--- tracked entry here -- pre-existing gap, not introduced by this change.
 
 -- History panel: char/account stats-scope button tooltips
 L["Show detection stats for this character only."] = "Show detection stats for this character only."
@@ -131,7 +128,7 @@ L["Detected"] = "Detected"
 L["Lifetime count of messages Sift caught, including messages from players you blocked yourself. Includes blocked, pass-thru, and restored entries."] = "Lifetime count of messages Sift caught, including messages from players you blocked yourself. Includes blocked, pass-thru, and restored entries."
 L["Lifetime count of messages Sift blocked. Messages left in chat because a category or surface was Paused are not counted, unless you later used Block retroactively on them."] = "Lifetime count of messages Sift blocked. Messages left in chat because a category or surface was Paused are not counted, unless you later used Block retroactively on them."
 L["Pass-thru"] = "Pass-thru"
-L["Scored as spam but left visible because the surface or category was set to Paused. Still logged to History for review."] = "Scored as spam but left visible because the surface or category was set to Paused. Still logged to History for review."
+L["Scored as spam but left in chat because the surface or category was set to Paused. Still logged to History for review."] = "Scored as spam but left in chat because the surface or category was set to Paused. Still logged to History for review."
 L["Blocks you have undone in History. These count toward the false-positive rate."] = "Blocks you have undone in History. These count toward the false-positive rate."
 L["False positives"] = "False positives"
 L["Restored \195\183 Blocked. A rough false-positive rate. Lower is better."] = "Restored \195\183 Blocked. A rough false-positive rate. Lower is better."
@@ -196,7 +193,7 @@ L["Open Sift Config..."] = "Open Sift Config..."
 -- Config panel: remove-row tooltips (format strings -- the row's own text,
 -- a sender label or a keyword, is a %s argument, never part of the key)
 L["Take %s off the allowlist. Use Undo above to revert."] = "Take %s off the allowlist. Use Undo above to revert."
-L["Take %s off the blocked-actors list."] = "Take %s off the blocked-actors list."
+L["Take %s off the Blocked list."] = "Take %s off the Blocked list."
 L["Take \"%s\" out of this list."] = "Take \"%s\" out of this list."
 L["Remove"] = "Remove"
 
@@ -208,11 +205,11 @@ L["Toggle each spam category between Active (block), Paused (log only), and Off 
 L["Surfaces"] = "Surfaces"
 L["Choose how Sift handles each kind of chat: Chat, Whisper, and Bnet whisper. Also has the option to hide chat bubbles for blocked messages."] = "Choose how Sift handles each kind of chat: Chat, Whisper, and Bnet whisper. Also has the option to hide chat bubbles for blocked messages."
 L["Allowlist"] = "Allowlist"
-L["Players whose messages Sift doesn't check. Add them from History or import a saved list. If you block one of them yourself, their messages are still hidden."] = "Players whose messages Sift doesn't check. Add them from History or import a saved list. If you block one of them yourself, their messages are still hidden."
+L["Players whose messages Sift doesn't check. Add them from History or import a saved list. If you also block one of them yourself, your block wins."] = "Players whose messages Sift doesn't check. Add them from History or import a saved list. If you also block one of them yourself, your block wins."
 L["Players Sift has blocked before, plus anyone you blocked yourself. Sift is a little stricter with messages from players on this list."] = "Players Sift has blocked before, plus anyone you blocked yourself. Sift is a little stricter with messages from players on this list."
 L["Your own words and phrases to block, on top of Sift's filter."] = "Your own words and phrases to block, on top of Sift's filter."
 L["Never Block"] = "Never Block"
-L["Your own words and phrases that let a message through, even past Sift's filter. Messages from players you blocked yourself are still hidden."] = "Your own words and phrases that let a message through, even past Sift's filter. Messages from players you blocked yourself are still hidden."
+L["Your own words and phrases that let a message through, even past Sift's filter. They don't override players you blocked yourself."] = "Your own words and phrases that let a message through, even past Sift's filter. They don't override players you blocked yourself."
 L["How much History Sift keeps, your lifetime totals, and the button to clear it."] = "How much History Sift keeps, your lifetime totals, and the button to clear it."
 L["UI"] = "UI"
 L["Show or hide the minimap button, and reset the Config and History panels to their default size and position."] = "Show or hide the minimap button, and reset the Config and History panels to their default size and position."
@@ -246,7 +243,6 @@ L["Filter bubbles"] = "Filter bubbles"
 L["Also hides the chat bubble for blocked Say and Yell messages. To do this, Sift briefly turns off the game's chat bubbles, then turns them back on with the next chat message and when you log out."] = "Also hides the chat bubble for blocked Say and Yell messages. To do this, Sift briefly turns off the game's chat bubbles, then turns them back on with the next chat message and when you log out."
 
 -- Config panel: Allowlist section
-L["Search allowlist"] = "Search allowlist"
 L["Type part of a name or realm, then click Apply to filter the list below. You can also search the word shown under each name: manual, history, or import."] = "Type part of a name or realm, then click Apply to filter the list below. You can also search the word shown under each name: manual, history, or import."
 L["Apply"] = "Apply"
 L["Apply the search box to the allowlist below and reset to page 1."] = "Apply the search box to the allowlist below and reset to page 1."
@@ -266,13 +262,12 @@ L["Next"] = "Next"
 L["Show the next page of allowlist entries."] = "Show the next page of allowlist entries."
 
 -- Config panel: Blocked section
-L["Search blocked actors"] = "Search blocked actors"
 L["Type part of a name to filter the list below, then click Apply."] = "Type part of a name to filter the list below, then click Apply."
-L["Apply the search box to the blocked-actors list and reset to page 1."] = "Apply the search box to the blocked-actors list and reset to page 1."
+L["Apply the search box to the Blocked list and reset to page 1."] = "Apply the search box to the Blocked list and reset to page 1."
 L["Clear All"] = "Clear All"
-L["Remove every blocked actor. Confirmation required."] = "Remove every blocked actor. Confirmation required."
-L["Show the previous page of blocked actors."] = "Show the previous page of blocked actors."
-L["Show the next page of blocked actors."] = "Show the next page of blocked actors."
+L["Remove every player from the Blocked list. Confirmation required."] = "Remove every player from the Blocked list. Confirmation required."
+L["Show the previous page of the Blocked list."] = "Show the previous page of the Blocked list."
+L["Show the next page of the Blocked list."] = "Show the next page of the Blocked list."
 
 -- Config panel: My Keywords / Never Block sections (KEYWORD_SECTIONS)
 L["Block phrase"] = "Block phrase"
@@ -290,9 +285,9 @@ L["Show the next page."] = "Show the next page."
 
 -- Config panel: History section
 L["Total detections"] = "Total detections"
-L["Every message Sift has caught, including messages from players you blocked yourself, ones left in chat because a category or surface was Paused, and ones you restored. Clearing History does not reset this."] = "Every message Sift has caught, including messages from players you blocked yourself, ones left in chat because a category or surface was Paused, and ones you restored. Clearing History does not reset this."
+L["Every message Sift has caught on this character, including messages from players you blocked yourself, ones left in chat because a category or surface was Paused, and ones you restored. Clearing History does not reset this."] = "Every message Sift has caught on this character, including messages from players you blocked yourself, ones left in chat because a category or surface was Paused, and ones you restored. Clearing History does not reset this."
 L["Total blocks"] = "Total blocks"
-L["Spam messages Sift hid from chat on this character. Messages left in chat because a category or surface was Paused are not counted, unless you later used Block retroactively on them."] = "Spam messages Sift hid from chat on this character. Messages left in chat because a category or surface was Paused are not counted, unless you later used Block retroactively on them."
+L["Messages Sift blocked on this character, including messages from players you blocked yourself. Messages left in chat because a category or surface was Paused are not counted, unless you later used Block retroactively on them."] = "Messages Sift blocked on this character, including messages from players you blocked yourself. Messages left in chat because a category or surface was Paused are not counted, unless you later used Block retroactively on them."
 L["Total restores"] = "Total restores"
 L["Blocked messages you restored in History on this character."] = "Blocked messages you restored in History on this character."
 L["Maximum history entries"] = "Maximum history entries"
@@ -306,15 +301,15 @@ L["Delete all retained History entries. Lifetime stats counters are preserved. C
 L["Show minimap button"] = "Show minimap button"
 L["Toggle the Sift launcher icon on the minimap."] = "Toggle the Sift launcher icon on the minimap."
 L["Reset History Panel"] = "Reset History Panel"
-L["Moves this panel back to the middle of the screen at its normal size. History and Config share one panel, so this resets both."] = "Moves this panel back to the middle of the screen at its normal size. History and Config share one panel, so this resets both."
+L["Move this panel back to the middle of the screen at its normal size. History and Config share one panel, so this resets both."] = "Move this panel back to the middle of the screen at its normal size. History and Config share one panel, so this resets both."
 L["Reset Config Panel"] = "Reset Config Panel"
-L["Moves this panel back to the middle of the screen at its normal size. Config and History share one panel, so this does the same as Reset History Panel."] = "Moves this panel back to the middle of the screen at its normal size. Config and History share one panel, so this does the same as Reset History Panel."
+L["Move this panel back to the middle of the screen at its normal size. Config and History share one panel, so this does the same as Reset History Panel."] = "Move this panel back to the middle of the screen at its normal size. Config and History share one panel, so this does the same as Reset History Panel."
 
 -- Config panel: Dev section
 L["Enable dev mode"] = "Enable dev mode"
 L["Records recent chat from other players, whispers included, into your saved data so missed spam can be reviewed later. Also turns on extra logging and the /bdev diagnostic commands. Leave off unless you are helping test."] = "Records recent chat from other players, whispers included, into your saved data so missed spam can be reviewed later. Also turns on extra logging and the /bdev diagnostic commands. Leave off unless you are helping test."
 L["Reset Settings"] = "Reset Settings"
-L["Puts every setting back to its default, and asks first. Your Allowlist, Blocked list, My Keywords, and Never Block are kept, but if you had raised Maximum history entries or Account total, the oldest History entries are removed right away."] = "Puts every setting back to its default, and asks first. Your Allowlist, Blocked list, My Keywords, and Never Block are kept, but if you had raised Maximum history entries or Account total, the oldest History entries are removed right away."
+L["Puts every setting back to its default, and asks first. Your Allowlist, Blocked list, My Keywords, and Never Block are kept, but if you had raised Maximum history entries or Account total, History entries over the default limit are removed right away, oldest first."] = "Puts every setting back to its default, and asks first. Your Allowlist, Blocked list, My Keywords, and Never Block are kept, but if you had raised Maximum history entries or Account total, History entries over the default limit are removed right away, oldest first."
 L["Export FP fixtures"] = "Export FP fixtures"
 L["Save the false-positive entries in History to a copy-paste window. Equivalent to /bdev fpx. Requires dev mode."] = "Save the false-positive entries in History to a copy-paste window. Equivalent to /bdev fpx. Requires dev mode."
 L["Export FN candidates"] = "Export FN candidates"

@@ -1787,7 +1787,7 @@ RenderAllowlist = function()
 
   AddText("Search", "GameFontNormalSmall", CONTENT_PAD, y + 2, 48)
   local search = AddEditBox(CONTENT_PAD + 54, y + 5, 160, listState.allowlistSearch,
-    "Search allowlist",
+    "Search",
     "Type part of a name or realm, then click Apply to filter the list below. You can also " ..
     "search the word shown under each name: manual, history, or import.")
   AddNativeButton("Apply", CONTENT_PAD + 222, y + 6, 70, function()
@@ -1895,15 +1895,15 @@ RenderBlocked = function()
 
   AddText("Search", "GameFontNormalSmall", CONTENT_PAD, y + 2, 48)
   local search = AddEditBox(CONTENT_PAD + 54, y + 5, 160, listState.blockedSearch,
-    "Search blocked actors",
+    "Search",
     "Type part of a name to filter the list below, then click Apply.")
   AddNativeButton("Apply", CONTENT_PAD + 222, y + 6, 70, function()
     listState.blockedSearch = search:GetText() or ""
     listState.blockedPage = 1
     ConfigPanel.ShowSection("Blocked")
-  end, "Apply the search box to the blocked-actors list and reset to page 1.")
+  end, "Apply the search box to the Blocked list and reset to page 1.")
   AddNativeButton("Clear All", CONTENT_PAD + 300, y + 6, 90, ConfigPanel.ConfirmClearBlocked,
-    "Remove every blocked actor. Confirmation required.")
+    "Remove every player from the Blocked list. Confirmation required.")
   y = y - 34
 
   y = AddDisabledRow("Add a manual block", "Right-click a player name in chat and choose Block (Sift).", y)
@@ -1957,7 +1957,7 @@ RenderBlocked = function()
       RemoveBlocked(rowData.key)
     end)
     AttachTooltip(remove, "Remove",
-      L["Take %s off the blocked-actors list."]:format(rowData.label))
+      L["Take %s off the Blocked list."]:format(rowData.label))
     remove:Show()
 
     y = y - (ROW_HEIGHT + 4)
@@ -1970,13 +1970,13 @@ RenderBlocked = function()
       listState.blockedPage = listState.blockedPage - 1
       ConfigPanel.ShowSection("Blocked")
     end
-  end, "Show the previous page of blocked actors.")
+  end, "Show the previous page of the Blocked list.")
   AddNativeButton("Next", CONTENT_PAD + 236, y + 4, 60, function()
     if listState.blockedPage < maxPage then
       listState.blockedPage = listState.blockedPage + 1
       ConfigPanel.ShowSection("Blocked")
     end
-  end, "Show the next page of blocked actors.")
+  end, "Show the next page of the Blocked list.")
 end
 
 -- BSP-052 / BSP-058: both keyword lists render through one function. They differ
@@ -1998,7 +1998,8 @@ local KEYWORD_SECTIONS = {
   },
   ["Never Block"] = {
     kind = NS.UserRules and NS.UserRules.ALLOW or "allow",
-    blurb = "Words and phrases that protect a message. Anything containing one is never blocked.",
+    blurb = "Words and phrases that protect a message. Anything containing one is never "
+      .. "blocked, unless you blocked the sender yourself.",
     addLabel = "Allow phrase",
     addTooltip = "Type a word or phrase that should always come through, unless you blocked "
       .. "the sender yourself. Matching works the same way as My Keywords.",
@@ -2192,14 +2193,14 @@ RenderHistory = function()
   y = AddStatus(y, sectionStatus.History)
   y = AddDisabledRow("Total detections", tostring(tonumber(lifetime.detections) or 0), y,
     "Total detections",
-    "Every message Sift has caught, including messages from players you blocked yourself, " ..
-    "ones left in chat because a category or surface was Paused, and ones you restored. " ..
-    "Clearing History does not reset this.")
+    "Every message Sift has caught on this character, including messages from players you " ..
+    "blocked yourself, ones left in chat because a category or surface was Paused, and " ..
+    "ones you restored. Clearing History does not reset this.")
   y = AddDisabledRow("Total blocks", tostring(tonumber(lifetime.blocked) or 0), y,
     "Total blocks",
-    "Spam messages Sift hid from chat on this character. Messages left in chat because a " ..
-    "category or surface was Paused are not counted, unless you later used Block " ..
-    "retroactively on them.")
+    "Messages Sift blocked on this character, including messages from players you blocked " ..
+    "yourself. Messages left in chat because a category or surface was Paused are not " ..
+    "counted, unless you later used Block retroactively on them.")
   y = AddDisabledRow("Total restores", tostring(tonumber(lifetime.restored) or 0), y,
     "Total restores",
     "Blocked messages you restored in History on this character.")
@@ -2287,13 +2288,13 @@ RenderUI = function()
       sectionStatus.UI = "History panel reset API is unavailable."
     end
     ConfigPanel.ShowSection("UI")
-  end, "Moves this panel back to the middle of the screen at its normal size. History " ..
+  end, "Move this panel back to the middle of the screen at its normal size. History " ..
     "and Config share one panel, so this resets both.")
   AddNativeButton("Reset Config Panel", CONTENT_PAD + 160, y, 150, function()
     ConfigPanel.ResetPosition()
     sectionStatus.UI = "Config panel position reset."
     ConfigPanel.ShowSection("UI")
-  end, "Moves this panel back to the middle of the screen at its normal size. Config " ..
+  end, "Move this panel back to the middle of the screen at its normal size. Config " ..
     "and History share one panel, so this does the same as Reset History Panel.")
 end
 
@@ -2310,7 +2311,8 @@ RenderDev = function()
     end
   end, "Puts every setting back to its default, and asks first. Your Allowlist, Blocked " ..
     "list, My Keywords, and Never Block are kept, but if you had raised Maximum history " ..
-    "entries or Account total, the oldest History entries are removed right away.")
+    "entries or Account total, History entries over the default limit are removed right " ..
+    "away, oldest first.")
   -- BSP-018: FP-export tool. Same gating semantics as /bdev fpx — the
   -- OpenFPExportDialog function checks devMode and prints a status message
   -- if off, so the button is visible always (discoverability) but only
@@ -2495,10 +2497,10 @@ local NAV_TOOLTIPS = {
   Detection  = "How strict Sift is when deciding what counts as spam. Also covers look-alike letters, wording that lowers a message's score, and repeated messages.",
   Categories = "Toggle each spam category between Active (block), Paused (log only), and Off (ignore).",
   Surfaces   = "Choose how Sift handles each kind of chat: Chat, Whisper, and Bnet whisper. Also has the option to hide chat bubbles for blocked messages.",
-  Allowlist  = "Players whose messages Sift doesn't check. Add them from History or import a saved list. If you block one of them yourself, their messages are still hidden.",
+  Allowlist  = "Players whose messages Sift doesn't check. Add them from History or import a saved list. If you also block one of them yourself, your block wins.",
   Blocked    = "Players Sift has blocked before, plus anyone you blocked yourself. Sift is a little stricter with messages from players on this list.",
   ["My Keywords"] = "Your own words and phrases to block, on top of Sift's filter.",
-  ["Never Block"] = "Your own words and phrases that let a message through, even past Sift's filter. Messages from players you blocked yourself are still hidden.",
+  ["Never Block"] = "Your own words and phrases that let a message through, even past Sift's filter. They don't override players you blocked yourself.",
   History    = "How much History Sift keeps, your lifetime totals, and the button to clear it.",
   UI         = "Show or hide the minimap button, and reset the Config and History panels to their default size and position.",
   Dev        = "Developer-only diagnostics and full settings reset.",

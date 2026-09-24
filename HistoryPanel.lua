@@ -204,7 +204,7 @@ local STATS_TILE_TOOLTIPS = {
   },
   passThru = {
     title = "Pass-thru",
-    body  = "Scored as spam but left visible because the surface or category " ..
+    body  = "Scored as spam but left in chat because the surface or category " ..
             "was set to Paused. Still logged to History for review.",
   },
   restored = {
