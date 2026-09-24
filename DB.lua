@@ -554,7 +554,8 @@ function DB.RecordBlockedActor(record, category)
   local blockedActors = global.blockedActors
   local guid = record.guid
   local entry = blockedActors[guid]
-  if type(entry) ~= "table" then
+  local isNewEntry = type(entry) ~= "table"
+  if isNewEntry then
     entry = {
       guid = guid,
       firstBlockedAt = tonumber(record.ts) or Now(),
@@ -579,9 +580,14 @@ function DB.RecordBlockedActor(record, category)
     entry.categories[category] = (tonumber(entry.categories[category]) or 0) + 1
   end
 
-  while CountTable(blockedActors) > BLOCKED_ACTOR_CAP do
-    if not EvictOldestBlockedActor(blockedActors) then
-      break
+  -- Only adding a new key can push the table past the cap, so a repeat
+  -- sender's block skips the trim. The trim runs after the entry's fields
+  -- are set, so the new entry is judged by its current lastBlockedAt.
+  if isNewEntry then
+    while CountTable(blockedActors) > BLOCKED_ACTOR_CAP do
+      if not EvictOldestBlockedActor(blockedActors) then
+        break
+      end
     end
   end
 
