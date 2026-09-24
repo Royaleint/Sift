@@ -187,7 +187,7 @@ L["AFK auto-response"] = "AFK auto-response"
 L["Channel"] = "Channel"
 
 -- Config panel: window chrome
-L["Sift \226\128\148 Config"] = "Sift \226\128\148 Config"
+L["Sift Config"] = "Sift Config"
 
 -- Config panel: Interface Options launcher stub (RegisterInterfaceOptions)
 L["Sift Configuration"] = "Sift Configuration"

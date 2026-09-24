@@ -2407,7 +2407,7 @@ local function CreatePlainConfigFrame(parent)
 
   header.TitleText = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
   header.TitleText:SetPoint("CENTER", header, "CENTER", 0, 0)
-  header.TitleText:SetText(L["Sift \226\128\148 Config"])
+  header.TitleText:SetText(L["Sift Config"])
   f.TitleContainer = header
 
   local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
@@ -2455,9 +2455,9 @@ local function ApplyConfigChrome(f)
   end
   HidePortraitChrome(f)
   if f.SetTitle then
-    f:SetTitle(L["Sift \226\128\148 Config"])
+    f:SetTitle(L["Sift Config"])
   elseif f.TitleContainer and f.TitleContainer.TitleText then
-    f.TitleContainer.TitleText:SetText(L["Sift \226\128\148 Config"])
+    f.TitleContainer.TitleText:SetText(L["Sift Config"])
   end
   -- Center the title within TitleContainer (PortraitFrameTemplate default
   -- is LEFT-anchored; Plain path already centers, so this is a no-op there).
