@@ -1,13 +1,10 @@
 local _, NS = ...
+local L = NS.L
 local HistoryPanel = {}
 
 -- BSP-066: Foundry-1.0 is a hard dependency (## Dependencies: Foundry-1.0).
 -- Bound at file load so CreateModernListPane can call F:RequireModule at use-time.
 local F = _G.Foundry_1_0
-
--- BSP-008: i18n hook. Identity function today; future Locale ticket
--- swaps to NS.L or a string table without touching call sites.
-local function L(s) return s end
 
 -- BSP-009: GameTooltip helper for widget hover help. Static title/body/hint
 -- variant. For state-aware widgets (pause pills, detail-pane action buttons)
@@ -23,9 +20,9 @@ local function AttachTooltip(widget, title, body, hint)
   host:HookScript("OnEnter", function(self)
     if not GameTooltip then return end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    if title then GameTooltip:AddLine(L(title)) end
-    if body  then GameTooltip:AddLine(L(body),  1.00, 1.00, 1.00, true) end
-    if hint  then GameTooltip:AddLine(L(hint),  0.70, 0.70, 0.70, true) end
+    if title then GameTooltip:AddLine(L[title]) end
+    if body  then GameTooltip:AddLine(L[body],  1.00, 1.00, 1.00, true) end
+    if hint  then GameTooltip:AddLine(L[hint],  0.70, 0.70, 0.70, true) end
     GameTooltip:Show()
   end)
   host:HookScript("OnLeave", function()
@@ -390,7 +387,7 @@ local function CreatePlainHistoryFrame(parent)
 
   header.TitleText = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
   header.TitleText:SetPoint("CENTER", header, "CENTER", 0, 0)
-  header.TitleText:SetText(L("Sift — History"))
+  header.TitleText:SetText(L["Sift — History"])
   f.TitleContainer = header
 
   local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
@@ -424,9 +421,9 @@ local function CreateBackdropFrame(parent)
   end
   HidePortraitChrome(f)
   if f.SetTitle then
-    f:SetTitle(L("Sift — History"))
+    f:SetTitle(L["Sift — History"])
   elseif f.TitleContainer and f.TitleContainer.TitleText then
-    f.TitleContainer.TitleText:SetText(L("Sift — History"))
+    f.TitleContainer.TitleText:SetText(L["Sift — History"])
   end
   -- Center the title within TitleContainer (template default is LEFT-anchored).
   if f.TitleContainer and f.TitleContainer.TitleText then
@@ -677,7 +674,7 @@ local function RenderRow(row, entry)
   -- BSP-037: a manual block has no category and no score, so the usual "?" and
   -- 0 read as a broken row. Name the reason instead.
   if entry.reason == "manual-block" then
-    row.badgeText:SetText(L("You"))
+    row.badgeText:SetText(L["You"])
     row.scoreText:SetText("")
   else
     local badge = cat and (CATEGORY_BADGE_LABELS[cat] or cat)
@@ -687,7 +684,7 @@ local function RenderRow(row, entry)
       -- "why", not a "what" -- it never wins EntryDominantCategory). Name
       -- the reason like manual blocks do instead of rendering a broken "?"
       -- (Gate 2 finding, 2026-07-28).
-      badge = L("Flood")
+      badge = L["Flood"]
     end
     row.badgeText:SetText(badge or "?")
     row.scoreText:SetText(tostring(entry.score or 0))
@@ -922,14 +919,14 @@ local function RenderActions(entry)
   local outcome = entry.outcome or "blocked"
 
   if outcome == "restored" then
-    actions.btn1:SetText(L("\226\156\147 Restored"))
+    actions.btn1:SetText(L["\226\156\147 Restored"])
     actions.btn1:Disable()
     actions.btn1:Show()
     actions.btn1.tipTitle = "Restored"
     actions.btn1.tipBody  = "This block has already been undone. No further action needed."
     if NS.Trust and NS.Trust.IsAllowlisted and entry.guid and entry.guid ~= ""
        and NS.Trust.IsAllowlisted(entry.guid) then
-      actions.btn2:SetText(L("Allowlisted"))
+      actions.btn2:SetText(L["Allowlisted"])
       actions.btn2:Disable()
       actions.btn2:Show()
       actions.btn2.tipTitle = "Allowlisted"
@@ -939,7 +936,7 @@ local function RenderActions(entry)
   end
 
   if outcome == "pass-thru" then
-    actions.btn1:SetText(L("Block retroactively"))
+    actions.btn1:SetText(L["Block retroactively"])
     actions.btn1:SetScript("OnClick", function()
       PerformBlockRetroactively(entry)
     end)
@@ -950,7 +947,7 @@ local function RenderActions(entry)
     local allowable = (entry.surface == "chat" or entry.surface == "whisper" or entry.surface == "bn-whisper")
       and entry.guid and entry.guid ~= ""
     if allowable and not (NS.Trust and NS.Trust.IsAllowlisted and NS.Trust.IsAllowlisted(entry.guid)) then
-      actions.btn2:SetText(L("Always allow"))
+      actions.btn2:SetText(L["Always allow"])
       actions.btn2:SetScript("OnClick", function() PerformAlwaysAllow(entry) end)
       actions.btn2:Show()
       actions.btn2.tipTitle = "Always allow"
@@ -965,13 +962,13 @@ local function RenderActions(entry)
   local reportLabel = GetReportLabel(reportKind)
 
   if reportLabel then
-    actions.btn1:SetText(L("Restore"))
+    actions.btn1:SetText(L["Restore"])
     actions.btn1:SetScript("OnClick", function() PerformRestore(entry) end)
     actions.btn1:Show()
     actions.btn1.tipTitle = "Restore"
     actions.btn1.tipBody  = "Un-block this message. Note: the original chat text was never injected, " ..
       "so it stays out of the chat scroll \194\151 restored entries appear here only."
-    actions.btn2:SetText(L(reportLabel))
+    actions.btn2:SetText(L[reportLabel])
     actions.btn2:SetScript("OnClick", function() PerformReport(entry) end)
     actions.btn2:Show()
     actions.btn2.tipTitle = reportLabel
@@ -984,13 +981,13 @@ local function RenderActions(entry)
   if allowable then
     local already = NS.Trust and NS.Trust.IsAllowlisted and NS.Trust.IsAllowlisted(entry.guid)
     if already then
-      actions.btn1:SetText(L("Restore"))
+      actions.btn1:SetText(L["Restore"])
       actions.btn1:SetScript("OnClick", function() PerformRestore(entry) end)
       actions.btn1:Show()
       actions.btn1.tipTitle = "Restore"
       actions.btn1.tipBody  = "Un-block this message. Sender is already on the allowlist."
     else
-      actions.btn1:SetText(L("Restore + Always allow"))
+      actions.btn1:SetText(L["Restore + Always allow"])
       actions.btn1:SetScript("OnClick", function()
         PerformRestore(entry)
         PerformAlwaysAllow(entry)
@@ -999,14 +996,14 @@ local function RenderActions(entry)
       actions.btn1.tipTitle = "Restore + Always allow"
       actions.btn1.tipBody  = "Un-block this message and add the sender to the allowlist " ..
         "so future messages from them bypass scanning."
-      actions.btn2:SetText(L("Restore only"))
+      actions.btn2:SetText(L["Restore only"])
       actions.btn2:SetScript("OnClick", function() PerformRestore(entry) end)
       actions.btn2:Show()
       actions.btn2.tipTitle = "Restore only"
       actions.btn2.tipBody  = "Un-block this message without changing the allowlist."
     end
   else
-    actions.btn1:SetText(L("Restore"))
+    actions.btn1:SetText(L["Restore"])
     actions.btn1:SetScript("OnClick", function() PerformRestore(entry) end)
     actions.btn1:Show()
     actions.btn1.tipTitle = "Restore"
@@ -1042,7 +1039,7 @@ local function RefreshLegend()
       item.swatch:SetColorTexture(HexNibble(hex, 1), HexNibble(hex, 2), HexNibble(hex, 3), 1)
       item.swatch:ClearAllPoints()
       item.swatch:SetPoint("LEFT", legend, "LEFT", lx, 0)
-      item.label:SetText(L(CATEGORY_BADGE_LABELS[cat] or cat))
+      item.label:SetText(L[CATEGORY_BADGE_LABELS[cat] or cat])
       item.swatch:Show()
       item.label:Show()
       lx = lx + 12 + item.label:GetStringWidth() + 8
@@ -1097,7 +1094,7 @@ local function RefreshStatsArea()
   local surfaceOrder = { "chat", "whisper", "bn-whisper" }
   for _, s in ipairs(surfaceOrder) do
     local label = SURFACE_LABELS[s] or s
-    surfaceParts[#surfaceParts + 1] = string.format("%s |cffffffff%d|r", L(label), tonumber(bySurface[s]) or 0)
+    surfaceParts[#surfaceParts + 1] = string.format("%s |cffffffff%d|r", L[label], tonumber(bySurface[s]) or 0)
   end
   detailPane.stats.bySurfaceText:SetText(table.concat(surfaceParts, "   "))
 
@@ -1116,9 +1113,9 @@ local function RefreshStatsArea()
       local part
       local catLabel = CATEGORY_BADGE_LABELS[cat] or cat
       if state == "paused" or state == "off" then
-        part = string.format("|cff%s%s|r |cff888888%d|r", hexFull, L(catLabel), count)
+        part = string.format("|cff%s%s|r |cff888888%d|r", hexFull, L[catLabel], count)
       else
-        part = string.format("|cff%s%s|r |cffffffff%d|r", hexFull, L(catLabel), count)
+        part = string.format("|cff%s%s|r |cffffffff%d|r", hexFull, L[catLabel], count)
       end
       categoryParts[#categoryParts + 1] = part
     end
@@ -1129,7 +1126,7 @@ local function RefreshStatsArea()
   local bubbles   = tonumber(lifetime.bubblesSuppressed) or 0
   detailPane.stats.pipelineText:SetText(string.format(
     "%s |cffffffff%d|r   %s |cffffffff%d|r",
-    L("Throttled"), throttled, L("Bubbles suppressed"), bubbles))
+    L["Throttled"], throttled, L["Bubbles suppressed"], bubbles))
 
   -- Keep the list legend in sync with the same counts (e.g. Clear history
   -- can make a retired category's last rows disappear).
@@ -1238,7 +1235,7 @@ RefreshDetail = function()
 
   -- Header
   local channel      = FormatChannel(entry)
-  local linkSuffix   = entry.containsItemLinks and ("   " .. L("contains item link")) or ""
+  local linkSuffix   = entry.containsItemLinks and ("   " .. L["contains item link"]) or ""
   local surfaceLabel = (entry.surface and SURFACE_LABELS[entry.surface]) or entry.surface or "?"
   detailPane.header.senderText:SetText(FormatSender(entry))
 
@@ -1246,19 +1243,19 @@ RefreshDetail = function()
   local statusText
   local pauseReason = ""
   if outcome == "restored" then
-    statusText = "|cff5ad080" .. L("RESTORED") .. "|r"
+    statusText = "|cff5ad080" .. L["RESTORED"] .. "|r"
   elseif outcome == "pass-thru" then
-    statusText = "|cffaa7a3a" .. L("PASSED THROUGH") .. "|r"
+    statusText = "|cffaa7a3a" .. L["PASSED THROUGH"] .. "|r"
     local surfaceKey = entry.surface or "chat"
     local surfaceState = NS.PauseState and NS.PauseState.GetSurface and NS.PauseState.GetSurface(surfaceKey) or "active"
     if surfaceState == "paused" then
-      pauseReason = "   " .. L(surfaceLabel) .. " " .. L("surface paused")
+      pauseReason = "   " .. L[surfaceLabel] .. " " .. L["surface paused"]
     end
   else
-    statusText = "|cffff5577" .. L("BLOCKED") .. "|r"
+    statusText = "|cffff5577" .. L["BLOCKED"] .. "|r"
   end
   if entry.reason == "manual-block" then
-    statusText = statusText .. "   " .. L("blocked by you")
+    statusText = statusText .. "   " .. L["blocked by you"]
   else
     statusText = statusText .. string.format("   %d / %d",
       tonumber(entry.score) or 0, tonumber(entry.threshold) or 0)
@@ -1273,12 +1270,12 @@ RefreshDetail = function()
   if type(entry.customRule) == "table" then
     local rule = entry.customRule.raw or entry.customRule.cleansed
     if rule then
-      keywordNote = "   |cffffd100" .. L("caught by your keyword") .. ": " .. rule .. "|r"
+      keywordNote = "   |cffffd100" .. L["caught by your keyword"] .. ": " .. rule .. "|r"
     end
   end
 
   detailPane.header.metaText:SetText(string.format("%s   %s%s%s%s",
-    L(surfaceLabel), channel, linkSuffix, pauseReason, keywordNote))
+    L[surfaceLabel], channel, linkSuffix, pauseReason, keywordNote))
 
   RenderBodyFlex(entry)
   RenderBreakdownChips(entry.breakdown)
@@ -1561,7 +1558,7 @@ end
 local function CreateUnavailableListPane()
   local text = listPane:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
   text:SetPoint("CENTER", listPane, "CENTER", 0, 0)
-  text:SetText(L("History list is unavailable in this client."))
+  text:SetText(L["History list is unavailable in this client."])
   listPane.listBackend = "unavailable"
 end
 
@@ -1607,7 +1604,7 @@ end
 local function BuildStatsArea(parent)
   parent.titleLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   parent.titleLabel:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, -6)
-  parent.titleLabel:SetText(L("DETECTION STATS"))
+  parent.titleLabel:SetText(L["DETECTION STATS"])
 
   -- BSP-036: this-character / account-wide scope toggle for the stat boxes.
   local function SetStatsScope(scope)
@@ -1620,7 +1617,7 @@ local function BuildStatsArea(parent)
   parent.scopeCharBtn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
   parent.scopeCharBtn:SetSize(70, 16)
   parent.scopeCharBtn:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -6, -4)
-  parent.scopeCharBtn:SetText(L("Character"))
+  parent.scopeCharBtn:SetText(L["Character"])
   parent.scopeCharBtn:SetScript("OnClick", function() SetStatsScope("char") end)
   AttachTooltip(parent.scopeCharBtn, "Character",
     "Show detection stats for this character only.")
@@ -1628,7 +1625,7 @@ local function BuildStatsArea(parent)
   parent.scopeAccountBtn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
   parent.scopeAccountBtn:SetSize(70, 16)
   parent.scopeAccountBtn:SetPoint("RIGHT", parent.scopeCharBtn, "LEFT", -4, 0)
-  parent.scopeAccountBtn:SetText(L("Account"))
+  parent.scopeAccountBtn:SetText(L["Account"])
   parent.scopeAccountBtn:SetScript("OnClick", function() SetStatsScope("account") end)
   AttachTooltip(parent.scopeAccountBtn, "Account",
     "Show detection stats summed across every character on this account.")
@@ -1653,7 +1650,7 @@ local function BuildStatsArea(parent)
     tile.valueText:SetPoint("TOP", tile, "TOP", 0, -2)
     tile.labelText = tile:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     tile.labelText:SetPoint("BOTTOM", tile, "BOTTOM", 0, 4)
-    tile.labelText:SetText(L(STATS_TILE_LABELS[key]))
+    tile.labelText:SetText(L[STATS_TILE_LABELS[key]])
     -- BSP-009: tiles are layout-only Frames, need EnableMouse for tooltips.
     local meta = STATS_TILE_TOOLTIPS[key]
     if meta then AttachTooltip(tile, meta.title, meta.body) end
@@ -1664,7 +1661,7 @@ local function BuildStatsArea(parent)
 
   parent.bySurfaceLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   parent.bySurfaceLabel:SetPoint("TOPLEFT", parent.tilesRow, "BOTTOMLEFT", 0, -8)
-  parent.bySurfaceLabel:SetText(L("BY SURFACE"))
+  parent.bySurfaceLabel:SetText(L["BY SURFACE"])
 
   parent.bySurfaceText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   parent.bySurfaceText:SetPoint("TOPLEFT",  parent.bySurfaceLabel, "BOTTOMLEFT", 0, -2)
@@ -1674,7 +1671,7 @@ local function BuildStatsArea(parent)
 
   parent.byCategoryLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   parent.byCategoryLabel:SetPoint("TOPLEFT", parent.bySurfaceText, "BOTTOMLEFT", 0, -8)
-  parent.byCategoryLabel:SetText(L("BY CATEGORY"))
+  parent.byCategoryLabel:SetText(L["BY CATEGORY"])
 
   parent.byCategoryText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   parent.byCategoryText:SetPoint("TOPLEFT",  parent.byCategoryLabel, "BOTTOMLEFT", 0, -2)
@@ -1684,7 +1681,7 @@ local function BuildStatsArea(parent)
 
   parent.pipelineLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   parent.pipelineLabel:SetPoint("TOPLEFT", parent.byCategoryText, "BOTTOMLEFT", 0, -8)
-  parent.pipelineLabel:SetText(L("PIPELINE"))
+  parent.pipelineLabel:SetText(L["PIPELINE"])
 
   parent.pipelineText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   parent.pipelineText:SetPoint("TOPLEFT", parent.pipelineLabel, "BOTTOMLEFT", 0, -2)
@@ -1794,9 +1791,9 @@ local function CreateDetailPane()
   local function ActionOnEnter(self)
     if not GameTooltip or not self.tipTitle then return end
     GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
-    GameTooltip:AddLine(L(self.tipTitle))
+    GameTooltip:AddLine(L[self.tipTitle])
     if self.tipBody then
-      GameTooltip:AddLine(L(self.tipBody), 1.00, 1.00, 1.00, true)
+      GameTooltip:AddLine(L[self.tipBody], 1.00, 1.00, 1.00, true)
     end
     GameTooltip:Show()
   end
@@ -1914,7 +1911,7 @@ local function BuildCategoryChips(strip)
   for _, cat in ipairs(CATEGORIES) do
     local chip = CreateFrame("Button", nil, strip, "UIPanelButtonTemplate")
     chip:SetSize(CHIP_MIN_WIDTH, 22)
-    chip:SetText(L(CHIP_LABELS[cat] or cat))
+    chip:SetText(L[CHIP_LABELS[cat] or cat])
     chip:SetScript("OnClick", function()
       filterState.categories[cat] = (filterState.categories[cat] == false)
       UpdateChipVisual(chip, cat)
@@ -1930,8 +1927,8 @@ local function BuildCategoryChips(strip)
         and "Currently included in the list. Click to hide entries in this category."
         or  "Currently hidden from the list. Click to show entries in this category."
       GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
-      GameTooltip:AddLine(L(fullName))
-      GameTooltip:AddLine(L(body), 1.00, 1.00, 1.00, true)
+      GameTooltip:AddLine(L[fullName])
+      GameTooltip:AddLine(L[body], 1.00, 1.00, 1.00, true)
       GameTooltip:Show()
     end)
     chip:HookScript("OnLeave", function()
@@ -1949,16 +1946,16 @@ local function CreateModernDropdown(parent, labelText, values, labels, getValue,
   local dd = CreateFrame("DropdownButton", nil, parent, "WowStyle1DropdownTemplate")
   dd:SetSize(110, 22)
   if dd.SetDefaultText then
-    dd:SetDefaultText(L(labelText))
+    dd:SetDefaultText(L[labelText])
   end
   if F then
     local ctrl = F.Menu:New({
       name    = "NS.FilterDropdown." .. labelText,
       builder = function(_, root)
-        root:CreateTitle(L(labelText))
+        root:CreateTitle(L[labelText])
         for _, v in ipairs(values) do
           local displayLabel = (labels and labels[v]) or v
-          root:CreateRadio(L(displayLabel),
+          root:CreateRadio(L[displayLabel],
             function() return getValue() == v end,
             function() setValue(v); dd:GenerateMenu() end)
         end
@@ -2133,7 +2130,7 @@ local function CreateHeaderFilters()
   local refresh = CreateFrame("Button", nil, ddBand, "UIPanelButtonTemplate")
   refresh:SetSize(60, 22)
   refresh:SetPoint("RIGHT", ddBand, "RIGHT", 0, 0)
-  refresh:SetText(L("Refresh"))
+  refresh:SetText(L["Refresh"])
   refresh:SetScript("OnClick", function()
     if RefreshList then RefreshList() end
   end)
@@ -2226,7 +2223,7 @@ end
 local function PauseStateMenuSuffix(state)
   state = (state == "paused" or state == "off") and state or "active"
   if NS.Compat and NS.Compat.isClassicFamily then
-    return "  [" .. L(state) .. "]"
+    return "  [" .. L[state] .. "]"
   end
   local atlas = PAUSE_STATE_ATLAS[state] or PAUSE_STATE_ATLAS.active
   return "  |A:" .. atlas .. ":14:14|a"
@@ -2270,7 +2267,7 @@ local function CreatePauseRow(parent)
 
     pill.label = pill:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     pill.label:SetPoint("LEFT", pill.glyph, "RIGHT", 2, 0)
-    pill.label:SetText(L(PAUSE_PILL_LABELS[surfaceKey]))
+    pill.label:SetText(L[PAUSE_PILL_LABELS[surfaceKey]])
 
     -- BSP-008 Commit 6: left-click cycles forward, right-click cycles backward.
     pill:SetScript("OnClick", function(self, mouseButton)
@@ -2294,9 +2291,9 @@ local function CreatePauseRow(parent)
         stateBody = "Off \194\183 this surface is not scanned."
       end
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      GameTooltip:AddLine(L(fullName))
-      GameTooltip:AddLine(L(stateBody), 1.00, 1.00, 1.00, true)
-      GameTooltip:AddLine(L("Left-click cycles forward \194\183 Right-click cycles back."),
+      GameTooltip:AddLine(L[fullName])
+      GameTooltip:AddLine(L[stateBody], 1.00, 1.00, 1.00, true)
+      GameTooltip:AddLine(L["Left-click cycles forward \194\183 Right-click cycles back."],
         0.70, 0.70, 0.70, true)
       GameTooltip:Show()
     end)
@@ -2445,18 +2442,18 @@ function HistoryPanel.Initialize()
     pauseSurfaceMenu = F.Menu:New({
       name    = "NS.PauseSurface",
       builder = function(_, rootDescription)
-        rootDescription:CreateTitle(L("Sift"))
-        rootDescription:CreateTitle(L("Pause surface"))
+        rootDescription:CreateTitle(L["Sift"])
+        rootDescription:CreateTitle(L["Pause surface"])
         for _, surfaceKey in ipairs(PAUSE_PILL_KEYS) do
           local labelText = SURFACE_LABELS[surfaceKey] or surfaceKey
           local s = NS.PauseState and NS.PauseState.GetSurface(surfaceKey) or "active"
-          rootDescription:CreateButton(L(labelText) .. PauseStateMenuSuffix(s), function()
+          rootDescription:CreateButton(L[labelText] .. PauseStateMenuSuffix(s), function()
             if NS.PauseState then NS.PauseState.CycleSurface(surfaceKey, "forward") end
             return MenuResponse.Refresh
           end)
         end
         rootDescription:CreateDivider()
-        rootDescription:CreateButton(L("Open config"), function() OpenConfigPanel() end)
+        rootDescription:CreateButton(L["Open config"], function() OpenConfigPanel() end)
       end,
     })
   end

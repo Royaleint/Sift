@@ -1,13 +1,11 @@
 local _, NS = ...
+local L = NS.L
 local ConfigPanel = {}
-
--- BSP-008: i18n hook. Identity today; future Locale ticket retrofits L.
-local function L(s) return s end
 
 -- BSP-009: GameTooltip helper for widget hover help. Mirrors HistoryPanel's
 -- AttachTooltip; duplicated locally because the two files are independent
--- and a single shared module would require .toc load-order plumbing for
--- minor gain. `widget.frame or widget` is a historical AceGUI compatibility
+-- modules and sharing one copy isn't worth adding a cross-file dependency
+-- for. `widget.frame or widget` is a historical AceGUI compatibility
 -- fallback retained so any future widget wrapper that exposes `.frame` still
 -- works without a refactor. EnableMouse is asserted because BackdropTemplate
 -- hosts default mouse-disabled.
@@ -19,9 +17,9 @@ local function AttachTooltip(widget, title, body, hint)
   host:HookScript("OnEnter", function(self)
     if not GameTooltip then return end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    if title then GameTooltip:AddLine(L(title)) end
-    if body  then GameTooltip:AddLine(L(body),  1.00, 1.00, 1.00, true) end
-    if hint  then GameTooltip:AddLine(L(hint),  0.70, 0.70, 0.70, true) end
+    if title then GameTooltip:AddLine(L[title]) end
+    if body  then GameTooltip:AddLine(L[body],  1.00, 1.00, 1.00, true) end
+    if hint  then GameTooltip:AddLine(L[hint],  0.70, 0.70, 0.70, true) end
     GameTooltip:Show()
   end)
   host:HookScript("OnLeave", function()
@@ -1588,7 +1586,7 @@ local function AddAxisPauseRow(axis, key, displayLabel, y)
 
   local label = TrackNative(row:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
   label:SetPoint("LEFT", row, "LEFT", 8, 0)
-  label:SetText(L(displayLabel))
+  label:SetText(L[displayLabel])
   label:Show()
 
   local pill = TrackNative(CreateFrame("Button", nil, row))
@@ -1612,7 +1610,7 @@ local function AddAxisPauseRow(axis, key, displayLabel, y)
       state = NS.PauseState and NS.PauseState.GetCategory(key) or "active"
     end
     ApplyPauseGlyph(pill.glyph, state)
-    pill.text:SetText(L(state))
+    pill.text:SetText(L[state])
   end
 
   pill:SetScript("OnClick", function(self, mouseButton)
@@ -1650,9 +1648,9 @@ local function AddAxisPauseRow(axis, key, displayLabel, y)
         or  "Off \194\183 this category is not scored against messages."
     end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:AddLine(L(displayLabel))
-    GameTooltip:AddLine(L(stateBody), 1.00, 1.00, 1.00, true)
-    GameTooltip:AddLine(L("Left-click cycles forward \194\183 Right-click cycles back."),
+    GameTooltip:AddLine(L[displayLabel])
+    GameTooltip:AddLine(L[stateBody], 1.00, 1.00, 1.00, true)
+    GameTooltip:AddLine(L["Left-click cycles forward \194\183 Right-click cycles back."],
       0.70, 0.70, 0.70, true)
     GameTooltip:Show()
   end)
@@ -1850,7 +1848,7 @@ RenderAllowlist = function()
       RemoveAllowlist(rowData.guid, rowData.entry)
     end)
     AttachTooltip(remove, "Remove from allowlist",
-      "Take " .. SenderLabel(rowData.entry) .. " off the allowlist. Use Undo above to revert.")
+      L["Take %s off the allowlist. Use Undo above to revert."]:format(SenderLabel(rowData.entry)))
     remove:Show()
 
     y = y - (ROW_HEIGHT + 4)
@@ -1940,7 +1938,7 @@ RenderBlocked = function()
       RemoveBlocked(rowData.key)
     end)
     AttachTooltip(remove, "Remove blocked actor",
-      "Take " .. rowData.label .. " off the blocked-actors list.")
+      L["Take %s off the blocked-actors list."]:format(rowData.label))
     remove:Show()
 
     y = y - (ROW_HEIGHT + 4)
@@ -2144,7 +2142,7 @@ local function RenderKeywordSection(section)
       end
       ConfigPanel.ShowSection(section)
     end)
-    AttachTooltip(remove, "Remove phrase", "Take \"" .. entry.raw .. "\" out of this list.")
+    AttachTooltip(remove, "Remove phrase", L["Take \"%s\" out of this list."]:format(entry.raw))
     remove:Show()
 
     y = y - (ROW_HEIGHT + 4)
@@ -2375,7 +2373,7 @@ local function CreatePlainConfigFrame(parent)
 
   header.TitleText = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
   header.TitleText:SetPoint("CENTER", header, "CENTER", 0, 0)
-  header.TitleText:SetText(L("Sift \226\128\148 Config"))
+  header.TitleText:SetText(L["Sift \226\128\148 Config"])
   f.TitleContainer = header
 
   local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
@@ -2423,9 +2421,9 @@ local function ApplyConfigChrome(f)
   end
   HidePortraitChrome(f)
   if f.SetTitle then
-    f:SetTitle(L("Sift \226\128\148 Config"))
+    f:SetTitle(L["Sift \226\128\148 Config"])
   elseif f.TitleContainer and f.TitleContainer.TitleText then
-    f.TitleContainer.TitleText:SetText(L("Sift \226\128\148 Config"))
+    f.TitleContainer.TitleText:SetText(L["Sift \226\128\148 Config"])
   end
   -- Center the title within TitleContainer (PortraitFrameTemplate default
   -- is LEFT-anchored; Plain path already centers, so this is a no-op there).
