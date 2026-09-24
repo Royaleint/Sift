@@ -428,6 +428,14 @@ local function BulkTrimOldest(history, max)
 end
 
 local function EvictToGlobalCap(charTable, globalCap)
+  local total = 0
+  for _, charData in pairs(charTable) do
+    if type(charData) == "table" and type(charData.history) == "table" then
+      total = total + #charData.history
+    end
+  end
+  if total <= globalCap then return 0 end
+
   local refs, refCount = {}, 0
   for charKey, charData in pairs(charTable) do
     if type(charData) == "table" and type(charData.history) == "table" then
