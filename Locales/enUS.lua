@@ -83,6 +83,27 @@ L["surface paused"] = "surface paused"
 L["blocked by you"] = "blocked by you"
 L["caught by your keyword"] = "caught by your keyword"
 
+-- History panel: hover tooltips for the row badges, column headers,
+-- breakdown chips, legend swatches, and stats lines.
+L["How long ago Sift caught this message. Entries older than 90 days show the date instead."] = "How long ago Sift caught this message. Entries older than 90 days show the date instead."
+L["The player who sent the message. A check mark means you restored it, and (pass-thru) means it was left in chat."] = "The player who sent the message. A check mark means you restored it, and (pass-thru) means it was left in chat."
+L["The kind of spam Sift found. Spam wave means the same message was posted several times in a short time, and You means you blocked the sender yourself."] = "The kind of spam Sift found. Spam wave means the same message was posted several times in a short time, and You means you blocked the sender yourself."
+L["How suspicious the message looked to Sift. Higher means more suspicious, and anything at or above your Block threshold gets caught."] = "How suspicious the message looked to Sift. Higher means more suspicious, and anything at or above your Block threshold gets caught."
+L["You blocked this player yourself with Block (Sift) on their right-click menu."] = "You blocked this player yourself with Block (Sift) on their right-click menu."
+L["Sift caught this because the same message was posted several times within your Spam wave window, by one player or many."] = "Sift caught this because the same message was posted several times within your Spam wave window, by one player or many."
+L["Kind of spam not saved"] = "Kind of spam not saved"
+L["Sift caught this but didn't save which kind of spam it was. Older versions of Sift left that out when a player repeated a message Sift had already caught."] = "Sift caught this but didn't save which kind of spam it was. Older versions of Sift left that out when a player repeated a message Sift had already caught."
+L["A kind of spam Sift still catches, but it no longer has its own button to pause it or filter by it."] = "A kind of spam Sift still catches, but it no longer has its own button to pause it or filter by it."
+L["Added %d to this message's score."] = "Added %d to this message's score."
+L["This player is on your Blocked list, so Sift added %d to the score."] = "This player is on your Blocked list, so Sift added %d to the score."
+L["You blocked this player yourself, so Sift caught this message whatever its score."] = "You blocked this player yourself, so Sift caught this message whatever its score."
+L["The same message was posted several times within your Spam wave window, which added %d to the score."] = "The same message was posted several times within your Spam wave window, which added %d to the score."
+L["This message repeated one Sift had already caught from the same sender."] = "This message repeated one Sift had already caught from the same sender."
+L["Gray marks messages Sift caught because the same message was posted several times within your Spam wave window, with no spam category of their own. Players you blocked yourself, and entries marked ?, also show in gray."] = "Gray marks messages Sift caught because the same message was posted several times within your Spam wave window, with no spam category of their own. Players you blocked yourself, and entries marked ?, also show in gray."
+L["Lifetime detections split by where they came from: Chat, Whisper, and Bnet whisper. Shows this character or the whole account, depending on the Character or Account button."] = "Lifetime detections split by where they came from: Chat, Whisper, and Bnet whisper. Shows this character or the whole account, depending on the Character or Account button."
+L["Lifetime detections split by spam category, for this character or the whole account. A gray number means that category is currently Paused or Off."] = "Lifetime detections split by spam category, for this character or the whole account. A gray number means that category is currently Paused or Off."
+L["Repeats counts messages that repeat spam Sift already caught from the same sender. Bubbles suppressed counts the times Sift hid a chat bubble for a blocked Say or Yell. Spam wave (recent) counts blocked messages still in your History that were caught only because the same message was posted several times, so it drops as old entries are removed."] = "Repeats counts messages that repeat spam Sift already caught from the same sender. Bubbles suppressed counts the times Sift hid a chat bubble for a blocked Say or Yell. Spam wave (recent) counts blocked messages still in your History that were caught only because the same message was posted several times, so it drops as old entries are removed."
+
 -- History panel: detail-pane action buttons
 L["\226\156\147 Restored"] = "\226\156\147 Restored"
 L["Allowlisted"] = "Allowlisted"
