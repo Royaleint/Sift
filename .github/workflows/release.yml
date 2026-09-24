@@ -146,6 +146,12 @@ jobs:
         if: steps.guard.outputs.publish == 'true'
         run: node .github/scripts/check-toc-vs-zip.mjs .release
 
+      # Catches a Sift/BawrSpam double declaration, a missing or code-bearing
+      # companion, or a mismatched Interface line before it ships.
+      - name: "Check: BawrSpam companion ships correctly"
+        if: steps.guard.outputs.publish == 'true'
+        run: node .github/scripts/check-legacy-companion.mjs .release
+
       - name: Package and Release
         if: steps.guard.outputs.publish == 'true'
         uses: BigWigsMods/packager@v2

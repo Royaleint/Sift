@@ -219,6 +219,11 @@ local function CopyDefaults(source)
   return copy
 end
 
+-- CopyDefaults is a plain recursive table copy; the legacy-data merge below
+-- reuses it under a name that reads correctly for copying arbitrary data,
+-- not only the defaults table.
+local DeepCopy = CopyDefaults
+
 local function ClampNumber(value, minValue, maxValue, fallback)
   value = tonumber(value) or fallback
   if value < minValue then value = minValue end
@@ -406,21 +411,6 @@ function DB.Initialize()
     NS._InitFailed = true
     Print("could not initialize: Foundry.DB is missing.")
     return false
-  end
-
-  -- One-time SavedVariables migration: BawrSpam → Sift (BSP-067).
-  --
-  -- Keyed on THIS build's derived names, not the bare literals it used to read.
-  -- With the literals, a DevBuild running alongside live Sift would see live's
-  -- BawrSpamDB (live declares it, so it is a real table) and assign into live's
-  -- SiftDB -- one build writing into the other build's store, which BSP-070's C1
-  -- test proved is exactly how data gets destroyed. Derived names keep the shim
-  -- inside its own build. A DevBuild therefore never inherits pre-rename data,
-  -- because nothing declares BawrSpamDB_DevBuild; that is correct isolation.
-  local legacy = _G[SV_LEGACY_NAME]
-  if type(legacy) == "table" and (_G[SV_NAME] == nil or next(_G[SV_NAME]) == nil) then
-    _G[SV_NAME] = legacy
-    _G[SV_LEGACY_NAME] = nil
   end
 
   -- Both identity arguments derive from the TOC vararg (SFT-077): `name` so a
@@ -713,6 +703,291 @@ end
 
 function DB.DevLog(message)
   DevLog(message)
+end
+
+-- Merges the legacy BawrSpam store into an already-populated Sift store,
+-- once. Pure: no NS and no WoW API, so it is exercised outside the client. It
+-- never mutates legacySV. Two phases: Build reads both stores (siftSV only to
+-- detect collisions) and deep-copies whatever it needs into fresh working
+-- tables; Commit is then plain assignment with nothing left that can raise.
+-- A raise during Build therefore leaves siftSV untouched -- a failed import
+-- assigns nothing.
+local function CoerceBlockedActor(guid, raw)
+  local entry = {
+    guid = guid,
+    name = UsableString(raw.name) and raw.name or nil,
+    realm = UsableString(raw.realm) and raw.realm or nil,
+    firstBlockedAt = tonumber(raw.firstBlockedAt) or 0,
+    lastBlockedAt = tonumber(raw.lastBlockedAt) or 0,
+    count = tonumber(raw.count) or 0,
+    manual = raw.manual == true,
+    manualBlockedAt = tonumber(raw.manualBlockedAt) or nil,
+    surfaces = {},
+    categories = {},
+  }
+  if type(raw.surfaces) == "table" then
+    for key, value in pairs(raw.surfaces) do entry.surfaces[key] = tonumber(value) or 0 end
+  end
+  if type(raw.categories) == "table" then
+    for key, value in pairs(raw.categories) do entry.categories[key] = tonumber(value) or 0 end
+  end
+  return entry
+end
+
+local function MergeCountMap(a, b, useMax)
+  local out = {}
+  for key, value in pairs(a) do out[key] = value end
+  for key, value in pairs(b) do
+    out[key] = useMax and math.max(out[key] or 0, value) or (out[key] or 0) + value
+  end
+  return out
+end
+
+-- One collision between an existing Sift entry and a legacy entry for the
+-- same guid. Equal-and-positive firstBlockedAt means both sides are counting
+-- the same original block, so counts take the max instead of summing; the
+-- "greater than zero" guard keeps two entries that are both simply missing
+-- firstBlockedAt (coerced to 0 above) on the sum branch instead.
+local function MergeBlockedActorCollision(guid, sift, legacy)
+  local sameOrigin = sift.firstBlockedAt == legacy.firstBlockedAt and sift.firstBlockedAt > 0
+  local merged = {
+    guid = guid,
+    firstBlockedAt = math.min(sift.firstBlockedAt, legacy.firstBlockedAt),
+    lastBlockedAt = math.max(sift.lastBlockedAt, legacy.lastBlockedAt),
+    manual = sift.manual,
+    manualBlockedAt = sift.manualBlockedAt,
+  }
+  if sameOrigin then
+    merged.count = math.max(sift.count, legacy.count)
+    merged.surfaces = MergeCountMap(sift.surfaces, legacy.surfaces, true)
+    merged.categories = MergeCountMap(sift.categories, legacy.categories, true)
+  else
+    merged.count = sift.count + legacy.count
+    merged.surfaces = MergeCountMap(sift.surfaces, legacy.surfaces, false)
+    merged.categories = MergeCountMap(sift.categories, legacy.categories, false)
+  end
+  -- The most recently active side names the entry; a tie keeps Sift's own
+  -- name/realm, matching every other tie in this merge favouring Sift. If
+  -- that side's own name or realm is unusable, the other side's value is
+  -- used instead of losing it -- the same "or entry.name" fallback
+  -- DB.RecordBlockedActor uses when only one side has a real value.
+  local newer, older = sift, legacy
+  if legacy.lastBlockedAt > sift.lastBlockedAt then
+    newer, older = legacy, sift
+  end
+  merged.name = UsableString(newer.name) and newer.name or older.name
+  merged.realm = UsableString(newer.realm) and newer.realm or older.realm
+  return merged
+end
+
+local function DeepEqual(a, b)
+  if a == b then return true end
+  if type(a) ~= "table" or type(b) ~= "table" then return false end
+  for key, value in pairs(a) do
+    if not DeepEqual(value, b[key]) then return false end
+  end
+  for key in pairs(b) do
+    if a[key] == nil then return false end
+  end
+  return true
+end
+
+-- Legacy settings only ever overlay onto a still-default profile (the caller
+-- already checked that), and even then only one level into the three subtree
+-- settings. A retired category or throttle key that no longer exists in the
+-- current defaults is simply never read here, so it never comes back.
+local function OverlaySettings(defaultSettings, legacySettings)
+  local out = DeepCopy(defaultSettings)
+  for key, defaultValue in pairs(defaultSettings) do
+    if type(defaultValue) == "table" and (key == "enabledCategories" or key == "surfaces" or key == "throttle") then
+      local legacySubtree = legacySettings[key]
+      if type(legacySubtree) == "table" then
+        for innerKey in pairs(defaultValue) do
+          if legacySubtree[innerKey] ~= nil then
+            out[key][innerKey] = legacySubtree[innerKey]
+          end
+        end
+      end
+    elseif legacySettings[key] ~= nil then
+      out[key] = legacySettings[key]
+    end
+  end
+  return out
+end
+
+-- A slot with no history and nothing detected or blocked yet counts as
+-- empty whether those fields are simply absent (a sparse alt Foundry never
+-- wrote defaults into) or present at zero (the character currently logging
+-- in, whose slot RepairShape already backfilled before this ever runs).
+local function IsEmptyCharSlot(char)
+  if type(char) ~= "table" then return true end
+  local history = char.history
+  if type(history) == "table" and #history > 0 then return false end
+  local stats = char.stats
+  local detections = tonumber(stats and stats.detections) or 0
+  local blocked = tonumber(stats and stats.blocked) or 0
+  return detections == 0 and blocked == 0
+end
+
+function DB.MergeLegacyStore(siftSV, legacySV, now)
+  if type(siftSV) ~= "table" or type(siftSV.global) ~= "table" then
+    return nil, "no Sift store"
+  end
+  if siftSV.global.legacyImport ~= nil then
+    return nil, "already imported"
+  end
+  if type(legacySV) ~= "table" or type(legacySV.global) ~= "table" then
+    return nil, "no legacy data"
+  end
+
+  -- ---- Build: read-only against both stores; writes only into fresh
+  -- working tables below. Nothing above this comment, or below it up to the
+  -- Commit marker, may touch siftSV or legacySV.
+  local allowToAdd, allowCount = {}, 0
+  for guid, raw in pairs(legacySV.global.allowlist or {}) do
+    if type(guid) == "string" and type(raw) == "table" and siftSV.global.allowlist[guid] == nil then
+      local blocked = siftSV.global.blockedActors[guid]
+      if not (type(blocked) == "table" and blocked.manual == true) then
+        allowToAdd[guid] = DeepCopy(raw)
+        allowCount = allowCount + 1
+      end
+    end
+  end
+
+  local actorAdds, actorUpdates = {}, {}
+  local actorCount, collidedCount = 0, 0
+  for guid, raw in pairs(legacySV.global.blockedActors or {}) do
+    if type(guid) == "string" and type(raw) == "table" then
+      local legacyEntry = CoerceBlockedActor(guid, raw)
+      local existing = siftSV.global.blockedActors[guid]
+      if type(existing) == "table" then
+        actorUpdates[guid] = MergeBlockedActorCollision(guid, CoerceBlockedActor(guid, existing), legacyEntry)
+        collidedCount = collidedCount + 1
+      else
+        actorAdds[guid] = legacyEntry
+      end
+      actorCount = actorCount + 1
+    end
+  end
+
+  -- Cap the union once, by age, the same way the running per-block eviction
+  -- elsewhere in this file does -- manual entries are never dropped.
+  local evict = {}
+  local unionSize = CountTable(siftSV.global.blockedActors) + CountTable(actorAdds)
+  if unionSize > BLOCKED_ACTOR_CAP then
+    local candidates = {}
+    for guid, entry in pairs(siftSV.global.blockedActors) do
+      local updated = actorUpdates[guid]
+      local manual = updated and updated.manual or (type(entry) == "table" and entry.manual == true)
+      if not manual then
+        local lastBlockedAt = updated and updated.lastBlockedAt or (tonumber(entry.lastBlockedAt) or 0)
+        candidates[#candidates + 1] = { guid = guid, lastBlockedAt = lastBlockedAt }
+      end
+    end
+    for guid, entry in pairs(actorAdds) do
+      if not entry.manual then
+        candidates[#candidates + 1] = { guid = guid, lastBlockedAt = entry.lastBlockedAt }
+      end
+    end
+    table.sort(candidates, function(a, b) return a.lastBlockedAt < b.lastBlockedAt end)
+    local toDrop = unionSize - BLOCKED_ACTOR_CAP
+    for i = 1, math.min(toDrop, #candidates) do
+      evict[candidates[i].guid] = true
+    end
+  end
+
+  local settingsImported, newSettings = false, nil
+  if legacySV.global.schemaVersion == 3 and type(legacySV.global.settings) == "table"
+     and DeepEqual(siftSV.global.settings, CopyDefaults(defaults.global.settings)) then
+    newSettings = OverlaySettings(defaults.global.settings, legacySV.global.settings)
+    settingsImported = true
+  end
+
+  local charAdoptions, charCount = {}, 0
+  if legacySV.global.schemaVersion == 3 and type(legacySV.char) == "table" then
+    for charKey, legacyChar in pairs(legacySV.char) do
+      if type(charKey) == "string" and type(legacyChar) == "table"
+         and IsEmptyCharSlot(siftSV.char and siftSV.char[charKey]) then
+        charAdoptions[charKey] = {
+          history = DeepCopy(type(legacyChar.history) == "table" and legacyChar.history or {}),
+          historyCursor = tonumber(legacyChar.historyCursor) or 0,
+          stats = DeepCopy(type(legacyChar.stats) == "table" and legacyChar.stats or {}),
+        }
+        charCount = charCount + 1
+      end
+    end
+  end
+
+  -- ---- Commit: plain assignment only; nothing from here on can raise.
+  for guid, entry in pairs(allowToAdd) do
+    siftSV.global.allowlist[guid] = entry
+  end
+  for guid, entry in pairs(actorAdds) do
+    if not evict[guid] then
+      siftSV.global.blockedActors[guid] = entry
+    end
+  end
+  for guid, entry in pairs(actorUpdates) do
+    siftSV.global.blockedActors[guid] = entry
+  end
+  for guid in pairs(evict) do
+    if actorAdds[guid] == nil then
+      siftSV.global.blockedActors[guid] = nil
+    end
+  end
+  if settingsImported then
+    for key, value in pairs(newSettings) do
+      siftSV.global.settings[key] = value
+    end
+  end
+  siftSV.char = siftSV.char or {}
+  for charKey, adopt in pairs(charAdoptions) do
+    local target = siftSV.char[charKey]
+    if type(target) ~= "table" then
+      target = {}
+      siftSV.char[charKey] = target
+    end
+    target.history = adopt.history
+    target.historyCursor = adopt.historyCursor
+    target.stats = adopt.stats
+  end
+
+  local summary = {
+    at = now,
+    allow = allowCount,
+    actors = actorCount,
+    collided = collidedCount,
+    settings = settingsImported,
+    chars = charCount,
+  }
+  siftSV.global.legacyImport = summary
+  return summary
+end
+
+-- Runs once at login, before the scanner installs. Does not pcall itself:
+-- the caller wraps this call together with its own follow-up refresh in one
+-- local pcall, so a raise here still lets the rest of login proceed.
+function DB.ImportLegacyData()
+  if not DB.db or not DB.db.global then
+    return nil
+  end
+  if DB.db.global.legacyImport ~= nil then
+    return nil
+  end
+  local legacy = _G[SV_LEGACY_NAME]
+  if type(legacy) ~= "table" then
+    return nil
+  end
+
+  local summary = DB.MergeLegacyStore(_G[SV_NAME], legacy, Now())
+  if summary then
+    RepairShape(DB.db.global, DB.db.char)
+    Print(string.format(
+      "brought back %d allowed players and %d blocked senders from BawrSpam",
+      summary.allow, summary.actors
+    ))
+  end
+  return summary
 end
 
 NS.DB = DB

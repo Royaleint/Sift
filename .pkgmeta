@@ -34,3 +34,9 @@ ignore:
   # entries and the .gitignore rules are the whole defense.
   - Sift_DevBuild.toc
   - DevBuildGuard.lua
+
+# BawrSpam/ is a code-free companion folder that ships beside Sift so the
+# packaged zip carries two top-level addon folders. Without this it would
+# ship nested inside Sift/ instead of beside it.
+move-folders:
+  Sift/BawrSpam: BawrSpam

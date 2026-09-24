@@ -1,0 +1,9 @@
+## Interface: 11509, 16001, 20506, 50504, 120100
+## Title: Sift (legacy data)
+## Notes: Holds your BawrSpam settings so Sift can bring them back. Runs no code.
+## Author: Royaleint
+## Category: Chat
+## IconTexture: Interface\Icons\ability_warrior_shieldreflection
+## Version: @project-version@
+## SavedVariables: BawrSpamDB
+## OptionalDeps: Sift

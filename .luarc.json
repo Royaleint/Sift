@@ -19,7 +19,6 @@
   ],
   "diagnostics.globals": [
     "SiftDB",
-    "BawrSpamDB",
     "SiftHistoryFrame",
     "SiftConfigFrame",
     "SiftConfigDialog",
