@@ -158,6 +158,47 @@ local panel
 local decided = false
 local shownThisSession = false
 
+-- Blizzard's own PLAYER_ENTERING_WORLD handler calls CloseAllWindows(1)
+-- unconditionally on every login, which Hide()s the panel (it is in
+-- UISpecialFrames) before the player ever sees it, behind the loading
+-- screen. Tracked from file load, unconditionally, rather than only when
+-- OnLogin needs it: this file loads before PLAYER_ENTERING_WORLD can fire,
+-- since Sift is not load-on-demand (Sift.toc), so listening starts early
+-- enough to tell OnLogin whether it already fired instead of guessing from
+-- event order.
+local pewFired = false
+local pewWaiters = {}
+
+local pewWatcher = CreateFrame("Frame")
+pewWatcher:RegisterEvent("PLAYER_ENTERING_WORLD")
+pewWatcher:SetScript("OnEvent", function(self)
+  self:UnregisterEvent("PLAYER_ENTERING_WORLD")
+  pewFired = true
+  local waiters = pewWaiters
+  pewWaiters = {}
+  for _, waiter in ipairs(waiters) do
+    waiter()
+  end
+end)
+
+local function RunNextFrame(fn)
+  if C_Timer and C_Timer.After then
+    C_Timer.After(0, fn)
+  end
+end
+
+-- Runs `fn` one frame after PLAYER_ENTERING_WORLD (and the CloseAllWindows(1)
+-- it carries on every client): deferring one tick avoids depending on the
+-- order frames receive the same event. If PLAYER_ENTERING_WORLD already
+-- fired, `fn` still waits for that one tick rather than running inline.
+local function AfterEnteringWorld(fn)
+  if pewFired then
+    RunNextFrame(fn)
+    return
+  end
+  pewWaiters[#pewWaiters + 1] = function() RunNextFrame(fn) end
+end
+
 local function MarkSeen(key)
   NS.DB.MarkChooserSeen(key)
 end
@@ -390,18 +431,12 @@ function Chooser.Show(force)
   frame:Show()
 end
 
--- Runs after InstallPlayerMenu(), once Init's `initialized` flag is true
--- (Init.lua gates the call the same way it gates InstallScanner/
--- InstallPlayerMenu themselves). Not secure -- the combat hold below is a
--- courtesy, not a taint guard.
-function Chooser.OnLogin()
-  if not (NS.DB and NS.DB.GetChooserSeen and NS.DB.MarkChooserSeen) then
-    return
-  end
-  if shownThisSession then
-    return
-  end
-  if not Chooser.IsLive() then
+-- The actual show is deferred past PLAYER_ENTERING_WORLD (see
+-- AfterEnteringWorld above), so every gate is re-checked here rather than
+-- once in OnLogin -- dev mode, LIVE, and the seen set can all move in the
+-- gap between login and the deferred show landing.
+local function AttemptShow()
+  if shownThisSession or not Chooser.IsLive() then
     return
   end
   if not Chooser.HasUnseen(REGISTRY, NS.DB.GetChooserSeen()) then
@@ -430,6 +465,29 @@ function Chooser.OnLogin()
 
   shownThisSession = true
   Chooser.Show()
+end
+
+-- Runs after InstallPlayerMenu(), once Init's `initialized` flag is true
+-- (Init.lua gates the call the same way it gates InstallScanner/
+-- InstallPlayerMenu themselves). Not secure -- the combat hold in AttemptShow
+-- is a courtesy, not a taint guard.
+function Chooser.OnLogin()
+  if not (NS.DB and NS.DB.GetChooserSeen and NS.DB.MarkChooserSeen) then
+    return
+  end
+  if shownThisSession then
+    return
+  end
+  if not Chooser.IsLive() then
+    return
+  end
+  if not Chooser.HasUnseen(REGISTRY, NS.DB.GetChooserSeen()) then
+    return
+  end
+
+  -- See AfterEnteringWorld and pewWatcher above for why this waits rather
+  -- than showing here directly.
+  AfterEnteringWorld(AttemptShow)
 end
 
 NS.FirstRunChooser = Chooser
