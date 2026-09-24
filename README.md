@@ -7,14 +7,14 @@ A personal chat-spam filter for World of Warcraft with recoverable history. Bloc
 
 ## Features
 
-- **Chat Filter** — Blocks spam in CHANNEL, WHISPER, SAY, and YELL channels before it reaches your chat frame. Trusted senders (party, raid, guild, friends, Battle.net friends) are never filtered.
-- **Chat Bubble Suppression** — Optional CVar toggle that hides world chat bubbles for blocked SAY/YELL spam. CVar restores on the next non-blocked event and on logout — your bubble setting isn't permanently altered.
-- **Repeat-Sender Throttle** — Catches the same sender repeating the same cleansed message across surfaces (CHANNEL/WHISPER/YELL/SAY) without re-running the full scoring path.
-- **Recoverable History** — Every block lands in a per-character history table you can review, restore, or always-allow from. Stored locally; never transmitted.
-- **History Panel** — Master/detail UI with category chips, surface/time/outcome/sort filters, FauxScroll list, and surface-aware Restore / Always-allow actions.
-- **Config Panel** — Ten-section options panel covering Detection, Categories, Surfaces, Allowlist, Blocked, My Keywords, Never Block, History, UI, and Dev. Slash subcommands hit the same surfaces.
-- **Unit Tooltip Annotation** — Hover any player and see "Sift: blocked N spam messages (last Xm ago)" if you've blocked them before.
-- **Minimap Launcher** — LibDBIcon button toggles the history panel.
+- **Chat Filter**: Blocks spam in CHANNEL, WHISPER, SAY, and YELL channels before it reaches your chat frame. Trusted senders (party, raid, guild, friends, Battle.net friends) are never filtered.
+- **Chat Bubble Suppression**: Optional CVar toggle that hides world chat bubbles for blocked SAY/YELL spam. CVar restores on the next non-blocked event and on logout — your bubble setting isn't permanently altered.
+- **Repeat Detection**: When a sender repeats spam Sift already caught, in the same kind of chat, the repeat is counted separately in the History stats. Each repeat still gets its own History entry, and this never changes what gets blocked.
+- **Recoverable History**: Every block lands in a per-character history table you can review, restore, or always-allow from. Stored locally; never transmitted.
+- **History Panel**: Master/detail UI with category chips, surface/time/outcome/sort filters, FauxScroll list, and surface-aware Restore / Always-allow actions.
+- **Config Panel**: Ten-section options panel covering Detection, Categories, Surfaces, Allowlist, Blocked, My Keywords, Never Block, History, UI, and Dev. Slash subcommands hit the same surfaces.
+- **Unit Tooltip Annotation**: Hover any player and see "Sift: blocked N spam messages (last Xm ago)" if you've blocked them before.
+- **Minimap Launcher**: LibDBIcon button toggles the history panel.
 
 ## Installation
 

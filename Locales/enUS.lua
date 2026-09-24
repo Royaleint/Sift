@@ -65,16 +65,18 @@ L["Commercial"] = "Commercial"
 L["Phishing"] = "Phishing"
 
 -- History panel: breakdown-chip labels for signal keys that aren't a content
--- category (CATEGORY_BADGE_LABELS). Throttle reuses "Throttled" below.
+-- category (CATEGORY_BADGE_LABELS). Flood reuses "Spam wave" and Throttle
+-- reuses "Repeat", both below.
 L["Blocked sender"] = "Blocked sender"
 L["Manual block"] = "Manual block"
 
 -- History panel: row badges and detail-pane status text
 L["You"] = "You"
-L["Flood"] = "Flood"
-L["Throttled"] = "Throttled"
+L["Spam wave"] = "Spam wave"
+L["Repeat"] = "Repeat"
+L["Repeats"] = "Repeats"
 L["Bubbles suppressed"] = "Bubbles suppressed"
-L["Flood (recent)"] = "Flood (recent)"
+L["Spam wave (recent)"] = "Spam wave (recent)"
 L["contains item link"] = "contains item link"
 L["PASSED THROUGH"] = "PASSED THROUGH"
 L["surface paused"] = "surface paused"
@@ -226,9 +228,7 @@ L["Adds this much to the score of a message that already looks like spam when it
 L["Reset"] = "Reset"
 L["Use mixed-script detection"] = "Use mixed-script detection"
 L["Watch for words that mix alphabets, such as Latin letters swapped for look-alike Cyrillic ones. When this is off, Mixed-script weight has no effect."] = "Watch for words that mix alphabets, such as Latin letters swapped for look-alike Cyrillic ones. When this is off, Mixed-script weight has no effect."
-L["Flood window (seconds)"] = "Flood window (seconds)"
-L["Throttle confirmed-spam repeats"] = "Throttle confirmed-spam repeats"
-L["When the same sender repeats spam Sift already caught, in the same kind of chat, the repeat is counted under Throttled in the History stats. Each repeat still gets its own History entry. This never changes what gets blocked."] = "When the same sender repeats spam Sift already caught, in the same kind of chat, the repeat is counted under Throttled in the History stats. Each repeat still gets its own History entry. This never changes what gets blocked."
+L["Spam wave window (seconds)"] = "Spam wave window (seconds)"
 
 -- Config panel: per-surface / per-category pause rows (AddAxisPauseRow's
 -- displayLabel dedupes against the History-panel entries above; the Paused
