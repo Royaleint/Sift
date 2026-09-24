@@ -95,6 +95,10 @@ local navButtons = {}
 local activeSection = "Detection"
 local sizeDirty
 local embeddedMode
+-- SFT-089: HistoryPanel registers this so an embedded nav click (a section
+-- change that never goes through Attach again) still re-sizes the host
+-- window to the new section's content. Nil in standalone mode.
+local embeddedSectionCallback
 local initialized
 local popupsRegistered
 -- BSP-022: aceWidgets ringbuffer removed in Commit 3 (Slider/CheckBox went
@@ -2660,6 +2664,15 @@ function ConfigPanel.ShowSection(section)
     -- is. Every other renderer ignores the argument.
     renderer(section)
   end
+
+  -- SFT-089: a nav click inside an already-open Config tab lands here without
+  -- ever calling Attach again, so the embedded host's resize has to be
+  -- re-run from this side too, or switching from a short section (Detection)
+  -- to a long one (Blocked with entries) leaves the window sized for the
+  -- section it left.
+  if embeddedMode and embeddedSectionCallback then
+    embeddedSectionCallback()
+  end
 end
 
 -- BSP-018: escape a string as a Lua double-quoted literal payload.
@@ -3094,6 +3107,60 @@ function ConfigPanel.ConfirmClearBlocked()
   if StaticPopup_Show then
     StaticPopup_Show("SIFT_CLEAR_BLOCKED")
   end
+end
+
+-- SFT-089: HistoryPanel's embedded auto-resize registers here so a section
+-- change (a nav click, handled entirely inside ShowSection) still triggers a
+-- resize without HistoryPanel having to hook every nav button itself.
+function ConfigPanel.SetEmbeddedSectionCallback(callback)
+  embeddedSectionCallback = callback
+end
+
+-- SFT-089: read-only measurement for HistoryPanel's embedded auto-resize.
+-- Walks the nav column (present for every section) and the current
+-- section's rendered content (nativeChildren, cleared and rebuilt by
+-- ShowSection) for the lowest visible screen edge. Including the nav column
+-- is what keeps a resize from ever clipping it -- the nav's own bottom
+-- button is part of the measurement, not a separate guessed floor. Returns
+-- nil when Config isn't embedded or hasn't been built yet; the caller falls
+-- back to the fixed History size. This never reads or writes the
+-- per-character geometry store (BSP-053) -- it only calls GetBottom on
+-- frames ConfigPanel already owns.
+function ConfigPanel.GetEmbeddedContentBottom()
+  if not embeddedMode or not frame then
+    return nil
+  end
+  local bottom
+  for _, button in pairs(navButtons) do
+    if button.IsShown and button:IsShown() and button.GetBottom then
+      local b = button:GetBottom()
+      if b and (not bottom or b < bottom) then bottom = b end
+    end
+  end
+  for _, child in ipairs(nativeChildren) do
+    if child.IsShown and child:IsShown() and child.GetBottom then
+      local b = child:GetBottom()
+      if b and (not bottom or b < bottom) then bottom = b end
+    end
+  end
+  return bottom
+end
+
+-- SFT-089: the embedded window's width. DEFAULT_WIDTH, not MIN_WIDTH -- the
+-- section renderers are designed and tested at DEFAULT_WIDTH (700) in
+-- standalone mode; MIN_WIDTH (600) is the resize floor a user can drag down
+-- to, not the width content was laid out for (see the "past the right edge
+-- of the content region at MIN_WIDTH" note on the Dev section's button row).
+function ConfigPanel.GetEmbeddedWidth()
+  return DEFAULT_WIDTH
+end
+
+-- SFT-089: defensive floor only. GetEmbeddedContentBottom already measures
+-- down to the nav column's last button, so this backstop is for the case a
+-- measurement comes back nil (Config not yet built) rather than a value
+-- meant to bind in normal use.
+function ConfigPanel.GetMinimumHeight()
+  return MIN_HEIGHT
 end
 
 NS.ConfigPanel = ConfigPanel

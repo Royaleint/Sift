@@ -40,6 +40,16 @@ end
 local FIXED_PANEL_WIDTH    = 940
 local FIXED_PANEL_HEIGHT   = 560
 
+-- SFT-089: embedded Config auto-resize. Matches configHost's own
+-- BOTTOMRIGHT offset (see BuildFrame) so the height computed from measured
+-- content restores the same bottom margin configHost already reserves below
+-- it. CONFIG_MIN_EMBEDDED_HEIGHT is a defensive backstop for the
+-- (never-expected) case ConfigPanel reports no measurable content -- the nav
+-- column itself is part of that measurement, so it is what actually keeps a
+-- resize from clipping the nav, not this constant.
+local CONFIG_HOST_BOTTOM_MARGIN   = 40
+local CONFIG_MIN_EMBEDDED_HEIGHT  = 200
+
 local LIST_ROW_HEIGHT  = 26
 local SCROLLBAR_GUTTER = 22
 local LIST_MAX_ROWS    = 40
@@ -333,6 +343,45 @@ local function ClearStoredGeometry()
 	-- may still be present from older builds but ApplyStoredGeometry ignores
 	-- them. Leaving them allows a future bump back to resizable without a
 	-- data migration.
+end
+
+-- SFT-089: resize `win` in place while keeping its top-left corner fixed on
+-- screen, re-anchoring through TOPLEFT/BOTTOMLEFT-of-UIParent either way --
+-- the same convention ApplyStoredGeometry / SavePosition already use. `win`
+-- only needs GetLeft/GetTop/SetSize/ClearAllPoints/SetPoint, so a duck-typed
+-- fake drives this offline without a WoW client.
+function HistoryPanel.ResizeKeepingTopLeft(win, width, height)
+  local left, top = win:GetLeft(), win:GetTop()
+  win:SetSize(width, height)
+  if left and top then
+    win:ClearAllPoints()
+    win:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+  end
+end
+
+-- SFT-089: the embedded Config window's target size. Width comes from
+-- ConfigPanel's own tested embed width (GetEmbeddedWidth), never a value
+-- guessed here. Height is measured from Config's actually-rendered content
+-- (contentBottom, ConfigPanel.GetEmbeddedContentBottom's return) rather than
+-- hardcoded, so a short section and a long one each get their own fit; a nil
+-- measurement (Config not yet built) falls back to the fixed History
+-- height. Both axes clamp so Config can never exceed History's own
+-- footprint. Pure: takes plain numbers, calls nothing WoW-specific, so it is
+-- testable without loading either UI module.
+function HistoryPanel.ComputeConfigWindowSize(configEmbedWidth, configMinHeight, frameTop, contentBottom)
+  local width = configEmbedWidth or FIXED_PANEL_WIDTH
+  if width > FIXED_PANEL_WIDTH then width = FIXED_PANEL_WIDTH end
+
+  local height = FIXED_PANEL_HEIGHT
+  if frameTop and contentBottom then
+    height = (frameTop - contentBottom) + CONFIG_HOST_BOTTOM_MARGIN
+  end
+  local floor = configMinHeight or CONFIG_MIN_EMBEDDED_HEIGHT
+  if floor < CONFIG_MIN_EMBEDDED_HEIGHT then floor = CONFIG_MIN_EMBEDDED_HEIGHT end
+  if height < floor then height = floor end
+  if height > FIXED_PANEL_HEIGHT then height = FIXED_PANEL_HEIGHT end
+
+  return width, height
 end
 
 local function HidePortraitChrome(f)
@@ -2044,7 +2093,38 @@ local function SetTabHighlight()
   end
 end
 
-local function ShowHistoryContent()
+-- SFT-089: sizes the embedded window to Config's content (width/floor from
+-- ConfigPanel.GetEmbeddedWidth/GetMinimumHeight, height measured live via
+-- GetEmbeddedContentBottom). Guarded on activeMode because ConfigPanel's own
+-- `frame:IsShown()` stays true even while History is the visible tab --
+-- popup and slash-command refreshes (Clear History/Blocked, Import) call
+-- ShowSection, and therefore this registered callback, while History is on
+-- screen. Also schedules one non-repeating remeasure (skipRemeasure=true on
+-- that second call, so it never chains): content laid out at History's
+-- 940px configHost width re-flows narrower once resized down to Config's
+-- 700px, so a taller wrap can settle a frame late. The deferred call
+-- re-checks activeMode itself, so switching back to History first cancels it.
+local function ResizeForConfig(skipRemeasure)
+  if activeMode ~= "Config" or not frame then return end
+  local contentBottom = NS.ConfigPanel and NS.ConfigPanel.GetEmbeddedContentBottom
+    and NS.ConfigPanel.GetEmbeddedContentBottom()
+  local configWidth = NS.ConfigPanel and NS.ConfigPanel.GetEmbeddedWidth
+    and NS.ConfigPanel.GetEmbeddedWidth()
+  local configFloor = NS.ConfigPanel and NS.ConfigPanel.GetMinimumHeight
+    and NS.ConfigPanel.GetMinimumHeight()
+  local width, height = HistoryPanel.ComputeConfigWindowSize(configWidth, configFloor, frame:GetTop(), contentBottom)
+  HistoryPanel.ResizeKeepingTopLeft(frame, width, height)
+  if not skipRemeasure and C_Timer and C_Timer.After then
+    C_Timer.After(0, function() ResizeForConfig(true) end)
+  end
+end
+
+-- SFT-089: exposed on the module table (like ShowConfigContent below) so an
+-- offline test can drive the real History<->Config transition and its
+-- resize/restore wiring without going through the RefreshList-heavy
+-- HistoryPanel.Show().
+function HistoryPanel.ShowHistoryContent()
+  local wasConfig = (activeMode == "Config")
   activeMode = "History"
   if configHost then configHost:Hide() end
   if listPane then listPane:Show() end
@@ -2053,11 +2133,16 @@ local function ShowHistoryContent()
   if frame and frame.splitter then frame.splitter:Show() end
   if frame and frame.filterStrip then frame.filterStrip:Show() end
   if frame and frame.filterChipsBand then frame.filterChipsBand:Show() end
+  -- SFT-089: only undo the Config-mode resize here -- an ordinary History
+  -- open/toggle that was never in Config must not touch the panel's anchor.
+  if wasConfig and frame then
+    HistoryPanel.ResizeKeepingTopLeft(frame, FIXED_PANEL_WIDTH, FIXED_PANEL_HEIGHT)
+  end
   UpdateSenderFilterChip()
   SetTabHighlight()
 end
 
-local function ShowConfigContent(section)
+function HistoryPanel.ShowConfigContent(section)
   activeMode = "Config"
   activeConfigSection = section or activeConfigSection or "Detection"
   if frame and frame.filterStrip then frame.filterStrip:Hide() end
@@ -2075,6 +2160,7 @@ local function ShowConfigContent(section)
       NS.ConfigPanel.Attach(configHost, activeConfigSection)
     end
   end
+  ResizeForConfig()
   SetTabHighlight()
 end
 
@@ -2433,6 +2519,13 @@ function HistoryPanel.Initialize()
   RegisterStaticPopups()
   RegisterMinimap()
 
+  -- SFT-089: a nav click inside Config changes section without ever calling
+  -- HistoryPanel.ShowConfig again, so ConfigPanel calls back here to re-run
+  -- the same resize ShowConfigContent runs on entry.
+  if NS.ConfigPanel and NS.ConfigPanel.SetEmbeddedSectionCallback then
+    NS.ConfigPanel.SetEmbeddedSectionCallback(ResizeForConfig)
+  end
+
   -- BSP-008 Commit 6: react to PauseState changes (header pills, ConfigPanel,
   -- minimap submenu). RefreshPauseRow re-paints the header chrome; a
   -- category-axis change additionally re-renders the BY CATEGORY detail row.
@@ -2501,14 +2594,14 @@ end
 
 function HistoryPanel.Show()
   BuildFrame()
-  ShowHistoryContent()
+  HistoryPanel.ShowHistoryContent()
   RefreshList()
   frame:Show()
 end
 
 function HistoryPanel.ShowConfig(section)
   BuildFrame()
-  ShowConfigContent(section)
+  HistoryPanel.ShowConfigContent(section)
   frame:Show()
 end
 
