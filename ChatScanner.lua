@@ -632,7 +632,8 @@ local function Pipeline(
       score.breakdown,
       "throttle",
       surface,
-      throttleOutcome
+      throttleOutcome,
+      customRule
     ), counter)
     if NS.History and NS.History.IncrementThrottled then
       NS.History.IncrementThrottled()
