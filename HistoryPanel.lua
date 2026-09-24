@@ -37,6 +37,9 @@ end
 -- can never reach a width where those elements don't fit. The splitter
 -- still lets the user nudge the list/detail proportion within the
 -- locked outer size (~20 px range given current pane minimums).
+-- SFT-089: this still holds for the History tab itself -- the panel only
+-- leaves this size while the embedded Config tab is showing, and restores
+-- it on return.
 local FIXED_PANEL_WIDTH    = 940
 local FIXED_PANEL_HEIGHT   = 560
 
@@ -310,6 +313,8 @@ end
 -- still reads position (store.x / store.y) but the size is forced to the
 -- compile-time constants. Existing users with store.width / store.height set
 -- by older builds get their values ignored on next open — harmless.
+-- SFT-089's Config-tab resize doesn't change any of this -- it is
+-- runtime-only and is never saved here either.
 
 local function ApplyStoredGeometry()
   local store = GetCharStore() or {}
@@ -2470,10 +2475,12 @@ local function BuildFrame()
   UpdateSenderFilterChip()
 
   -- BSP-055 Gate 2 followup-v2: no OnSizeChanged / OnHide-SaveSize wiring.
-  -- The panel is fixed-size so it never resizes after ApplyStoredGeometry;
-  -- ClampPanes (still called from the splitter drag handler) keeps the
-  -- list/detail proportion within MIN_LIST_PANE_WIDTH..MIN_DETAIL_PANE_WIDTH
-  -- bounds derived from the fixed panel width.
+  -- The panel is fixed-size after ApplyStoredGeometry (SFT-089's Config-tab
+  -- resize is the one runtime exception -- see ResizeForConfig -- and it is
+  -- never saved, so this wiring still doesn't need to exist); ClampPanes
+  -- (still called from the splitter drag handler) keeps the list/detail
+  -- proportion within MIN_LIST_PANE_WIDTH..MIN_DETAIL_PANE_WIDTH bounds
+  -- derived from the fixed panel width.
 
   ApplyStoredGeometry()
   tinsert(UISpecialFrames, "SiftHistoryFrame")
@@ -2617,6 +2624,8 @@ function HistoryPanel.ResetPosition()
 	-- BSP-055 Gate 2 followup-v2: panel is fixed-size. Reset clears the
 	-- stored position only and recenters; size is always FIXED_PANEL_WIDTH x
 	-- FIXED_PANEL_HEIGHT regardless of any older width/height in the store.
+	-- SFT-089: this forces the History size even if called while the Config
+	-- tab happens to be showing -- ResetPosition doesn't check activeMode.
 	ClearStoredGeometry()
 	if frame then
 		frame:SetSize(FIXED_PANEL_WIDTH, FIXED_PANEL_HEIGHT)
