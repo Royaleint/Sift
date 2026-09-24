@@ -7,7 +7,7 @@
 ## Version: @project-version@
 ## X-License: All Rights Reserved; personal addon use and contribution forks permitted. See LICENSE.
 ## X-Curse-Project-ID: 1549238
-## SavedVariables: BawrSpamDB, SiftDB
+## SavedVariables: SiftDB
 ## OptionalDeps: Foundry-1.0, Foundry-1.0_DevBuild
 
 embeds.xml

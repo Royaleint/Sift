@@ -493,6 +493,68 @@ local function BdevSlashHandler(msg)
 	end
 end
 
+-- Bring back BawrSpam data once, before the scanner installs. Runs only the
+-- follow-up refresh below when the import actually ran this login (returned
+-- a summary) -- once the flag is set, every later login's import call is a
+-- no-op, so these steps never run again and never have a chance to fail on
+-- every subsequent login.
+local function RefreshAfterLegacyImport(settings)
+  if NS.Trust and NS.Trust.RefreshAllowlistFromDB then
+    NS.Trust.RefreshAllowlistFromDB()
+  end
+  if settings then
+    -- Repeat counting is always on; settings.throttle.enabled is
+    -- intentionally not read (matches Initialize()'s own repeat-toggle
+    -- removal -- a legacy player's old throttle.enabled=false must not
+    -- re-disable it here either).
+    if NS.Frequency and NS.Frequency.SetFloodWindow then
+      NS.Frequency.SetFloodWindow(settings.floodWindow)
+    end
+    if NS.HistoryPanel and NS.HistoryPanel.SetMinimapShown then
+      NS.HistoryPanel.SetMinimapShown(settings.showMinimapButton ~= false)
+    end
+  end
+  if NS.History and NS.History.TrimAllCharacters then
+    NS.History.TrimAllCharacters()
+  end
+end
+
+-- The import and its refresh share one local pcall, separate from
+-- Lifecycle's own pcall around the whole OnLogin closure below. Without
+-- this, a raise anywhere in here would skip InstallScanner, InstallPlayerMenu
+-- and InstallFirstRunChooser for this login too, with no visible failure
+-- beyond Lifecycle's generic dev-error line.
+--
+-- On failure, the wording is chosen from whether the data was actually
+-- committed (global.legacyImport is set), not from whether this call
+-- returned normally: the merge sets that flag as part of its own commit,
+-- inside DB.ImportLegacyData, before that function returns -- so a raise
+-- anywhere after the commit (inside ImportLegacyData itself, or in the
+-- refresh sequence below) still means the data came back, and the message
+-- must not tell the player it will retry when the flag already means it
+-- will not.
+local function ImportLegacyDataOnLogin()
+  local ok, err = pcall(function()
+    local summary = NS.DB and NS.DB.ImportLegacyData and NS.DB.ImportLegacyData()
+    if not summary then
+      return
+    end
+    RefreshAfterLegacyImport(NS.DB.GetSettings and NS.DB.GetSettings())
+  end)
+  if not ok then
+    local global = NS.DB and NS.DB.GetGlobal and NS.DB.GetGlobal()
+    local imported = global and global.legacyImport ~= nil
+    if imported then
+      Print("brought your BawrSpam data back, but a follow-up step failed. A /reload should finish it.")
+    else
+      Print("could not bring back your BawrSpam data this time. It will try again next login.")
+    end
+    if NS.DB and NS.DB.DevLog then
+      NS.DB.DevLog("legacy import/refresh error: " .. tostring(err))
+    end
+  end
+end
+
 -- Bootstrap via Foundry.Lifecycle (FND-004 Phase E). Adopts NS onto a Lifecycle
 -- controller, replacing the hand-rolled driver frame + ADDON_LOADED/PLAYER_LOGIN
 -- demux + the C_Timer retry. F:RequireModule fails loud with a clear diagnostic if a
@@ -519,6 +581,7 @@ end
 local controller = F:RequireModule("Lifecycle", 1):New(NS, ADDON_NAME)
 controller:OnAddonLoaded(function() Initialize() end)
 controller:OnLogin(function()
+	ImportLegacyDataOnLogin()
 	InstallScanner()
 	InstallPlayerMenu()
 	InstallFirstRunChooser()

@@ -4,7 +4,6 @@ max_line_length = false
 globals = {
     -- SavedVariables (created by WoW, read/written by addon)
     "SiftDB",
-    "BawrSpamDB",  -- legacy key declared for one-time migration shim (BSP-067); remove next release
     -- Named UI frames (require global for UISpecialFrames + Blizz close behavior)
     "SiftHistoryFrame",
     "SiftConfigFrame",
