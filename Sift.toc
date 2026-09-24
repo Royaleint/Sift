@@ -11,6 +11,7 @@
 ## OptionalDeps: Foundry-1.0, Foundry-1.0_DevBuild
 
 embeds.xml
+Locales\enUS.lua
 Compat.lua
 DB.lua
 PauseState.lua
