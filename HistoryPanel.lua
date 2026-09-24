@@ -1011,6 +1011,29 @@ local function RenderActions(entry)
   end
 end
 
+-- SFT-085: shared by the per-category loop below and the Flood swatch after
+-- it, so both render a legend item the same way instead of two copies that
+-- can drift apart.
+local function ShowLegendItem(legend, index, lx, hex, label)
+  local item = legend.items[index]
+  if not item then
+    item = {
+      swatch = legend:CreateTexture(nil, "ARTWORK"),
+      label  = legend:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"),
+    }
+    item.swatch:SetSize(10, 10)
+    item.label:SetPoint("LEFT", item.swatch, "RIGHT", 3, 0)
+    legend.items[index] = item
+  end
+  item.swatch:SetColorTexture(HexNibble(hex, 1), HexNibble(hex, 2), HexNibble(hex, 3), 1)
+  item.swatch:ClearAllPoints()
+  item.swatch:SetPoint("LEFT", legend, "LEFT", lx, 0)
+  item.label:SetText(label)
+  item.swatch:Show()
+  item.label:Show()
+  return lx + 12 + item.label:GetStringWidth() + 8
+end
+
 -- The legend under the list follows the same residue rule as the stats line:
 -- active categories always, retired ones only while this character's lifetime
 -- counts still carry them. Items are reused across rebuilds, never destroyed.
@@ -1019,31 +1042,32 @@ local function RefreshLegend()
   if not legend then return end
   local stats = NS.History and NS.History.GetStats and NS.History.GetStats()
   local byCategory = stats and stats.lifetime and stats.lifetime.byCategory or {}
+  -- SFT-085: floodBadgeCount, not floodCount -- the swatch explains the grey
+  -- stripe, and RenderRow stripes/badges Flood on ANY outcome (no blocked
+  -- check there), so the swatch must show for a restored or pass-thru
+  -- flood-only row too. The PIPELINE line below uses floodCount (blocked
+  -- only) instead; History.lua's comment on IsFloodBadgeRow/IsFloodOnlyBlock
+  -- has the full reasoning.
+  local floodBadgeCount = tonumber(stats and stats.retained and stats.retained.floodBadgeCount) or 0
   local lx = 4
   local index = 0
   for _, cat in ipairs(DISPLAY_CATEGORIES) do
     local count = tonumber(byCategory[cat]) or 0
     if count > 0 or not RETIRED_CATEGORY_SET[cat] then
       index = index + 1
-      local item = legend.items[index]
-      if not item then
-        item = {
-          swatch = legend:CreateTexture(nil, "ARTWORK"),
-          label  = legend:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"),
-        }
-        item.swatch:SetSize(10, 10)
-        item.label:SetPoint("LEFT", item.swatch, "RIGHT", 3, 0)
-        legend.items[index] = item
-      end
-      local hex = CATEGORY_COLORS[cat] or "888"
-      item.swatch:SetColorTexture(HexNibble(hex, 1), HexNibble(hex, 2), HexNibble(hex, 3), 1)
-      item.swatch:ClearAllPoints()
-      item.swatch:SetPoint("LEFT", legend, "LEFT", lx, 0)
-      item.label:SetText(L[CATEGORY_BADGE_LABELS[cat] or cat])
-      item.swatch:Show()
-      item.label:Show()
-      lx = lx + 12 + item.label:GetStringWidth() + 8
+      lx = ShowLegendItem(legend, index, lx, CATEGORY_COLORS[cat] or "888", L[CATEGORY_BADGE_LABELS[cat] or cat])
     end
+  end
+  -- SFT-085: Flood is a reason, not a category (IGNORED_BREAKDOWN_KEYS) -- it
+  -- has no CATEGORY_COLORS/PauseState entry and is deliberately not a filter
+  -- chip -- but a flood-badge row still renders a grey stripe in the list
+  -- (RenderRow falls back to "888" when DominantCategory returns nil), and
+  -- that stripe needs a legend entry the same as every other stripe colour
+  -- does. Shown only while a flood-badge row is currently retained (not the
+  -- retired-category residue rule above -- Flood isn't a category at all).
+  if floodBadgeCount > 0 then
+    index = index + 1
+    ShowLegendItem(legend, index, lx, "888", L["Flood"])
   end
   for i = index + 1, #legend.items do
     legend.items[i].swatch:Hide()
@@ -1124,9 +1148,16 @@ local function RefreshStatsArea()
 
   local throttled = tonumber(lifetime.throttled) or 0
   local bubbles   = tonumber(lifetime.bubblesSuppressed) or 0
+  -- SFT-085: unlike Throttled/Bubbles suppressed, this count has no lifetime
+  -- counter -- it's derived from currently retained rows and shrinks as old
+  -- rows trim off, hence "(recent)". Grey label / white count, not all-grey:
+  -- an all-grey count reads as paused/off elsewhere on this line's neighbor
+  -- (the BY CATEGORY loop above).
+  local retained = stats.retained or {}
+  local flood = tonumber(retained.floodCount) or 0
   detailPane.stats.pipelineText:SetText(string.format(
-    "%s |cffffffff%d|r   %s |cffffffff%d|r",
-    L["Throttled"], throttled, L["Bubbles suppressed"], bubbles))
+    "%s |cffffffff%d|r   %s |cffffffff%d|r   |cff888888%s|r |cffffffff%d|r",
+    L["Throttled"], throttled, L["Bubbles suppressed"], bubbles, L["Flood (recent)"], flood))
 
   -- Keep the list legend in sync with the same counts (e.g. Clear history
   -- can make a retired category's last rows disappear).
