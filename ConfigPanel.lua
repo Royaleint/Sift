@@ -1705,7 +1705,7 @@ RenderDetection = function()
   end)
   rowY = y
   y = AddSlider("Mixed-script weight", "mixedScriptWeight", 0, 3, 1, y,
-    "Score weight added when a message mixes Latin with another script (Cyrillic, etc.) \194\151 " ..
+    "Score weight added when a message mixes Latin with another script (Cyrillic, etc.): " ..
     "the classic Unicode-confusable pattern. Set 0 to disable.")
   AddDetectionReset(rowY - 10, DEFAULT_SETTINGS.mixedScriptWeight, function()
     SetSetting("mixedScriptWeight", DEFAULT_SETTINGS.mixedScriptWeight)
@@ -1745,7 +1745,7 @@ RenderDetection = function()
     end,
     "When the same sender repeats the same message on the same surface, the repeat is " ..
     "logged as one condensed history entry and counted as throttled. Only applies to " ..
-    "messages already blocked as spam \194\151 it does not change what gets blocked.")
+    "messages already blocked as spam; it does not change what gets blocked.")
 end
 
 RenderCategories = function()
@@ -1793,7 +1793,7 @@ RenderAllowlist = function()
   AddText("Add from History", "GameFontNormalSmall", CONTENT_PAD, y + 2, 104)
   local addBox = AddEditBox(CONTENT_PAD + 112, y + 5, 180, listState.allowlistAddText,
     "Add from History",
-    "Enter as Name-Realm. The sender must already appear in your History \194\151 you can't " ..
+    "Enter as Name-Realm. The sender must already appear in your History. You can't " ..
     "allowlist arbitrary names, only ones Sift has actually seen.")
   AddNativeButton("Add", CONTENT_PAD + 300, y + 6, 72, function()
     listState.allowlistAddText = addBox:GetText() or ""

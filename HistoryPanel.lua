@@ -1027,7 +1027,7 @@ local function RenderActions(entry)
     actions.btn1:Show()
     actions.btn1.tipTitle = "Restore"
     actions.btn1.tipBody  = "Un-block this message. Note: the original chat text was never injected, " ..
-      "so it stays out of the chat scroll \194\151 restored entries appear here only."
+      "so it stays out of the chat scroll; restored entries appear here only."
     actions.btn2:SetText(L[reportLabel])
     actions.btn2:SetScript("OnClick", function() PerformReport(entry) end)
     actions.btn2:Show()
