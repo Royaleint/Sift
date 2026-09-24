@@ -91,6 +91,14 @@ local CATEGORY_BADGE_LABELS = {
   Throttle     = "Repeat",
   ManualBlock  = "Manual block",
 }
+-- Chip tooltip bodies for the three user-filterable categories -- keep the
+-- chip label terse and rely on the tooltip to spell out what the category
+-- covers.
+local CHIP_FULL_NAMES = {
+  RMT        = "Gold selling (real-money trading)",
+  Boosting   = "Boosting (paid carry ads)",
+  Custom     = "My Keywords (phrases you added yourself)",
+}
 -- Keys that describe WHY a message was caught rather than WHAT KIND of spam it
 -- is. Letting them win "dominant category" mislabels the row: a boosting ad
 -- caught during a flood would take the flood's colour and be filtered as though
@@ -706,6 +714,151 @@ local function HexNibble(s, i)
   return tonumber(s:sub(i, i), 16) / 15
 end
 
+-- Hover-tooltip text for the History row badges, breakdown chips, legend
+-- swatches, and column and stats-line hosts below. The resolvers below
+-- return these as raw L[] keys, resolved at hover time.
+local H_TIME = "How long ago Sift caught this message. Entries older than 90 days show the date instead."
+local H_SENDER = "The player who sent the message. A check mark means you restored it, and (pass-thru) means it was left in chat."
+local H_CATEGORY = "The kind of spam Sift found. Spam wave means the same message was posted several times in a short time, and You means you blocked the sender yourself."
+local H_SCORE = "How suspicious the message looked to Sift. Higher means more suspicious, and anything at or above your Block threshold gets caught."
+local YOU_HOVER = "You blocked this player yourself with Block (Sift) on their right-click menu."
+local SPAM_WAVE_ROW = "Sift caught this because the same message was posted several times within your Spam wave window, by one player or many."
+local QMARK_TITLE = "Kind of spam not saved"
+local QMARK_BODY = "Sift caught this but didn't save which kind of spam it was. Older versions of Sift left that out when a player repeated a message Sift had already caught."
+-- RETIRED and ADDED are two lines so the row and legend tooltips can reuse
+-- RETIRED without repeating the score-change sentence.
+local RETIRED = "A kind of spam Sift still catches, but it no longer has its own button to pause it or filter by it."
+local ADDED = "Added %d to this message's score."
+local CHIP_BLOCKED = "This player is on your Blocked list, so Sift added %d to the score."
+local CHIP_MANUAL = "You blocked this player yourself, so Sift caught this message whatever its score."
+local CHIP_SPAM_WAVE = "The same message was posted several times within your Spam wave window, which added %d to the score."
+local CHIP_REPEAT = "This message repeated one Sift had already caught from the same sender."
+local SPAM_WAVE_SWATCH = "Gray marks messages Sift caught because the same message was posted several times within your Spam wave window, with no spam category of their own. Players you blocked yourself, and entries marked ?, also show in gray."
+local STAT_SURFACE = "Lifetime detections split by where they came from: Chat, Whisper, and Bnet whisper. Shows this character or the whole account, depending on the Character or Account button."
+local STAT_CATEGORY = "Lifetime detections split by spam category, for this character or the whole account. A gray number means that category is currently Paused or Off."
+local STAT_PIPELINE = "Repeats counts messages that repeat spam Sift already caught from the same sender. Bubbles suppressed counts the times Sift hid a chat bubble for a blocked Say or Yell. Spam wave (recent) counts blocked messages still in your History that were caught only because the same message was posted several times, so it drops as old entries are removed."
+
+-- Pure resolvers (exported for tests). Every display goes through L[] at
+-- hover time, and %d formatting is applied after the lookup.
+--
+-- RowTipKeys is the single source of the badge and tooltip, so they cannot
+-- disagree.
+function HistoryPanel.RowTipKeys(entry)
+  if entry.reason == "manual-block" then
+    return "You", "You", YOU_HOVER
+  end
+
+  local cat = DominantCategory(entry.breakdown)
+  if cat then
+    if RETIRED_CATEGORY_SET[cat] then
+      -- The visible badge does not mark retired categories, so badgeKey and
+      -- titleKey are the same plain label; RETIRED is carried only as
+      -- bodyKey, the extra sentence the tooltip adds.
+      local label = CATEGORY_BADGE_LABELS[cat] or cat
+      return label, label, RETIRED
+    end
+    if CHIP_FULL_NAMES[cat] then
+      -- `or cat` fallback keeps the badge intact for a category with no
+      -- CATEGORY_BADGE_LABELS entry (e.g. Boosting): without it, this would
+      -- resolve to a nil badgeKey and render "?" instead of the category name.
+      return CATEGORY_BADGE_LABELS[cat] or cat, CHIP_FULL_NAMES[cat], nil
+    end
+    -- An unknown category (a breakdown key that is not ignored, not in
+    -- CATEGORY_BADGE_LABELS, and not a CHIP_FULL_NAMES entry): the same
+    -- raw-key fallback ChipTipKeys/LegendTipKeys use.
+    local label = CATEGORY_BADGE_LABELS[cat] or cat
+    return label, label, nil
+  end
+
+  if type(entry.breakdown) == "table" and (tonumber(entry.breakdown.Flood) or 0) > 0 then
+    local label = CATEGORY_BADGE_LABELS.Flood or "Flood"
+    return label, label, SPAM_WAVE_ROW
+  end
+
+  -- No category and no Flood: badgeKey stays nil so RenderRow keeps setting
+  -- the literal "?" (not run through L[]).
+  return nil, QMARK_TITLE, QMARK_BODY
+end
+
+function HistoryPanel.ChipTipKeys(cat, val)
+  local label = CATEGORY_BADGE_LABELS[cat] or cat
+  if RETIRED_CATEGORY_SET[cat] then
+    return label, RETIRED, ADDED, val
+  end
+  if CHIP_FULL_NAMES[cat] then
+    return CHIP_FULL_NAMES[cat], ADDED, nil, val
+  end
+  if cat == "BlockedActor" then
+    return label, CHIP_BLOCKED, nil, val
+  end
+  if cat == "ManualBlock" then
+    return label, CHIP_MANUAL, nil, nil
+  end
+  if cat == "Flood" then
+    return label, CHIP_SPAM_WAVE, nil, val
+  end
+  if cat == "Throttle" then
+    return label, CHIP_REPEAT, nil, nil
+  end
+  return label, nil, nil, nil
+end
+
+function HistoryPanel.LegendTipKeys(cat)
+  if cat == "Flood" then
+    return CATEGORY_BADGE_LABELS.Flood or "Flood", SPAM_WAVE_SWATCH
+  end
+  if RETIRED_CATEGORY_SET[cat] then
+    return CATEGORY_BADGE_LABELS[cat] or cat, RETIRED
+  end
+  if CHIP_FULL_NAMES[cat] then
+    return CHIP_FULL_NAMES[cat], nil
+  end
+  -- An unknown category returns its badge label (or raw key) with no body,
+  -- the same fallback RowTipKeys and ChipTipKeys use.
+  return CATEGORY_BADGE_LABELS[cat] or cat, nil
+end
+
+-- Generic hover handlers, hooked once at frame creation (InitListRow /
+-- RenderBreakdownChips / ShowLegendItem) and re-pointed on every render by
+-- writing tipTitle/tipBody/tipBody2 (and, for chips and legend items,
+-- tipValue) onto the frame -- the same state-aware idiom as ActionOnEnter,
+-- below, reading self.tipTitle/self.tipBody.
+--
+-- Row: anchored ANCHOR_LEFT rather than ANCHOR_CURSOR so the tooltip sits off
+-- the row and detail pane consistently instead of drifting with the mouse.
+-- RowTipKeys returns only three values, so row.tipBody2 is always nil.
+local function RowOnEnter(self)
+  if not GameTooltip then return end
+  if not self.tipTitle then
+    -- Defensive: every case above returns a tooltip title, so this branch
+    -- has no reachable caller today.
+    GameTooltip:Hide()
+    return
+  end
+  GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+  GameTooltip:AddLine(L[self.tipTitle])
+  if self.tipBody then GameTooltip:AddLine(L[self.tipBody], 1.00, 1.00, 1.00, true) end
+  GameTooltip:Show()
+end
+local function RowOnLeave()
+  if GameTooltip then GameTooltip:Hide() end
+end
+
+-- Chip / legend: shared by breakdown chips (tipValue set) and legend item
+-- hosts (tipValue nil). string.format ignores an unused argument, so
+-- :format(tipValue) is safe uniformly whether or not that body key has a %d.
+local function ChipOnEnter(self)
+  if not GameTooltip or not self.tipTitle then return end
+  GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+  GameTooltip:AddLine(L[self.tipTitle])
+  if self.tipBody then GameTooltip:AddLine(L[self.tipBody]:format(self.tipValue), 1.00, 1.00, 1.00, true) end
+  if self.tipBody2 then GameTooltip:AddLine(L[self.tipBody2]:format(self.tipValue), 1.00, 1.00, 1.00, true) end
+  GameTooltip:Show()
+end
+local function ChipOnLeave()
+  if GameTooltip then GameTooltip:Hide() end
+end
+
 local function RenderRow(row, entry)
   local cat = DominantCategory(entry.breakdown)
   local hex = CATEGORY_COLORS[cat] or "888"
@@ -731,24 +884,29 @@ local function RenderRow(row, entry)
   end
   row.senderText:SetText(senderLabel)
 
-  -- BSP-037: a manual block has no category and no score, so the usual "?" and
-  -- 0 read as a broken row. Name the reason instead.
+  local badgeKey, titleKey, bodyKey = HistoryPanel.RowTipKeys(entry)
+  -- Translated once here: badgeKey is nil only for the "?" case, which is
+  -- never run through L[].
+  row.badgeText:SetText(badgeKey and L[badgeKey] or "?")
+  -- BSP-037: a manual block has no score, so the usual 0 reads as a broken
+  -- row. Blank it instead.
   if entry.reason == "manual-block" then
-    row.badgeText:SetText(L["You"])
     row.scoreText:SetText("")
   else
-    local badge = cat and (CATEGORY_BADGE_LABELS[cat] or cat)
-    if not badge and type(entry.breakdown) == "table"
-       and (tonumber(entry.breakdown.Flood) or 0) > 0 then
-      -- A flood-only block has no content category to name (Flood is a
-      -- "why", not a "what" -- it never wins EntryDominantCategory). Name
-      -- the reason like manual blocks do instead of rendering a broken "?"
-      -- (Gate 2 finding, 2026-07-28).
-      badge = "Spam wave"
-    end
-    -- Translated once here: badge can come from either branch above.
-    row.badgeText:SetText(badge and L[badge] or "?")
     row.scoreText:SetText(tostring(entry.score or 0))
+  end
+
+  -- Re-point the row's tooltip fields to this entry so a hover always
+  -- reflects the row currently rendered here, not whichever entry last
+  -- occupied this recycled frame.
+  row.tipTitle, row.tipBody, row.tipBody2 = titleKey, bodyKey, nil
+
+  -- A still cursor over a row that gets re-rendered (recycling under the
+  -- pointer, or any refresh) would otherwise leave a stale tooltip showing;
+  -- re-run the hover handler so it picks up the fields just written above.
+  if GameTooltip and GameTooltip:IsShown() and GameTooltip:GetOwner() == row
+     and row:IsMouseOver() then
+    RowOnEnter(row)
   end
 end
 
@@ -1078,13 +1236,20 @@ end
 -- SFT-085: shared by the per-category loop below and the Flood swatch after
 -- it, so both render a legend item the same way instead of two copies that
 -- can drift apart.
-local function ShowLegendItem(legend, index, lx, hex, label)
+local function ShowLegendItem(legend, index, lx, hex, label, tipTitle, tipBody)
   local item = legend.items[index]
   if not item then
     item = {
+      -- A host covering the swatch and its label, so hovering either
+      -- explains the colour, not just the swatch's own 10x10 texture.
+      host   = CreateFrame("Frame", nil, legend),
       swatch = legend:CreateTexture(nil, "ARTWORK"),
       label  = legend:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"),
     }
+    item.host:SetHeight(18)
+    item.host:EnableMouse(true)
+    item.host:HookScript("OnEnter", ChipOnEnter)
+    item.host:HookScript("OnLeave", ChipOnLeave)
     item.swatch:SetSize(10, 10)
     item.label:SetPoint("LEFT", item.swatch, "RIGHT", 3, 0)
     legend.items[index] = item
@@ -1095,6 +1260,14 @@ local function ShowLegendItem(legend, index, lx, hex, label)
   item.label:SetText(label)
   item.swatch:Show()
   item.label:Show()
+
+  local width = 12 + (item.label:GetStringWidth() or 0)
+  item.host:SetWidth(width)
+  item.host:ClearAllPoints()
+  item.host:SetPoint("LEFT", legend, "LEFT", lx, 0)
+  item.host.tipTitle, item.host.tipBody = tipTitle, tipBody
+  item.host:Show()
+
   return lx + 12 + item.label:GetStringWidth() + 8
 end
 
@@ -1119,7 +1292,9 @@ local function RefreshLegend()
     local count = tonumber(byCategory[cat]) or 0
     if count > 0 or not RETIRED_CATEGORY_SET[cat] then
       index = index + 1
-      lx = ShowLegendItem(legend, index, lx, CATEGORY_COLORS[cat] or "888", L[CATEGORY_BADGE_LABELS[cat] or cat])
+      local tipTitle, tipBody = HistoryPanel.LegendTipKeys(cat)
+      lx = ShowLegendItem(legend, index, lx, CATEGORY_COLORS[cat] or "888",
+        L[CATEGORY_BADGE_LABELS[cat] or cat], tipTitle, tipBody)
     end
   end
   -- SFT-085: Flood is a reason, not a category (IGNORED_BREAKDOWN_KEYS) -- it
@@ -1131,9 +1306,11 @@ local function RefreshLegend()
   -- retired-category residue rule above -- Flood isn't a category at all).
   if floodBadgeCount > 0 then
     index = index + 1
-    ShowLegendItem(legend, index, lx, "888", L["Spam wave"])
+    local tipTitle, tipBody = HistoryPanel.LegendTipKeys("Flood")
+    ShowLegendItem(legend, index, lx, "888", L["Spam wave"], tipTitle, tipBody)
   end
   for i = index + 1, #legend.items do
+    legend.items[i].host:Hide()
     legend.items[i].swatch:Hide()
     legend.items[i].label:Hide()
   end
@@ -1290,6 +1467,11 @@ local function RenderBreakdownChips(breakdown)
       end
       chip.label = chip:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
       chip.label:SetPoint("CENTER", chip, "CENTER", 0, 0)
+      -- The chip frame itself is the hover host. Nothing clickable sits
+      -- beneath it.
+      chip:EnableMouse(true)
+      chip:HookScript("OnEnter", ChipOnEnter)
+      chip:HookScript("OnLeave", ChipOnLeave)
       row.chips[index] = chip
     end
     local hex = CATEGORY_COLORS[item.cat] or "888"
@@ -1298,6 +1480,7 @@ local function RenderBreakdownChips(breakdown)
     end
     chip.label:SetText(string.format("|cff000000%s +%d|r",
       L[CATEGORY_BADGE_LABELS[item.cat] or item.cat], item.val))
+    chip.tipTitle, chip.tipBody, chip.tipBody2, chip.tipValue = HistoryPanel.ChipTipKeys(item.cat, item.val)
     -- Size to the label (same idiom as PlaceCategoryChips): the mapped names
     -- ("Gold selling", "My Keywords") overflow the old fixed 80px.
     local chipWidth = math.max(80, math.floor((chip.label:GetStringWidth() or 0) + 10.5))
@@ -1415,6 +1598,10 @@ RefreshList = function()
         row:Show()
       elseif row then
         row.entry = nil
+        -- This is the only place that ever hides a classic row, so it is
+        -- also the only reachable place to clear its tooltip fields (the
+        -- modern resetter's clear, below, is unreachable here).
+        row.tipTitle, row.tipBody, row.tipBody2 = nil, nil, nil
         row:Hide()
       end
     end
@@ -1482,6 +1669,13 @@ local function InitListRow(button)
   button.scoreText:SetJustifyH("RIGHT")
 
   button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+
+  -- The whole row is the hover host -- no child frame -- so click routing
+  -- (RegisterForClicks above) is unaffected. The row is a Button,
+  -- mouse-enabled by the widget type itself, so no EnableMouse call is
+  -- needed here.
+  button:HookScript("OnEnter", RowOnEnter)
+  button:HookScript("OnLeave", RowOnLeave)
 end
 
 local function UseModernHistoryList()
@@ -1521,6 +1715,23 @@ local function CreateListHeader()
   header.scoreLabel:SetWidth(40)
   header.scoreLabel:SetJustifyH("RIGHT")
   header.scoreLabel:SetText(L["Score"])
+
+  -- A hover host per column, anchored TOP/BOTTOM to the header itself (not
+  -- SetAllPoints on the label) so the hit target runs the header's full
+  -- 18px height, not just the label's own line height. Titles reuse the
+  -- existing on-screen column labels.
+  local function AddHeaderTip(label, title, body)
+    local host = CreateFrame("Frame", nil, header)
+    host:SetPoint("TOP", header, "TOP", 0, 0)
+    host:SetPoint("BOTTOM", header, "BOTTOM", 0, 0)
+    host:SetPoint("LEFT", label, "LEFT", 0, 0)
+    host:SetPoint("RIGHT", label, "RIGHT", 0, 0)
+    AttachTooltip(host, title, body)
+  end
+  AddHeaderTip(header.timeLabel,   "Time",     H_TIME)
+  AddHeaderTip(header.senderLabel, "Sender",   H_SENDER)
+  AddHeaderTip(header.badgeLabel,  "Category", H_CATEGORY)
+  AddHeaderTip(header.scoreLabel,  "Score",    H_SCORE)
 end
 
 local function CreateModernListPane()
@@ -1568,6 +1779,10 @@ local function CreateModernListPane()
       button:SetScript("OnClick", nil)
       button.selection:Hide()
       button._lastClick = nil
+      -- Defensive: the initializer above calls RenderRow on every reuse,
+      -- which overwrites these fields before a released frame can show
+      -- again, so this clear has no observable effect.
+      button.tipTitle, button.tipBody, button.tipBody2 = nil, nil, nil
     end,
   })
 
@@ -1782,6 +1997,19 @@ local function BuildStatsArea(parent)
   parent.pipelineText:SetPoint("TOPLEFT", parent.pipelineLabel, "BOTTOMLEFT", 0, -2)
   parent.pipelineText:SetPoint("RIGHT",   parent, "RIGHT", -10, 0)
   parent.pipelineText:SetJustifyH("LEFT")
+
+  -- One static-text hover host per stats line, anchored TOPLEFT to the
+  -- line's label and BOTTOMRIGHT to its text. Titles reuse the existing
+  -- on-screen line labels; PIPELINE gets one host for the whole line.
+  local function AddStatsLineTip(labelFS, textFS, title, body)
+    local host = CreateFrame("Frame", nil, parent)
+    host:SetPoint("TOPLEFT", labelFS, "TOPLEFT", 0, 0)
+    host:SetPoint("BOTTOMRIGHT", textFS, "BOTTOMRIGHT", 0, 0)
+    AttachTooltip(host, title, body)
+  end
+  AddStatsLineTip(parent.bySurfaceLabel,  parent.bySurfaceText,  "BY SURFACE",  STAT_SURFACE)
+  AddStatsLineTip(parent.byCategoryLabel, parent.byCategoryText, "BY CATEGORY", STAT_CATEGORY)
+  AddStatsLineTip(parent.pipelineLabel,   parent.pipelineText,   "PIPELINE",    STAT_PIPELINE)
 end
 
 local function BuildEmptyState(parent)
@@ -1959,22 +2187,14 @@ end
 local CHIP_GAP = 3
 local CHIP_MIN_WIDTH = 38
 
--- Filter chips exist only for the categories a user can filter by, so these two
--- maps cover CATEGORIES, not the wider DISPLAY_CATEGORIES.
+-- Filter chips exist only for the categories a user can filter by. CHIP_LABELS
+-- covers CATEGORIES, not the wider DISPLAY_CATEGORIES.
 local CHIP_LABELS = {
   RMT        = "Gold selling",
   Boosting   = "Boosting",
   -- Named for the settings section the player manages these in, not for the
   -- internal key the score breakdown uses.
   Custom     = "My Keywords",
-}
-
--- BSP-009: chip tooltip bodies. Keep the chip label terse and rely on the
--- tooltip to spell out what the category covers.
-local CHIP_FULL_NAMES = {
-  RMT        = "Gold selling (real-money trading)",
-  Boosting   = "Boosting (paid carry ads)",
-  Custom     = "My Keywords (phrases you added yourself)",
 }
 
 local function PlaceCategoryChips(strip)
