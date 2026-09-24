@@ -54,6 +54,40 @@ local function RecordCategory(record)
   return bestCat
 end
 
+-- SFT-085: Flood is deliberately excluded from byCategory (IGNORED_BREAKDOWN_KEYS
+-- above) -- it's a reason, not a kind of spam -- so it has no lifetime counter the
+-- way Throttle has stats.throttled. Two questions need two different predicates.
+-- IsFloodBadgeRow reproduces HistoryPanel.lua's RenderRow badge condition (no
+-- dominant category, a Flood weight, not a manual block) using RecordCategory
+-- rather than RenderRow's own DominantCategory(breakdown) -- the two agree on
+-- whether a category exists at all (never on which one, when they'd disagree)
+-- because ApplyCustomBlock (ChatScanner.lua) always adds a Custom weight equal
+-- to the block threshold (clamped 1-10) to a custom-rule row's breakdown, so
+-- RecordCategory's customRule shortcut and DominantCategory's plain breakdown
+-- loop both return SOME category for that row -- just not necessarily the same
+-- one if another weight in the breakdown outscores Custom. Either way, "has a
+-- category" excludes it from both predicates. RenderRow has no outcome check,
+-- so a restored or pass-thru row can still badge "Flood" and stripe grey.
+-- IsFloodOnlyBlock narrows that to blocked rows only, which is SFT-085's own
+-- definition for the PIPELINE count. `category` lets a caller that already ran
+-- RecordCategory (CountRetained, for byCategory) pass its result in instead of
+-- paying for it twice -- pass `false` for "already computed, no category" or
+-- omit it entirely to have it computed here (nil means "not supplied").
+local function IsFloodBadgeRow(record, category)
+  if type(record) ~= "table" then return false end
+  if record.reason == "manual-block" then return false end
+  if category == nil then category = RecordCategory(record) end
+  if category then return false end
+  local breakdown = record.breakdown
+  return type(breakdown) == "table" and (tonumber(breakdown.Flood) or 0) > 0
+end
+
+local function IsFloodOnlyBlock(record, category)
+  if type(record) ~= "table" then return false end
+  if (record.outcome or "blocked") ~= "blocked" then return false end
+  return IsFloodBadgeRow(record, category)
+end
+
 local function CountRetained(history)
   local retained = {
     detections = 0,
@@ -62,6 +96,8 @@ local function CountRetained(history)
     restored = 0,
     bySurface = {},
     byCategory = {},
+    floodCount = 0,
+    floodBadgeCount = 0,
   }
 
   for index = 1, #history do
@@ -81,6 +117,16 @@ local function CountRetained(history)
       local bestCat = RecordCategory(record)
       if bestCat then
         retained.byCategory[bestCat] = (retained.byCategory[bestCat] or 0) + 1
+      end
+      -- `or false`: bestCat is nil (a real, already-computed "no category"
+      -- result) for exactly the rows these predicates care about, and nil
+      -- means "not supplied, please compute" to them -- false says "already
+      -- computed, and it's nothing" instead, so they don't redo the work.
+      if IsFloodBadgeRow(record, bestCat or false) then
+        retained.floodBadgeCount = retained.floodBadgeCount + 1
+      end
+      if IsFloodOnlyBlock(record, bestCat or false) then
+        retained.floodCount = retained.floodCount + 1
       end
     end
   end
@@ -264,6 +310,7 @@ function History.GetAccountStats()
     bySurface = {}, byCategory = {},
   }
   local retainedTotal = 0
+  local floodTotal = 0
 
   local charTable = NS.DB and NS.DB.db and NS.DB.db.sv and NS.DB.db.sv.char
   if type(charTable) == "table" then
@@ -289,7 +336,22 @@ function History.GetAccountStats()
           end
         end
         if type(charData.history) == "table" then
-          retainedTotal = retainedTotal + #charData.history
+          local history = charData.history
+          retainedTotal = retainedTotal + #history
+          -- SFT-085: this account view previously only counted rows (#history,
+          -- above) and made no per-row pass. This adds one, per character,
+          -- using the SAME IsFloodOnlyBlock predicate CountRetained uses for
+          -- the per-character view, so the two views cannot define "Flood"
+          -- differently. No floodBadgeCount here -- the legend swatch always
+          -- reads the per-character NS.History.GetStats() (RefreshLegend has
+          -- no account-scope path), so an account-wide badge count has no
+          -- reader.
+          for index = 1, #history do
+            local record = history[index]
+            if IsFloodOnlyBlock(record, RecordCategory(record) or false) then
+              floodTotal = floodTotal + 1
+            end
+          end
         end
       end
     end
@@ -297,7 +359,7 @@ function History.GetAccountStats()
 
   return {
     lifetime = total,
-    retained = { detections = retainedTotal },
+    retained = { detections = retainedTotal, floodCount = floodTotal },
   }
 end
 
