@@ -163,7 +163,7 @@ local function FormatChannel(entry)
   if entry.channel and CHAT_EVENT_LABELS[entry.channel] then
     return L[CHAT_EVENT_LABELS[entry.channel]]
   end
-  return entry.channel or "\226\128\148"
+  return entry.channel or "-"
 end
 
 local TIME_WINDOW_VALUES = { "All", "Last hour", "Today", "Last 7 days" }
@@ -814,8 +814,8 @@ local function RenderSenderHistory(entry)
   detailPane.footer.senderHistory:SetText(string.format(
     "In History: %d   \194\183   First seen: %s   \194\183   Last seen: %s",
     count,
-    firstSeen and RelativeTime(firstSeen) or "\226\128\148",
-    lastSeen  and RelativeTime(lastSeen)  or "\226\128\148"))
+    firstSeen and RelativeTime(firstSeen) or "-",
+    lastSeen  and RelativeTime(lastSeen)  or "-"))
 end
 
 local RefreshList, SelectEntry, UpdateSenderFilterChip
@@ -1151,7 +1151,7 @@ local function RefreshStatsArea()
   if blocked > 0 then
     fpRate = string.format("%.1f%%", (restored / blocked) * 100)
   else
-    fpRate = "\226\128\148"  -- em dash
+    fpRate = "-"  -- no value yet
   end
 
   local values = {
@@ -1162,7 +1162,7 @@ local function RefreshStatsArea()
     falsePositives = fpRate,
   }
   for key, tile in pairs(detailPane.stats.tiles) do
-    tile.valueText:SetText(values[key] or "\226\128\148")
+    tile.valueText:SetText(values[key] or "-")
     local color = STATS_TILE_COLORS[key]
     if color then
       tile.valueText:SetTextColor(color[1], color[2], color[3])
