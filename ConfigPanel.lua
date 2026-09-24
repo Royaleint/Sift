@@ -118,6 +118,12 @@ local listState = {
   allowlistAddText = "",
   blockedSearch = "",
   blockedPage = 1,
+  -- SortedBlockedActors' cache. blockedCache is nil whenever it is not
+  -- valid; blockedCacheSearch/blockedCacheRevision are only meaningful
+  -- while blockedCache is set.
+  blockedCache = nil,
+  blockedCacheSearch = nil,
+  blockedCacheRevision = nil,
   keywordSearch = { block = "", allow = "" },
   keywordPage = { block = 1, allow = 1 },
   keywordAddText = { block = "", allow = "" },
@@ -768,9 +774,21 @@ local function BlockedEntryLastSeen(entry)
   return nil
 end
 
+-- listState.blockedCache holds the last sorted result; it stays valid as
+-- long as the search text is unchanged and DB.GetBlockedActorsRevision()
+-- (bumped by every write to the store) still matches the value recorded
+-- when the cache was built. ConfigPanel's OnHide handler frees the cache
+-- outright, and RemoveBlocked's and Clear All's no-DB fallbacks below
+-- clear it directly.
 local function SortedBlockedActors()
-  local blocked = GetBlockedActors()
   local search = Lower(listState.blockedSearch)
+  local revision = NS.DB and NS.DB.GetBlockedActorsRevision and NS.DB.GetBlockedActorsRevision()
+  if listState.blockedCache and listState.blockedCacheSearch == search
+     and revision ~= nil and listState.blockedCacheRevision == revision then
+    return listState.blockedCache
+  end
+
+  local blocked = GetBlockedActors()
   local out = {}
   for key, entry in pairs(blocked) do
     local label = BlockedEntryLabel(key, entry)
@@ -787,6 +805,10 @@ local function SortedBlockedActors()
     end
     return Lower(a.label) < Lower(b.label)
   end)
+
+  listState.blockedCache = out
+  listState.blockedCacheSearch = search
+  listState.blockedCacheRevision = revision
   return out
 end
 
@@ -873,8 +895,10 @@ local function RemoveBlocked(key)
     ConfigPanel.ShowSection("Blocked")
     return
   end
+  -- The DB path did not run, so no revision bump; drop the cache directly.
   local blocked = GetBlockedActors()
   blocked[key] = nil
+  listState.blockedCache = nil
   sectionStatus.Blocked = "Removed blocked actor."
   ConfigPanel.ShowSection("Blocked")
 end
@@ -1326,7 +1350,12 @@ local function RegisterStaticPopups()
     button1 = "Clear",
     button2 = "Cancel",
     OnAccept = function()
-      ClearTable(GetBlockedActors())
+      if not (NS.DB and NS.DB.ClearBlockedActors and NS.DB.ClearBlockedActors()) then
+        -- The DB path did not run, so no revision bump; drop the cache
+        -- directly.
+        ClearTable(GetBlockedActors())
+        listState.blockedCache = nil
+      end
       sectionStatus.Blocked = "Blocked actors cleared."
       if activeSection == "Blocked" and frame and frame:IsShown() then
         ConfigPanel.ShowSection("Blocked")
@@ -2577,13 +2606,18 @@ local function BuildFrame(parent)
     frame:SetScript("OnSizeChanged", function()
       sizeDirty = true
     end)
-    frame:SetScript("OnHide", function()
-      if sizeDirty then
-        SaveSize()
-      end
-    end)
     ApplyStoredGeometry()
   end
+  -- Wired for both modes (a hidden parent still fires a shown child's
+  -- OnHide) so the Blocked list cache never outlives the panel, whether it
+  -- closed standalone or the embedded History window switched back to its
+  -- History tab.
+  frame:SetScript("OnHide", function()
+    if not embedded and sizeDirty then
+      SaveSize()
+    end
+    listState.blockedCache = nil
+  end)
   if not embedded and UISpecialFrames then
     tinsert(UISpecialFrames, "SiftConfigFrame")
   end

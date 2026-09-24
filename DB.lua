@@ -49,6 +49,15 @@ local CURRENT_SCHEMA_VERSION = 3
 local ADDON_VERSION = "1.4.0"
 local BLOCKED_ACTOR_CAP = 5000
 
+-- Bumped by every write to global.blockedActors (scanner block, manual
+-- block, removal, clear all, legacy import). The Config panel's Blocked
+-- list reads this to know whether its cached, sorted view is still current.
+local blockedRevision = 0
+
+local function TouchBlockedRevision()
+  blockedRevision = blockedRevision + 1
+end
+
 local defaults = {
   global = {
     allowlist = {},
@@ -591,6 +600,7 @@ function DB.RecordBlockedActor(record, category)
     end
   end
 
+  TouchBlockedRevision()
   return true
 end
 
@@ -634,6 +644,7 @@ function DB.BlockActorManually(guid, name, realm)
   entry.realm = UsableString(realm) and realm or entry.realm
   entry.lastBlockedAt = tonumber(entry.lastBlockedAt) or entry.manualBlockedAt
 
+  TouchBlockedRevision()
   return true
 end
 
@@ -651,6 +662,30 @@ function DB.RemoveBlockedActor(guid)
     return false
   end
   global.blockedActors[guid] = nil
+  TouchBlockedRevision()
+  return true
+end
+
+function DB.GetBlockedActorsRevision()
+  return blockedRevision
+end
+
+-- Routes Config's Clear All through DB, so a full wipe bumps the same
+-- revision every other blockedActors write does.
+function DB.ClearBlockedActors()
+  local global = DB.GetGlobal()
+  if not global then
+    return false
+  end
+  global.blockedActors = type(global.blockedActors) == "table" and global.blockedActors or {}
+  if type(wipe) == "function" then
+    wipe(global.blockedActors)
+  else
+    for key in pairs(global.blockedActors) do
+      global.blockedActors[key] = nil
+    end
+  end
+  TouchBlockedRevision()
   return true
 end
 
@@ -941,6 +976,7 @@ function DB.MergeLegacyStore(siftSV, legacySV, now)
       siftSV.global.blockedActors[guid] = nil
     end
   end
+  TouchBlockedRevision()
   if settingsImported then
     for key, value in pairs(newSettings) do
       siftSV.global.settings[key] = value
