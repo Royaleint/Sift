@@ -265,17 +265,22 @@ local function GetSettings()
   return NS.DB and NS.DB.GetSettings and NS.DB.GetSettings() or {}
 end
 
+-- Reused across calls: BuildScoringOptions runs once per scanned chat message,
+-- has one call site (Pipeline), and Scoring.Score only reads these fields --
+-- it never retains the table -- so a fresh one per message is garbage the
+-- scanner need not make.
+local scoringOptions = {}
+
 local function BuildScoringOptions(settings, categories)
-  return {
-    threshold = settings.threshold,
-    -- Not settings.enabledCategories directly: retired categories are no longer
-    -- persisted, so the stored table alone would gate their rules off. A
-    -- fallback to it would restore that bug quietly, so there is none.
-    enabledCategories = categories or NS.PauseState.GetEffectiveCategoryStates(),
-    mixedScriptWeight = settings.mixedScriptEnabled == false and 0 or settings.mixedScriptWeight,
-    antiSignalCap = settings.antiSignalCap,
-    patterns = NS.Patterns,
-  }
+  scoringOptions.threshold = settings.threshold
+  -- Not settings.enabledCategories directly: retired categories are no longer
+  -- persisted, so the stored table alone would gate their rules off. A
+  -- fallback to it would restore that bug quietly, so there is none.
+  scoringOptions.enabledCategories = categories or NS.PauseState.GetEffectiveCategoryStates()
+  scoringOptions.mixedScriptWeight = settings.mixedScriptEnabled == false and 0 or settings.mixedScriptWeight
+  scoringOptions.antiSignalCap = settings.antiSignalCap
+  scoringOptions.patterns = NS.Patterns
+  return scoringOptions
 end
 
 local function BuildHistoryRecord(event, message, sender, channelName, guid, analysis, settings, score, threshold, breakdown, reason, surface, outcome, customRule)
@@ -677,9 +682,81 @@ end
 
 local function ErrorHandler(err)
   if NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode() then
-    print("[Sift] xpcall: " .. tostring(err))
+    print("[Sift] filter error: " .. tostring(err))
   end
   return err
+end
+
+-- Named file-scope function so Filter's protected call has no per-call
+-- closure to build: no upvalue objects allocated over its 13 parameters,
+-- every delivery, to every chat frame showing the line.
+local function FilterBody(event, message, sender, language, channelString, target, flags, unknown, channelNumber, channelName, unknown2, counter, guid)
+  -- Cache the sender before Pipeline runs: Pipeline returns early for trusted
+  -- senders, and those are exactly the players a user is most likely to want
+  -- to block by hand. Inside the protected call so a surprise here degrades to
+  -- "no right-click entry" instead of killing the filter for every addon on
+  -- the chain (BSP-037).
+  RememberSender(counter, guid)
+
+  local settings = GetSettings()
+  local surface = EVENT_TO_SURFACE[event] or "chat"
+  local surfaceState = (NS.PauseState and NS.PauseState.GetSurface and NS.PauseState.GetSurface(surface)) or "active"
+  if surfaceState == "off" then
+    return Pipeline(event, message, sender, language, channelString, target, flags, unknown,
+      channelNumber, channelName, unknown2, counter, guid, settings, false, false, surface, surfaceState)
+  end
+  local manualBlocked = IsUsableString(guid) and NS.DB and NS.DB.IsManuallyBlocked
+    and NS.DB.IsManuallyBlocked(guid) == true or false
+  local trusted = not manualBlocked and NS.Trust and NS.Trust.IsTrusted
+    and NS.Trust.IsTrusted(guid, sender, flags) == true or false
+  if trusted then
+    return Pipeline(event, message, sender, language, channelString, target, flags, unknown,
+      channelNumber, channelName, unknown2, counter, guid, settings, manualBlocked, trusted, surface, surfaceState)
+  end
+  local lineID = IsFinitePositiveNumber(counter)
+  local stamp = GetFrameStamp()
+  local cacheable = lineID and stamp and type(event) == "string" and IsSafePayloadValue(message)
+    and IsSafePayloadValue(sender) and IsSafePayloadValue(flags) and IsSafePayloadValue(channelName)
+    and IsSafePayloadValue(guid)
+  if not cacheable then
+    return Pipeline(event, message, sender, language, channelString, target, flags, unknown,
+      channelNumber, channelName, unknown2, counter, guid, settings, manualBlocked, trusted, surface, surfaceState)
+  end
+  local categories = NS.PauseState and NS.PauseState.GetEffectiveCategoryStates
+    and NS.PauseState.GetEffectiveCategoryStates() or {}
+  if type(settings) ~= "table" or type(categories) ~= "table" then
+    return Pipeline(event, message, sender, language, channelString, target, flags, unknown,
+      channelNumber, channelName, unknown2, counter, guid, settings, manualBlocked, trusted, surface, surfaceState)
+  end
+  local floodEnabled, floodWindow, repeatEnabled, repeatBufferSize = GetFrequencyState()
+  local ruleRevision = GetRuleRevision()
+  local cached = DecisionCacheHit(lineID, stamp, event, message, sender, flags, channelName, guid,
+    manualBlocked, trusted, surfaceState, settings, categories, floodEnabled, floodWindow, repeatEnabled, repeatBufferSize, ruleRevision)
+  if cached ~= nil then return cached end
+
+  local slot, generation = ClaimDecisionSlot(lineID)
+  if slot then CopyState(slot, settings, categories) end
+  local pipelineOK, decision = pcall(Pipeline, event, message, sender, language, channelString, target, flags, unknown,
+    channelNumber, channelName, unknown2, counter, guid, settings, manualBlocked, trusted, surface, surfaceState, categories)
+  if not pipelineOK then
+    if slot and decisionCacheByID[lineID] == slot and slot.generation == generation then
+      decisionCacheByID[lineID] = nil
+      slot.inProgress = false
+    end
+    error(decision)
+  end
+  local stable = slot and SameSettings(slot, GetSettings())
+  local currentCategories = NS.PauseState and NS.PauseState.GetEffectiveCategoryStates
+    and NS.PauseState.GetEffectiveCategoryStates() or nil
+  stable = stable and SameCategories(slot, currentCategories)
+  if slot and stable then
+    FinishDecisionSlot(slot, generation, stamp, event, message, sender, flags, channelName, guid,
+      manualBlocked, trusted, surfaceState, settings, categories, floodEnabled, floodWindow, repeatEnabled, repeatBufferSize, ruleRevision, decision)
+  elseif slot and decisionCacheByID[lineID] == slot and slot.generation == generation then
+    decisionCacheByID[lineID] = nil
+    slot.inProgress = false
+  end
+  return decision
 end
 
 function ChatScanner.Filter(
@@ -701,78 +778,17 @@ function ChatScanner.Filter(
     NS.BubbleSuppressor.MaybeRestore()
   end
 
-  local ok, blocked = xpcall(function()
-    -- Cache the sender before Pipeline runs: Pipeline returns early for trusted
-    -- senders, and those are exactly the players a user is most likely to want
-    -- to block by hand. Inside the xpcall so a surprise here degrades to "no
-    -- right-click entry" instead of killing the filter for every addon on the
-    -- chain (BSP-037).
-    RememberSender(counter, guid)
-
-    local settings = GetSettings()
-    local surface = EVENT_TO_SURFACE[event] or "chat"
-    local surfaceState = (NS.PauseState and NS.PauseState.GetSurface and NS.PauseState.GetSurface(surface)) or "active"
-    if surfaceState == "off" then
-      return Pipeline(event, message, sender, language, channelString, target, flags, unknown,
-        channelNumber, channelName, unknown2, counter, guid, settings, false, false, surface, surfaceState)
-    end
-    local manualBlocked = IsUsableString(guid) and NS.DB and NS.DB.IsManuallyBlocked
-      and NS.DB.IsManuallyBlocked(guid) == true or false
-    local trusted = not manualBlocked and NS.Trust and NS.Trust.IsTrusted
-      and NS.Trust.IsTrusted(guid, sender, flags) == true or false
-    if trusted then
-      return Pipeline(event, message, sender, language, channelString, target, flags, unknown,
-        channelNumber, channelName, unknown2, counter, guid, settings, manualBlocked, trusted, surface, surfaceState)
-    end
-    local lineID = IsFinitePositiveNumber(counter)
-    local stamp = GetFrameStamp()
-    local cacheable = lineID and stamp and type(event) == "string" and IsSafePayloadValue(message)
-      and IsSafePayloadValue(sender) and IsSafePayloadValue(flags) and IsSafePayloadValue(channelName)
-      and IsSafePayloadValue(guid)
-    if not cacheable then
-      return Pipeline(event, message, sender, language, channelString, target, flags, unknown,
-        channelNumber, channelName, unknown2, counter, guid, settings, manualBlocked, trusted, surface, surfaceState)
-    end
-    local categories = NS.PauseState and NS.PauseState.GetEffectiveCategoryStates
-      and NS.PauseState.GetEffectiveCategoryStates() or {}
-    if type(settings) ~= "table" or type(categories) ~= "table" then
-      return Pipeline(event, message, sender, language, channelString, target, flags, unknown,
-        channelNumber, channelName, unknown2, counter, guid, settings, manualBlocked, trusted, surface, surfaceState)
-    end
-    local floodEnabled, floodWindow, repeatEnabled, repeatBufferSize = GetFrequencyState()
-    local ruleRevision = GetRuleRevision()
-    local cached = DecisionCacheHit(lineID, stamp, event, message, sender, flags, channelName, guid,
-      manualBlocked, trusted, surfaceState, settings, categories, floodEnabled, floodWindow, repeatEnabled, repeatBufferSize, ruleRevision)
-    if cached ~= nil then return cached end
-
-    local slot, generation = ClaimDecisionSlot(lineID)
-    if slot then CopyState(slot, settings, categories) end
-    local pipelineOK, decision = pcall(Pipeline, event, message, sender, language, channelString, target, flags, unknown,
-      channelNumber, channelName, unknown2, counter, guid, settings, manualBlocked, trusted, surface, surfaceState, categories)
-    if not pipelineOK then
-      if slot and decisionCacheByID[lineID] == slot and slot.generation == generation then
-        decisionCacheByID[lineID] = nil
-        slot.inProgress = false
-      end
-      error(decision)
-    end
-    local stable = slot and SameSettings(slot, GetSettings())
-    local currentCategories = NS.PauseState and NS.PauseState.GetEffectiveCategoryStates
-      and NS.PauseState.GetEffectiveCategoryStates() or nil
-    stable = stable and SameCategories(slot, currentCategories)
-    if slot and stable then
-      FinishDecisionSlot(slot, generation, stamp, event, message, sender, flags, channelName, guid,
-        manualBlocked, trusted, surfaceState, settings, categories, floodEnabled, floodWindow, repeatEnabled, repeatBufferSize, ruleRevision, decision)
-    elseif slot and decisionCacheByID[lineID] == slot and slot.generation == generation then
-      decisionCacheByID[lineID] = nil
-      slot.inProgress = false
-    end
-    return decision
-  end, ErrorHandler)
+  local ok, result = pcall(FilterBody, event, message, sender, language, channelString, target, flags, unknown,
+    channelNumber, channelName, unknown2, counter, guid)
   if not ok then
+    -- ErrorHandler's own body can raise too (a corrupt IsDevMode, a __tostring
+    -- that throws): pcall it rather than calling it bare, so a failure while
+    -- reporting the first error still degrades to "message not blocked"
+    -- instead of escaping into Blizzard's filter loop.
+    pcall(ErrorHandler, result)
     return false
   end
-  return blocked == true
+  return result == true
 end
 
 local function ChatFrameFilter(

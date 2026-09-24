@@ -6,6 +6,12 @@ local Scoring = {}
 
 local _, NS = ...
 local _injectedPatterns = nil  -- test-only override; primary path is options.patterns or NS.Patterns
+local EMPTY_HITS = {}  -- shared, never mutated: only #hits and hits[i] are read
+
+-- Reused across calls: _ScoreHits runs once per scanned chat message and
+-- seenRules is pure dedup scratch -- nothing outside this function ever reads
+-- it -- so wiping and refilling one table beats allocating a fresh one.
+local seenRules = {}
 
 function Scoring.SetPatternsForTest(p)
   _injectedPatterns = p
@@ -19,7 +25,7 @@ function Scoring._ScoreHits(hits, analysis, options)
   local cap = options.antiSignalCap or -5
 
   local breakdown = {}
-  local seenRules = {}
+  for key in pairs(seenRules) do seenRules[key] = nil end
   local antiRaw = 0
   local auditHits = {}
   local hasPositiveContentHit = false
@@ -74,9 +80,9 @@ end
 function Scoring.Score(analysis, options)
   options = options or {}
   local patterns = options.patterns or _injectedPatterns or (NS and NS.Patterns)
-  local hits = {}
+  local hits = EMPTY_HITS
   if patterns and patterns.Match then
-    hits = patterns:Match(analysis.normalized or "") or {}
+    hits = patterns:Match(analysis.normalized or "") or EMPTY_HITS
   end
   return Scoring._ScoreHits(hits, analysis or { signals = {} }, options)
 end
