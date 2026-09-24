@@ -829,7 +829,7 @@ local function AddAllowlistFromText(text)
     sectionStatus.Allowlist = "Allowlist API is unavailable."
     return false
   end
-  local added, clearedManualBlock = NS.Trust.AddAllowlist(entry.guid, entry.name, entry.realm, "manual")
+  local added, clearedManualBlock = NS.Trust.AddAllowlist(entry.guid, entry.name, entry.realm, "history")
   local unblocked = clearedManualBlock and " Manual block removed." or ""
   if added then
     sectionStatus.Allowlist = "Added " .. SenderLabel(entry) .. "." .. unblocked
