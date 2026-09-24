@@ -44,6 +44,37 @@ local function IsUsableString(value)
   return type(value) == "string" and value ~= ""
 end
 
+local rememberedTargets = {}
+
+local function TargetKey(name, realm)
+  if not IsUsableString(name) then
+    return nil
+  end
+  return string.lower(name) .. "\031" .. string.lower(realm or "")
+end
+
+local function RememberTarget(guid, name, realm)
+  local key = TargetKey(name, realm)
+  if key and IsUsableString(guid) then
+    rememberedTargets[key] = { guid = guid, name = name, realm = realm }
+  end
+end
+
+local function RememberedTarget(name, realm)
+  local key = TargetKey(name, realm)
+  return key and rememberedTargets[key] or nil
+end
+
+local function NormalizeTarget(name, realm)
+  if name and not realm then
+    local baseName, nameRealm = string.match(name, "^([^%-]+)%-(.+)$")
+    if baseName and nameRealm then
+      return baseName, nameRealm
+    end
+  end
+  return name, realm
+end
+
 local function Print(message)
   message = "|cff33ff99Sift|r " .. tostring(message)
   if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
@@ -96,12 +127,6 @@ end
 
 local function ResolveTarget(contextData)
   local guid = ResolveGUID(contextData)
-  -- Player-* is the only GUID namespace blockedActors is keyed in. Battle.net
-  -- accounts, pets and creatures all reach these menus and must not be stored.
-  if not guid or not string.find(guid, "^Player%-") then
-    return nil
-  end
-
   local name = IsUsableString(contextData.name) and contextData.name or nil
   local realm = IsUsableString(contextData.server) and contextData.server or nil
 
@@ -114,6 +139,22 @@ local function ResolveTarget(contextData)
       name = unitName
       realm = realm or (IsUsableString(unitRealm) and unitRealm or nil)
     end
+  end
+
+  name, realm = NormalizeTarget(name, realm)
+
+  -- A chat link can reopen the FRIEND menu with the display name but without
+  -- the original lineID. Reuse only a same-session name/realm -> GUID mapping
+  -- established from the first menu; never invent or persist a name-keyed block.
+  if not guid then
+    local remembered = RememberedTarget(name, realm)
+    guid = remembered and remembered.guid or nil
+  end
+
+  -- Player-* is the only GUID namespace blockedActors is keyed in. Battle.net
+  -- accounts, pets and creatures all reach these menus and must not be stored.
+  if not guid or not string.find(guid, "^Player%-") then
+    return nil
   end
 
   return guid, name, realm
@@ -140,6 +181,7 @@ local function OnBlockClicked(guid, name, realm)
   end
 
   if NS.DB.BlockActorManually(guid, name, realm) then
+    RememberTarget(guid, name, realm)
     Print("Blocked " .. SenderLabel(name, realm) .. ". Undo in /sift config > Blocked.")
   else
     Print(SenderLabel(name, realm) .. " is already blocked.")
