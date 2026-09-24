@@ -2261,7 +2261,7 @@ RenderUI = function()
       sectionStatus.UI = "History panel reset API is unavailable."
     end
     ConfigPanel.ShowSection("UI")
-  end, "Reset the History panel size and position to defaults (centered, 820 \195\151 540).")
+  end, "Reset the History panel size and position to defaults (centered, 940 \195\151 560).")
   AddNativeButton("Reset Config Panel", CONTENT_PAD + 160, y, 150, function()
     ConfigPanel.ResetPosition()
     sectionStatus.UI = "Config panel position reset."

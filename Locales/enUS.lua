@@ -284,7 +284,7 @@ L["Delete all retained History entries. Lifetime stats counters are preserved. C
 L["Show minimap button"] = "Show minimap button"
 L["Toggle the Sift launcher icon on the minimap."] = "Toggle the Sift launcher icon on the minimap."
 L["Reset History Panel"] = "Reset History Panel"
-L["Reset the History panel size and position to defaults (centered, 820 \195\151 540)."] = "Reset the History panel size and position to defaults (centered, 820 \195\151 540)."
+L["Reset the History panel size and position to defaults (centered, 940 \195\151 560)."] = "Reset the History panel size and position to defaults (centered, 940 \195\151 560)."
 L["Reset Config Panel"] = "Reset Config Panel"
 L["Reset the Config panel size and position to defaults (centered, 700 \195\151 500)."] = "Reset the Config panel size and position to defaults (centered, 700 \195\151 500)."
 
