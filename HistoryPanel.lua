@@ -87,7 +87,8 @@ local CATEGORY_BADGE_LABELS = {
   -- Breakdown-chip-only signal keys (never a "dominant category" -- see
   -- IGNORED_BREAKDOWN_KEYS below); display labels for their chip text.
   BlockedActor = "Blocked sender",
-  Throttle     = "Throttled",
+  Flood        = "Spam wave",
+  Throttle     = "Repeat",
   ManualBlock  = "Manual block",
 }
 -- Keys that describe WHY a message was caught rather than WHAT KIND of spam it
@@ -743,7 +744,7 @@ local function RenderRow(row, entry)
       -- "why", not a "what" -- it never wins EntryDominantCategory). Name
       -- the reason like manual blocks do instead of rendering a broken "?"
       -- (Gate 2 finding, 2026-07-28).
-      badge = "Flood"
+      badge = "Spam wave"
     end
     -- Translated once here: badge can come from either branch above.
     row.badgeText:SetText(badge and L[badge] or "?")
@@ -1130,7 +1131,7 @@ local function RefreshLegend()
   -- retired-category residue rule above -- Flood isn't a category at all).
   if floodBadgeCount > 0 then
     index = index + 1
-    ShowLegendItem(legend, index, lx, "888", L["Flood"])
+    ShowLegendItem(legend, index, lx, "888", L["Spam wave"])
   end
   for i = index + 1, #legend.items do
     legend.items[i].swatch:Hide()
@@ -1211,7 +1212,7 @@ local function RefreshStatsArea()
 
   local throttled = tonumber(lifetime.throttled) or 0
   local bubbles   = tonumber(lifetime.bubblesSuppressed) or 0
-  -- SFT-085: unlike Throttled/Bubbles suppressed, this count has no lifetime
+  -- SFT-085: unlike Repeats/Bubbles suppressed, this count has no lifetime
   -- counter -- it's derived from currently retained rows and shrinks as old
   -- rows trim off, hence "(recent)". Grey label / white count, not all-grey:
   -- an all-grey count reads as paused/off elsewhere on this line's neighbor
@@ -1220,7 +1221,7 @@ local function RefreshStatsArea()
   local flood = tonumber(retained.floodCount) or 0
   detailPane.stats.pipelineText:SetText(string.format(
     "%s |cffffffff%d|r   %s |cffffffff%d|r   |cff888888%s|r |cffffffff%d|r",
-    L["Throttled"], throttled, L["Bubbles suppressed"], bubbles, L["Flood (recent)"], flood))
+    L["Repeats"], throttled, L["Bubbles suppressed"], bubbles, L["Spam wave (recent)"], flood))
 
   -- Keep the list legend in sync with the same counts (e.g. Clear history
   -- can make a retired category's last rows disappear).

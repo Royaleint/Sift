@@ -545,23 +545,6 @@ function DB.SetCategoryState(category, state)
   return state
 end
 
--- BSP-010: repeat-dedupe setter. Mirrors the SetSurfaceState / SetCategoryState
--- convention (per-setter validation, returns canonical value or nil on
--- failure) and also pushes the new value into the runtime module so a
--- ConfigPanel checkbox change takes effect without /reload.
-function DB.SetThrottleEnabled(value)
-  local settings = DB.GetSettings()
-  if not settings then
-    return nil
-  end
-  settings.throttle = settings.throttle or {}
-  settings.throttle.enabled = value == true
-  if NS.Frequency and NS.Frequency.SetRepeatEnabled then
-    NS.Frequency.SetRepeatEnabled(settings.throttle.enabled)
-  end
-  return settings.throttle.enabled
-end
-
 function DB.GetBlockedActor(guid)
   local global = DB.GetGlobal()
   if not global or not UsableString(guid) then

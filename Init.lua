@@ -53,20 +53,13 @@ local function Initialize()
     NS.ShadowLog.TrimToCap()
   end
 
-  -- BSP-010: push the SavedVariables repeat-dedupe toggle into the runtime
-  -- module so the first chat event uses the persisted value, not Frequency's
-  -- module-local default. DB.Initialize's RepairSettings pass guarantees
-  -- settings.throttle is well-shaped by the time we read it here. BSP-029
-  -- retired the buffer size as a setting, so only the toggle is pushed.
-  local throttleSettings = NS.DB.GetSettings()
-  if throttleSettings and throttleSettings.throttle and NS.Frequency
-     and NS.Frequency.SetRepeatEnabled then
-    NS.Frequency.SetRepeatEnabled(throttleSettings.throttle.enabled)
-  end
-  -- BSP-039: same reasoning for the flood window, a persisted setting as of
-  -- this ticket rather than a module constant.
-  if throttleSettings and NS.Frequency and NS.Frequency.SetFloodWindow then
-    NS.Frequency.SetFloodWindow(throttleSettings.floodWindow)
+  -- Repeat counting is always on; settings.throttle.enabled is intentionally
+  -- not read.
+  local settings = NS.DB.GetSettings()
+  -- BSP-039: the flood window is a persisted setting, pushed into Frequency
+  -- so the first chat event uses it rather than the module constant.
+  if settings and NS.Frequency and NS.Frequency.SetFloodWindow then
+    NS.Frequency.SetFloodWindow(settings.floodWindow)
   end
 
   if NS.Patterns and NS.Patterns.LoadOnInit then

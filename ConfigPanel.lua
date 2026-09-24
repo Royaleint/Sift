@@ -1730,33 +1730,14 @@ RenderDetection = function()
   -- the clamp that actually enforces them.
   local minWindow, maxWindow, defaultWindow = NS.Frequency.GetFloodWindowBounds()
   rowY = y
-  y = AddSlider("Flood window (seconds)", "floodWindow", minWindow, maxWindow, 30, y,
-    "How far back Sift looks when deciding that the same message is being repeated too " ..
-    "often. A longer window catches slower, more persistent repeats; a shorter one only " ..
-    "reacts to rapid bursts. Leave at " .. defaultWindow .. " unless repeat spam is " ..
-    "slipping past.")
+  AddSlider("Spam wave window (seconds)", "floodWindow", minWindow, maxWindow, 30, y,
+    "How far back Sift looks when counting how often the same message shows up, from " ..
+    "any sender. A longer window catches slower, more spread-out spam waves; a shorter " ..
+    "one only reacts to rapid bursts. Leave at " .. defaultWindow .. " unless spam " ..
+    "waves are slipping past.")
   AddDetectionReset(rowY - 10, defaultWindow, function()
     SetSetting("floodWindow", defaultWindow)
   end)
-
-  -- BSP-010: Throttle control. Cannot reuse AddCheckbox helper because its
-  -- SettingValue(key) read is flat-keyed and throttle.enabled lives under
-  -- settings.throttle.*. Use MakeNativeCheckbox directly with a custom
-  -- onChange that routes through NS.DB.SetThrottleEnabled. BSP-029 removed the
-  -- companion buffer-size slider — how long a repeat is remembered is no longer
-  -- a user-facing knob.
-  local throttle = (GetSettings() and GetSettings().throttle) or {}
-
-  MakeNativeCheckbox(CONTENT_PAD, y, "Throttle confirmed-spam repeats",
-    throttle.enabled ~= false,
-    function(value)
-      if NS.DB and NS.DB.SetThrottleEnabled then
-        NS.DB.SetThrottleEnabled(value)
-      end
-    end,
-    "When the same sender repeats spam Sift already caught, in the same kind of chat, the " ..
-    "repeat is counted under Throttled in the History stats. Each repeat still gets its " ..
-    "own History entry. This never changes what gets blocked.")
 end
 
 RenderCategories = function()
