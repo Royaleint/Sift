@@ -10,7 +10,7 @@
 -- it never reaches a live player until BSP-040 adds rows that actually need a
 -- choice and that ticket flips LIVE = true. Until then the only way to see
 -- the panel is /bdev chooser (dev mode) or Chooser.LIVE set true by a test.
-local _, NS = ...
+local addonName, NS = ...
 local L = NS.L
 
 local Chooser = {}
@@ -21,6 +21,13 @@ Chooser.LIVE = false
 local BASE_HEIGHT = 142
 local ROW_HEIGHT = 28
 local PANEL_WIDTH = 420
+-- Row 1's default position. It pins lower than this when the intro needs
+-- more room than a one- or two-line English intro (Show(), below).
+local ROW_TOP = -88
+
+-- Derived from the vararg, not a literal folder name, so a DevBuild copy
+-- (Sift_DevBuild) resolves its own logo rather than Sift's.
+local LOGO = string.format("Interface\\AddOns\\%s\\Media\\SiftPortrait.tga", addonName)
 
 -- Ordered so the panel lists rows in a stable sequence. A future entry here
 -- (e.g. BSP-040) also needs: its label added to Locales/enUS.lua AND to
@@ -30,7 +37,7 @@ local PANEL_WIDTH = 420
 local REGISTRY = {
   {
     key = "RMT",
-    label = "Gold selling (real-money trading)",
+    label = "Gold selling",
     shippedState = "active",
     defaultFor = function(_compat) return true end,
     getState = function() return NS.PauseState.GetCategory("RMT") end,
@@ -41,7 +48,7 @@ local REGISTRY = {
   },
   {
     key = "Boosting",
-    label = "Boosting (paid carry ads)",
+    label = "Boosting",
     shippedState = "active",
     defaultFor = function(_compat) return true end,
     getState = function() return NS.PauseState.GetCategory("Boosting") end,
@@ -141,9 +148,10 @@ function Chooser.KeepCurrent(rows, markSeen)
 end
 
 -- ---------------------------------------------------------------------------
--- Panel. Built lazily on first Show(); a plain BackdropTemplate shell,
--- identical on every client (no chrome probe -- BSP-041's portrait dance is
--- for ConfigPanel's persistent window, not this one-time dialog).
+-- Panel. Built lazily on first Show(). Tries Blizzard's portrait frame first
+-- (the probe in BuildFrame, below), like ConfigPanel's own chrome probe; a
+-- client without the template falls back to BuildPlainShell, a standalone
+-- BackdropTemplate shell with its own close button and logo texture.
 -- ---------------------------------------------------------------------------
 
 local panel
@@ -175,6 +183,9 @@ local function OnKeepClick()
   panel:Hide()
 end
 
+-- The row position is set in Show(), not here: a pooled checkbox is
+-- re-anchored on every Show() so an English show and a pseudolocale show
+-- (a taller intro) each place rows from their own row origin.
 local function GetOrCreateCheckbox(index)
   panel.checkboxes = panel.checkboxes or {}
   local checkbox = panel.checkboxes[index]
@@ -183,7 +194,6 @@ local function GetOrCreateCheckbox(index)
   end
   checkbox = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
   checkbox:SetSize(24, 24)
-  checkbox:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -78 - (index - 1) * ROW_HEIGHT)
 
   local rowLabel = checkbox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   rowLabel:SetPoint("LEFT", checkbox, "RIGHT", 4, 0)
@@ -197,46 +207,17 @@ local function GetOrCreateCheckbox(index)
   return checkbox
 end
 
-local function BuildFrame()
-  if panel then
-    return panel
-  end
-
-  panel = CreateFrame("Frame", "SiftFirstRunFrame", UIParent, "BackdropTemplate")
-  panel:SetSize(PANEL_WIDTH, BASE_HEIGHT)
-  panel:SetPoint("CENTER")
-  panel:SetFrameStrata("DIALOG")
-  panel:SetClampedToScreen(true)
-  if panel.SetBackdrop then
-    panel:SetBackdrop({
-      bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
-      edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-      tile = true,
-      tileSize = 16,
-      edgeSize = 16,
-      insets = { left = 4, right = 4, top = 4, bottom = 4 },
-    })
-    panel:SetBackdropColor(0.02, 0.02, 0.025, 0.96)
-    panel:SetBackdropBorderColor(0.35, 0.36, 0.42, 1)
-  end
-
-  local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-  title:SetPoint("TOP", panel, "TOP", 0, -16)
-  title:SetText(L["Sift: choose what to hide"])
-
-  local intro = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-  intro:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -40)
-  intro:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -16, -40)
-  intro:SetJustifyH("LEFT")
-  intro:SetText(L["Pick what Sift hides. You can change these any time with /sift config."])
-
-  local applyButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+-- Apply/Keep and the dismiss-on-close handling are identical on both chrome
+-- paths, so BuildFrame's two branches share this instead of each wiring it
+-- separately.
+local function FinishPanel(frame)
+  local applyButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
   applyButton:SetSize(120, 24)
-  applyButton:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 16, 16)
+  applyButton:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 16, 16)
   applyButton:SetText(L["Apply"])
   applyButton:SetScript("OnClick", OnApplyClick)
 
-  local keepButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+  local keepButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
   keepButton:SetSize(180, 24)
   keepButton:SetPoint("LEFT", applyButton, "RIGHT", 8, 0)
   keepButton:SetText(L["Keep current settings"])
@@ -245,9 +226,10 @@ local function BuildFrame()
   -- A parent-wide hide (Alt+Z, a cinematic) fires OnHide on every visible
   -- descendant while each descendant's OWN shown flag stays true -- only an
   -- actual Hide() of this frame leaves self:IsShown() false by the time this
-  -- runs. Apply/Keep set `decided` before calling Hide(), so a real dismissal
-  -- is the only path that reaches the Print below.
-  panel:SetScript("OnHide", function(self)
+  -- runs. Apply/Keep set `decided` before calling Hide(), and the X (below)
+  -- calls Hide() without setting it, so a real dismissal (Escape, the X) is
+  -- the only path that reaches the Print below.
+  frame:SetScript("OnHide", function(self)
     if self:IsShown() then
       return
     end
@@ -260,7 +242,107 @@ local function BuildFrame()
   if UISpecialFrames then
     tinsert(UISpecialFrames, "SiftFirstRunFrame")
   end
+end
 
+-- A self-contained backdrop shell with its own close button and round logo
+-- texture, for a client without a usable PortraitFrameTemplate. No current
+-- client reaches this path; it exists for an unknown future one.
+local function BuildPlainShell()
+  local shell = CreateFrame("Frame", "SiftFirstRunFrame", UIParent, "BackdropTemplate")
+  shell:SetSize(PANEL_WIDTH, BASE_HEIGHT)
+  shell:SetPoint("CENTER")
+  shell:SetFrameStrata("DIALOG")
+  shell:SetClampedToScreen(true)
+  if shell.SetBackdrop then
+    shell:SetBackdrop({
+      bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
+      edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+      tile = true,
+      tileSize = 16,
+      edgeSize = 16,
+      insets = { left = 4, right = 4, top = 4, bottom = 4 },
+    })
+    shell:SetBackdropColor(0.02, 0.02, 0.025, 0.96)
+    shell:SetBackdropBorderColor(0.35, 0.36, 0.42, 1)
+  end
+
+  local title = shell:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+  title:SetPoint("TOP", shell, "TOP", 0, -16)
+  title:SetText(L["Sift: choose what to hide"])
+
+  -- Named logo, never portrait, so it can't be confused with a template
+  -- region if a future client half-supports the template. The asset's own
+  -- round alpha makes it round with no mask, since this path has none.
+  shell.logo = shell:CreateTexture(nil, "ARTWORK")
+  shell.logo:SetSize(48, 48)
+  shell.logo:SetPoint("TOPLEFT", shell, "TOPLEFT", 8, -8)
+  shell.logo:SetTexture(LOGO)
+
+  local closeButton = CreateFrame("Button", nil, shell, "UIPanelCloseButton")
+  closeButton:SetPoint("TOPRIGHT", shell, "TOPRIGHT", 2, -2)
+  closeButton:SetScript("OnClick", function() shell:Hide() end)
+  shell.CloseButton = closeButton
+
+  -- 8px lower than the template path's intro: this path's own title sits at
+  -- TOP -16 instead of the template's title bar, and without the offset the
+  -- two overlap by a few pixels.
+  local intro = shell:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  intro:SetPoint("TOPLEFT", shell, "TOPLEFT", 70, -38)
+  intro:SetWidth(334)
+  intro:SetJustifyH("LEFT")
+  intro:SetText(L["Pick what Sift hides. You can change these any time with /sift config."])
+  shell.intro = intro
+  shell.introTop = -38
+
+  return shell
+end
+
+local function BuildFrame()
+  if panel then
+    return panel
+  end
+
+  -- Requires a CloseButton, not just a frame: a client whose template lacks
+  -- one is treated the same as a client with no template at all, since the
+  -- fallback shell (with its own X) is a better dialog than a portrait frame
+  -- a player can't dismiss with the X they can see.
+  local ok, frame = pcall(CreateFrame, "Frame", "SiftFirstRunFrame", UIParent, "PortraitFrameTemplate")
+  if ok and frame and frame.CloseButton then
+    panel = frame
+    panel:SetSize(PANEL_WIDTH, BASE_HEIGHT)
+    panel:SetPoint("CENTER")
+    panel:SetFrameStrata("DIALOG")
+    panel:SetClampedToScreen(true)
+
+    if panel.SetTitle then
+      panel:SetTitle(L["Sift: choose what to hide"])
+    end
+    if panel.SetPortraitToAsset then
+      panel:SetPortraitToAsset(LOGO)
+    end
+    -- Overrides the template's own HideUIPanel click: that call is gated on
+    -- combat and taint state we don't need, and a frame that isn't a UIPanel
+    -- gets no benefit from it. panel:Hide() takes the same path Escape
+    -- already does, in or out of combat.
+    panel.CloseButton:SetScript("OnClick", function() panel:Hide() end)
+
+    -- Beside the portrait, not under a title FontString of our own. A single
+    -- anchor plus an explicit width, so the string wraps at a known width
+    -- instead of depending on a second TOPRIGHT anchor and the frame's own
+    -- layout pass, which may not have run yet when Show() reads
+    -- GetStringHeight() (see Show(), below).
+    local intro = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    intro:SetPoint("TOPLEFT", panel, "TOPLEFT", 70, -30)
+    intro:SetWidth(334)
+    intro:SetJustifyH("LEFT")
+    intro:SetText(L["Pick what Sift hides. You can change these any time with /sift config."])
+    panel.intro = intro
+    panel.introTop = -30
+  else
+    panel = BuildPlainShell()
+  end
+
+  FinishPanel(panel)
   return panel
 end
 
@@ -273,8 +355,23 @@ function Chooser.Show(force)
   local seenForDisplay = force and {} or NS.DB.GetChooserSeen()
   local rows = Chooser.ComputeRows(REGISTRY, seenForDisplay, NS.Compat or {})
 
+  -- Row 1 pins under the intro instead of staying at ROW_TOP whenever the
+  -- intro needs more room than that: a longer translation pushes the rows
+  -- (and the frame height below) down by the same amount, so the intro can
+  -- never overlap row 1. Measured from each build path's own intro position
+  -- (introTop), not a shared constant -- the fallback's intro sits 8px lower
+  -- than the template path's. Before the frame's first layout pass,
+  -- GetStringHeight() may read back 0 or an unwrapped single-line height
+  -- rather than the true wrapped height; math.min only ever pushes rowTop
+  -- lower than ROW_TOP, never higher, so a short or unmeasured intro still
+  -- pins at ROW_TOP.
+  local introTop = frame.introTop or -30
+  local introHeight = frame.intro and frame.intro:GetStringHeight() or 0
+  local rowTop = math.min(ROW_TOP, introTop - introHeight - 8)
+
   for index, row in ipairs(rows) do
     local checkbox = GetOrCreateCheckbox(index)
+    checkbox:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, rowTop - ROW_HEIGHT * (index - 1))
     local displayLabel = row.paused
       and string.format(L["%s (paused)"], L[row.label])
       or L[row.label]
@@ -289,7 +386,7 @@ function Chooser.Show(force)
   frame.rows = rows
 
   decided = false
-  frame:SetHeight(BASE_HEIGHT + ROW_HEIGHT * #rows)
+  frame:SetHeight(BASE_HEIGHT + ROW_HEIGHT * #rows + (ROW_TOP - rowTop))
   frame:Show()
 end
 

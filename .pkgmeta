@@ -14,6 +14,7 @@ manual-changelog:
 ignore:
   - .git
   - .gitignore
+  - .gitattributes
   - .github
   - .pkgmeta
   - .release
