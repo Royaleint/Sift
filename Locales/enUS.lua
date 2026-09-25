@@ -352,6 +352,11 @@ L["Keep current settings"] = "Keep current settings"
 L["%s (paused)"] = "%s (paused)"
 L["Filter choices not saved. Sift will ask again next login; change them any time with /sift config."] = "Filter choices not saved. Sift will ask again next login; change them any time with /sift config."
 
+-- Player menu: block confirmation on a guild or character-community roster row
+L["Block %s? Sift will hide their messages in say, yell, whispers, emotes and channels. Guild, community, party, raid and instance chat is not hidden."] = "Block %s? Sift will hide their messages in say, yell, whispers, emotes and channels. Guild, community, party, raid and instance chat is not hidden."
+L["Block"] = "Block"
+L["Cancel"] = "Cancel"
+
 -- Init.lua: /bdev pseudolocale command
 L["pseudo-locale applied. Open a Sift panel now; a panel you already opened this session needs /reload, then run this again first."] = "pseudo-locale applied. Open a Sift panel now; a panel you already opened this session needs /reload, then run this again first."
 L["pseudo-locale is already active this session. /reload to restore English, then run it again."] = "pseudo-locale is already active this session. /reload to restore English, then run it again."
