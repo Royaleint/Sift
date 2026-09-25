@@ -6,13 +6,24 @@ local HistoryPanel = {}
 -- Bound at file load so CreateModernListPane can call F:RequireModule at use-time.
 local F = _G.Foundry_1_0
 
+local Data = {}
+local Actions = {}
+local Chrome = {}
+local HistoryPanelMixin = {}
+local HistoryListMixin = {}
+local HistoryRowMixin = {}
+local HistoryDetailMixin = {}
+local HistoryStatsMixin = {}
+local HistoryFilterChipsMixin = {}
+local HistoryPauseRowMixin = {}
+
 -- BSP-009: GameTooltip helper for widget hover help. Static title/body/hint
 -- variant. For state-aware widgets (pause pills, detail-pane action buttons)
 -- the OnEnter handler is wired inline so the tooltip can read live state.
 -- `widget.frame or widget` is a historical compatibility fallback retained
 -- so any future widget wrapper that exposes `.frame` still works. EnableMouse
 -- is asserted because layout-only BackdropTemplate frames default off.
-local function AttachTooltip(widget, title, body, hint)
+function Chrome.AttachTooltip(widget, title, body, hint)
   if not widget then return end
   local host = widget.frame or widget
   if not host.HookScript then return end
@@ -178,7 +189,7 @@ local CHAT_EVENT_LABELS = {
   CHAT_MSG_CHANNEL    = "Channel",
 }
 
-local function FormatChannel(entry)
+function Data.FormatChannel(entry)
   if entry.channelName and entry.channelName ~= "" then
     return entry.channelName
   end
@@ -244,7 +255,7 @@ local STATS_TILE_COLORS = {
   falsePositives = { 0.53, 0.67, 0.80 },
 }
 
-local function RegisterStaticPopups()
+function Chrome.RegisterStaticPopups()
   if StaticPopupDialogs and not StaticPopupDialogs["SIFT_COPY_SENDER"] then
     StaticPopupDialogs["SIFT_COPY_SENDER"] = {
       text = "Sender name (Ctrl+C to copy):",
@@ -287,7 +298,7 @@ local activeConfigSection = "Detection"
 -- filterState -- it resets to "char" each login and is not persisted.
 local statsScope = "char"
 
-local function DefaultFilterState()
+function Data.DefaultFilterState()
   local cats = {}
   for _, cat in ipairs(CATEGORIES) do cats[cat] = true end
   return {
@@ -299,7 +310,7 @@ local function DefaultFilterState()
   }
 end
 
-local function GetCharStore()
+function Data.GetCharStore()
 	local db = NS.DB and NS.DB.db
 	if not db or not db.char then return nil end
 	if not db.char.historyPanel then
@@ -308,12 +319,12 @@ local function GetCharStore()
 	return db.char.historyPanel
 end
 
-local function GetSettings()
+function Data.GetSettings()
 	return NS.DB and NS.DB.GetSettings and NS.DB.GetSettings() or {}
 end
 
-local function GetStoredListPaneWidth()
-  local store = GetCharStore() or {}
+function Data.GetStoredListPaneWidth()
+  local store = Data.GetCharStore() or {}
   local w = tonumber(store.listPaneWidth) or LAYOUT.DEFAULT_LIST_PANE_WIDTH
   if w < LAYOUT.MIN_LIST_PANE_WIDTH then w = LAYOUT.MIN_LIST_PANE_WIDTH end
   return w
@@ -324,9 +335,9 @@ end
 -- changes after the initial CreatePanes seed. The SV key keeps any older
 -- value harmlessly; GetStoredListPaneWidth clamps it to LAYOUT.MIN_LIST_PANE_WIDTH.
 
-local function SavePosition()
+function HistoryPanelMixin:SavePosition()
   if not frame then return end
-  local store = GetCharStore()
+  local store = Data.GetCharStore()
   if not store then return end
   store.x = frame:GetLeft()
   store.y = frame:GetTop()
@@ -340,8 +351,8 @@ end
 -- SFT-089's Config-tab resize doesn't change any of this -- it is
 -- runtime-only and is never saved here either.
 
-local function ApplyStoredGeometry()
-  local store = GetCharStore() or {}
+function HistoryPanelMixin:ApplyStoredGeometry()
+  local store = Data.GetCharStore() or {}
 
   frame:SetSize(LAYOUT.PANEL_WIDTH, LAYOUT.PANEL_HEIGHT)
 
@@ -363,8 +374,8 @@ local function ApplyStoredGeometry()
   end
 end
 
-local function ClearStoredGeometry()
-	local store = GetCharStore()
+function Data.ClearStoredGeometry()
+	local store = Data.GetCharStore()
 	if not store then return end
 	store.x = nil
 	store.y = nil
@@ -413,7 +424,7 @@ function HistoryPanel.ComputeConfigWindowSize(configEmbedWidth, configMinHeight,
   return width, height
 end
 
-local function HidePortraitChrome(f)
+function Chrome.HidePortraitChrome(f)
   if not f then return end
   local frameName = f.GetName and f:GetName() or nil
   local pieces = {
@@ -435,7 +446,7 @@ local function HidePortraitChrome(f)
   end
 end
 
-local function CreatePlainHistoryFrame(parent)
+function Chrome.CreatePlainHistoryFrame(parent)
   local ok, f = pcall(CreateFrame, "Frame", "SiftHistoryFrame", parent, "BackdropTemplate")
   if not ok or not f then
     f = CreateFrame("Frame", "SiftHistoryFrame", parent)
@@ -460,7 +471,7 @@ local function CreatePlainHistoryFrame(parent)
   header:SetScript("OnDragStart", function() f:StartMoving() end)
   header:SetScript("OnDragStop", function()
     f:StopMovingOrSizing()
-    SavePosition()
+    if frame then frame:SavePosition() end
   end)
 
   header.TitleText = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -476,9 +487,9 @@ local function CreatePlainHistoryFrame(parent)
   return f
 end
 
-local function CreateHistoryFrame(parent)
+function Chrome.CreateHistoryFrame(parent)
   if NS.Compat and (NS.Compat.isClassicFamily or NS.Compat.isMistsClassic) then
-    return CreatePlainHistoryFrame(parent)
+    return Chrome.CreatePlainHistoryFrame(parent)
   end
   local template = "PortraitFrameTemplate"
   local ok, f = pcall(CreateFrame, "Frame", "SiftHistoryFrame", parent, template)
@@ -488,8 +499,8 @@ local function CreateHistoryFrame(parent)
   return CreateFrame("Frame", "SiftHistoryFrame", parent, "PortraitFrameTemplate")
 end
 
-local function CreateBackdropFrame(parent)
-  local f = CreateHistoryFrame(parent)
+function Chrome.CreateBackdropFrame(parent)
+  local f = Chrome.CreateHistoryFrame(parent)
   f.layoutType = "ButtonFrameTemplateNoPortrait"
   if f.SetBorder then
     f:SetBorder("ButtonFrameTemplateNoPortrait")
@@ -497,7 +508,7 @@ local function CreateBackdropFrame(parent)
   if f.SetPortraitShown then
     f:SetPortraitShown(false)
   end
-  HidePortraitChrome(f)
+  Chrome.HidePortraitChrome(f)
   if f.SetTitle then
     f:SetTitle(L["Sift History"])
   elseif f.TitleContainer and f.TitleContainer.TitleText then
@@ -514,21 +525,23 @@ local function CreateBackdropFrame(parent)
   return f
 end
 
-local function OpenConfigPanel()
+function Chrome.OpenConfigPanel()
   HistoryPanel.ShowConfig("Detection")
 end
 
 -- BSP-055 Gate 2 followup-v2: resize handle removed — panel is fixed-size.
 
-local function CreatePanes(parent)
-  local listWidth = GetStoredListPaneWidth()
+function HistoryPanelMixin.CreatePanes(parent)
+  local listWidth = Data.GetStoredListPaneWidth()
 
   local list = CreateFrame("Frame", nil, parent)
+  Mixin(list, HistoryListMixin)
   list:SetPoint("TOPLEFT",    parent, "TOPLEFT",    6, -86)
   list:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 6,   40)
   list:SetWidth(listWidth)
 
   local detail = CreateFrame("Frame", nil, parent)
+  Mixin(detail, HistoryDetailMixin)
   detail:SetPoint("TOPLEFT",     parent, "TOPLEFT",     6 + listWidth + LAYOUT.SPLITTER_WIDTH + 4, -86)
   detail:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -6, 40)
 
@@ -542,7 +555,7 @@ end
 -- and stats objects are handed back instead of walking History again. The
 -- cache lives on the HistoryPanel module table, as fields, rather than as
 -- file-scope locals.
-local function GetEntries()
+function Data.GetEntries()
   local revision = NS.History and NS.History.GetRevision and NS.History.GetRevision()
   if revision ~= nil and HistoryPanel._entriesRevision == revision then
     return HistoryPanel._entries
@@ -566,7 +579,7 @@ end
 -- "account" (summed across every stored character namespace). The two scopes
 -- cache independently (HistoryPanel._stats is keyed by scope) since they
 -- describe different things and can both be looked at in the same session.
-local function GetHistoryStats(scope)
+function Data.GetHistoryStats(scope)
   scope = scope or "char"
   local revision = NS.History and NS.History.GetRevision and NS.History.GetRevision()
   if revision ~= nil then
@@ -584,7 +597,7 @@ local function GetHistoryStats(scope)
   elseif NS.History and NS.History.GetStats then
     result = NS.History.GetStats()
   else
-    local entries = GetEntries()
+    local entries = Data.GetEntries()
     result = {
       lifetime = {
         detections = #entries,
@@ -606,13 +619,13 @@ local function GetHistoryStats(scope)
   return result
 end
 
-local function UpdateHistoryStatsText()
+function Data.UpdateHistoryStatsText()
   -- BSP-008: stats text moves to detail pane (Commit 5); placeholder while chrome transitions.
   return
 end
 
-local function CurrentEntries()
-  return currentEntriesSnapshot or GetEntries()
+function Data.CurrentEntries()
+  return currentEntriesSnapshot or Data.GetEntries()
 end
 
 local function TimeWindowCutoff(label)
@@ -677,7 +690,7 @@ local function MatchesFilters(entry)
   return true
 end
 
-local function SortByMode(list, mode)
+function Data.SortByMode(list, mode)
   if mode == "score" then
     table.sort(list, function(a, b) return (a.score or 0) > (b.score or 0) end)
     return
@@ -699,7 +712,7 @@ local function SortByMode(list, mode)
   -- "newest" is default ordering from History.GetAll(); leave as-is.
 end
 
-local function ApplyFilterAndSort(entries)
+function Data.ApplyFilterAndSort(entries)
   if not filterState or not sortMode then
     return entries
   end
@@ -710,11 +723,11 @@ local function ApplyFilterAndSort(entries)
       out[#out + 1] = e
     end
   end
-  SortByMode(out, sortMode)
+  Data.SortByMode(out, sortMode)
   return out
 end
 
-local function VisibleRowCount(scroll)
+function HistoryListMixin:VisibleRowCount(scroll)
   local height = scroll and scroll.GetHeight and scroll:GetHeight() or 0
   local count = math.floor(height / LAYOUT.LIST_ROW_HEIGHT)
   if count < 1 then
@@ -726,7 +739,7 @@ local function VisibleRowCount(scroll)
   return count
 end
 
-local function ClassicScrollBar(scroll)
+function HistoryListMixin:ClassicScrollBar(scroll)
   if not scroll or not scroll.GetName then return nil end
   local name = scroll:GetName()
   return name and _G[name .. "ScrollBar"] or nil
@@ -880,7 +893,7 @@ end
 -- Row: anchored ANCHOR_LEFT rather than ANCHOR_CURSOR so the tooltip sits off
 -- the row and detail pane consistently instead of drifting with the mouse.
 -- RowTipKeys returns only three values, so row.tipBody2 is always nil.
-local function RowOnEnter(self)
+function HistoryRowMixin.RowOnEnter(self)
   if not GameTooltip then return end
   if not self.tipTitle then
     -- Defensive: every case above returns a tooltip title, so this branch
@@ -893,14 +906,14 @@ local function RowOnEnter(self)
   if self.tipBody then GameTooltip:AddLine(L[self.tipBody], 1.00, 1.00, 1.00, true) end
   GameTooltip:Show()
 end
-local function RowOnLeave()
+function HistoryRowMixin.RowOnLeave()
   if GameTooltip then GameTooltip:Hide() end
 end
 
 -- Chip / legend: shared by breakdown chips (tipValue set) and legend item
 -- hosts (tipValue nil). string.format ignores an unused argument, so
 -- :format(tipValue) is safe uniformly whether or not that body key has a %d.
-local function ChipOnEnter(self)
+function Chrome.ChipOnEnter(self)
   if not GameTooltip or not self.tipTitle then return end
   GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
   GameTooltip:AddLine(L[self.tipTitle])
@@ -908,11 +921,11 @@ local function ChipOnEnter(self)
   if self.tipBody2 then GameTooltip:AddLine(L[self.tipBody2]:format(self.tipValue), 1.00, 1.00, 1.00, true) end
   GameTooltip:Show()
 end
-local function ChipOnLeave()
+function Chrome.ChipOnLeave()
   if GameTooltip then GameTooltip:Hide() end
 end
 
-local function RenderRow(row, entry)
+function HistoryRowMixin.RenderRow(row, entry)
   local cat = DominantCategory(entry.breakdown)
   local hex = CATEGORY_COLORS[cat] or "888"
   row.stripe:SetColorTexture(HexNibble(hex, 1), HexNibble(hex, 2), HexNibble(hex, 3), 1)
@@ -959,19 +972,19 @@ local function RenderRow(row, entry)
   -- re-run the hover handler so it picks up the fields just written above.
   if GameTooltip and GameTooltip:IsShown() and GameTooltip:GetOwner() == row
      and row:IsMouseOver() then
-    RowOnEnter(row)
+    row:RowOnEnter()
   end
 end
 
-local function FindEntryById(id, entries)
+function Data.FindEntryById(id, entries)
   if id == nil then return nil end
-  for _, e in ipairs(entries or CurrentEntries()) do
+  for _, e in ipairs(entries or Data.CurrentEntries()) do
     if e.id == id then return e end
   end
   return nil
 end
 
-local function FormatSender(entry)
+function Data.FormatSender(entry)
   local label = entry.name or "?"
   if entry.realm and entry.realm ~= "" then
     label = label .. "-" .. entry.realm
@@ -979,12 +992,12 @@ local function FormatSender(entry)
   return label
 end
 
-local function ShowEmptyState(show)
+function HistoryDetailMixin:ShowEmptyState(show)
   if not detailPane or not detailPane.sections then return end
   if detailPane.empty then
     detailPane.empty:SetShown(show)
     if show and detailPane.empty.stats then
-      local stats = GetHistoryStats()
+      local stats = Data.GetHistoryStats()
       local retained = stats and stats.retained and stats.retained.detections or 0
       local detected = stats and stats.lifetime and stats.lifetime.detections or retained
       if retained > 0 then
@@ -1001,13 +1014,11 @@ local function ShowEmptyState(show)
   end
 end
 
-local RefreshDetail
-
-local function RenderSenderHistory(entry, entries)
+function HistoryDetailMixin:RenderSenderHistory(entry, entries)
   if not detailPane or not detailPane.footer or not detailPane.footer.senderHistory then
     return
   end
-  entries = entries or CurrentEntries()
+  entries = entries or Data.CurrentEntries()
   local count, firstSeen, lastSeen = 0, nil, nil
   for _, e in ipairs(entries) do
     local match
@@ -1030,9 +1041,7 @@ local function RenderSenderHistory(entry, entries)
     lastSeen  and RelativeTime(lastSeen)  or "-"))
 end
 
-local RefreshList, SelectEntry, UpdateSenderFilterChip
-
-local function PerformRestore(entry)
+function Actions.PerformRestore(entry)
   if not entry or entry.outcome == "restored" then return end
   if NS.History and NS.History.MarkRestored then
     NS.History.MarkRestored(entry.id)
@@ -1054,10 +1063,10 @@ local function PerformRestore(entry)
       frame.filterStrip.outcomeDD:GenerateMenu()
     end
   end
-  if RefreshList then RefreshList() end
+  if listPane then listPane:RefreshList() end
 end
 
-local function PerformAlwaysAllow(entry)
+function Actions.PerformAlwaysAllow(entry)
   if not entry or not entry.guid or entry.guid == "" then return end
   if NS.Trust and NS.Trust.AddAllowlist then
     local _, clearedManualBlock = NS.Trust.AddAllowlist(entry.guid, entry.name, entry.realm, "history")
@@ -1073,10 +1082,10 @@ local function PerformAlwaysAllow(entry)
       end
     end
   end
-  if RefreshList then RefreshList() end
+  if listPane then listPane:RefreshList() end
 end
 
-local function PerformBlockRetroactively(entry)
+function Actions.PerformBlockRetroactively(entry)
   if not entry or entry.outcome ~= "pass-thru" then return end
   if NS.History and NS.History.RetroactiveBlock then
     NS.History.RetroactiveBlock(entry.id)
@@ -1092,32 +1101,32 @@ local function PerformBlockRetroactively(entry)
       NS.ReportFlow.ReportChatNow(entry.id)
     end
   end
-  if RefreshList then RefreshList() end
+  if listPane then listPane:RefreshList() end
 end
 
-local function SetSenderFilter(entry)
+function Actions.SetSenderFilter(entry)
   if not entry or not filterState then return end
   filterState.senderFilter = {
     guid  = entry.guid,
     name  = entry.name,
     realm = entry.realm,
   }
-  if UpdateSenderFilterChip then UpdateSenderFilterChip() end
-  if RefreshList then RefreshList() end
+  if frame then frame:UpdateSenderFilterChip() end
+  if listPane then listPane:RefreshList() end
 end
 
-local function ClearSenderFilter()
+function Actions.ClearSenderFilter()
   if not filterState then return end
   filterState.senderFilter = nil
-  if UpdateSenderFilterChip then UpdateSenderFilterChip() end
-  if RefreshList then RefreshList() end
+  if frame then frame:UpdateSenderFilterChip() end
+  if listPane then listPane:RefreshList() end
 end
 
-local function ContextEntryRestorable(entry)
+function Actions.ContextEntryRestorable(entry)
   return entry.outcome ~= "restored"
 end
 
-local function ContextEntryCanAllowlist(entry)
+function Actions.ContextEntryCanAllowlist(entry)
   if entry.surface ~= "chat" then return false end
   if not entry.guid or entry.guid == "" then return false end
   if NS.Trust and NS.Trust.IsAllowlisted and NS.Trust.IsAllowlisted(entry.guid) then
@@ -1126,7 +1135,7 @@ local function ContextEntryCanAllowlist(entry)
   return true
 end
 
-local function GetReportKind(entry)
+function Actions.GetReportKind(entry)
   if not entry or not entry.id or not NS.ReportFlow then return nil end
   if not NS.ReportFlow.HasReport or not NS.ReportFlow.HasReport(entry.id) then return nil end
   if NS.ReportFlow.GetReportKind then
@@ -1139,39 +1148,39 @@ local function GetReportKind(entry)
   return nil
 end
 
-local function GetReportLabel(kind)
+function Actions.GetReportLabel(kind)
   if kind == "chat" then return "Report Spam" end
   return nil
 end
 
-local function PerformReport(entry)
-  local kind = GetReportKind(entry)
+function Actions.PerformReport(entry)
+  local kind = Actions.GetReportKind(entry)
   if not kind or not NS.ReportFlow then return end
 
   if kind == "chat" and NS.ReportFlow.ReportChatNow then
     NS.ReportFlow.ReportChatNow(entry.id)
   end
 
-  if RefreshDetail then RefreshDetail() end
+  if detailPane then detailPane:RefreshDetail() end
 end
 
-local function ShowCopySenderPopup(entry)
+function Actions.ShowCopySenderPopup(entry)
   if StaticPopup_Show then
-    StaticPopup_Show("SIFT_COPY_SENDER", nil, nil, FormatSender(entry))
+    StaticPopup_Show("SIFT_COPY_SENDER", nil, nil, Data.FormatSender(entry))
   end
 end
 
 local rowContextMenu  -- set in HistoryPanel.Initialize()
 local pauseSurfaceMenu  -- set in HistoryPanel.Initialize()
 
-local function OpenRowContextMenu(anchor, entry)
+function Actions.OpenRowContextMenu(anchor, entry)
   if not entry or not anchor then return end
   if rowContextMenu then
     rowContextMenu:CreateContextMenu(anchor, entry)
   end
 end
 
-local function RenderActions(entry)
+function HistoryDetailMixin:RenderActions(entry)
   local actions = detailPane and detailPane.actions
   if not actions or not actions.btn1 or not actions.btn2 then return end
 
@@ -1210,7 +1219,7 @@ local function RenderActions(entry)
   if outcome == "pass-thru" then
     actions.btn1:SetText(L["Block retroactively"])
     actions.btn1:SetScript("OnClick", function()
-      PerformBlockRetroactively(entry)
+      Actions.PerformBlockRetroactively(entry)
     end)
     actions.btn1:Show()
     actions.btn1.tipTitle = "Block retroactively"
@@ -1220,7 +1229,7 @@ local function RenderActions(entry)
       and entry.guid and entry.guid ~= ""
     if allowable and not (NS.Trust and NS.Trust.IsAllowlisted and NS.Trust.IsAllowlisted(entry.guid)) then
       actions.btn2:SetText(L["Always allow"])
-      actions.btn2:SetScript("OnClick", function() PerformAlwaysAllow(entry) end)
+      actions.btn2:SetScript("OnClick", function() Actions.PerformAlwaysAllow(entry) end)
       actions.btn2:Show()
       actions.btn2.tipTitle = "Always allow"
       actions.btn2.tipBody  = "Add this sender to the allowlist. Future messages from them bypass scanning."
@@ -1230,18 +1239,18 @@ local function RenderActions(entry)
 
   -- outcome == "blocked": existing behavior with broadened allowlist eligibility
   -- (chat + whisper + bn-whisper now qualify, up from chat-only).
-  local reportKind = GetReportKind(entry)
-  local reportLabel = GetReportLabel(reportKind)
+  local reportKind = Actions.GetReportKind(entry)
+  local reportLabel = Actions.GetReportLabel(reportKind)
 
   if reportLabel then
     actions.btn1:SetText(L["Restore"])
-    actions.btn1:SetScript("OnClick", function() PerformRestore(entry) end)
+    actions.btn1:SetScript("OnClick", function() Actions.PerformRestore(entry) end)
     actions.btn1:Show()
     actions.btn1.tipTitle = "Restore"
     actions.btn1.tipBody  = "Undo this block. The message won't reappear in chat, only here " ..
       "in History, and you can no longer report it."
     actions.btn2:SetText(L[reportLabel])
-    actions.btn2:SetScript("OnClick", function() PerformReport(entry) end)
+    actions.btn2:SetScript("OnClick", function() Actions.PerformReport(entry) end)
     actions.btn2:Show()
     actions.btn2.tipTitle = reportLabel
     actions.btn2.tipBody  = "Open Blizzard's spam report window for this message."
@@ -1254,7 +1263,7 @@ local function RenderActions(entry)
     local already = NS.Trust and NS.Trust.IsAllowlisted and NS.Trust.IsAllowlisted(entry.guid)
     if already then
       actions.btn1:SetText(L["Restore"])
-      actions.btn1:SetScript("OnClick", function() PerformRestore(entry) end)
+      actions.btn1:SetScript("OnClick", function() Actions.PerformRestore(entry) end)
       actions.btn1:Show()
       actions.btn1.tipTitle = "Restore"
       actions.btn1.tipBody  = "Undo this block. The message won't reappear in chat, and " ..
@@ -1262,15 +1271,15 @@ local function RenderActions(entry)
     else
       actions.btn1:SetText(L["Restore + Always allow"])
       actions.btn1:SetScript("OnClick", function()
-        PerformRestore(entry)
-        PerformAlwaysAllow(entry)
+        Actions.PerformRestore(entry)
+        Actions.PerformAlwaysAllow(entry)
       end)
       actions.btn1:Show()
       actions.btn1.tipTitle = "Restore + Always allow"
       actions.btn1.tipBody  = "Undo this block and add the sender to the allowlist, so Sift " ..
         "stops checking their messages. The message won't reappear in chat."
       actions.btn2:SetText(L["Restore only"])
-      actions.btn2:SetScript("OnClick", function() PerformRestore(entry) end)
+      actions.btn2:SetScript("OnClick", function() Actions.PerformRestore(entry) end)
       actions.btn2:Show()
       actions.btn2.tipTitle = "Restore only"
       actions.btn2.tipBody  = "Undo this block without changing the allowlist. The message " ..
@@ -1278,7 +1287,7 @@ local function RenderActions(entry)
     end
   else
     actions.btn1:SetText(L["Restore"])
-    actions.btn1:SetScript("OnClick", function() PerformRestore(entry) end)
+    actions.btn1:SetScript("OnClick", function() Actions.PerformRestore(entry) end)
     actions.btn1:Show()
     actions.btn1.tipTitle = "Restore"
     actions.btn1.tipBody  = "Undo this block. The message won't reappear in chat, and this " ..
@@ -1289,7 +1298,7 @@ end
 -- SFT-085: shared by the per-category loop below and the Flood swatch after
 -- it, so both render a legend item the same way instead of two copies that
 -- can drift apart.
-local function ShowLegendItem(legend, index, lx, hex, label, tipTitle, tipBody)
+function HistoryListMixin:ShowLegendItem(legend, index, lx, hex, label, tipTitle, tipBody)
   local item = legend.items[index]
   if not item then
     item = {
@@ -1301,8 +1310,8 @@ local function ShowLegendItem(legend, index, lx, hex, label, tipTitle, tipBody)
     }
     item.host:SetHeight(18)
     item.host:EnableMouse(true)
-    item.host:HookScript("OnEnter", ChipOnEnter)
-    item.host:HookScript("OnLeave", ChipOnLeave)
+    item.host:HookScript("OnEnter", Chrome.ChipOnEnter)
+    item.host:HookScript("OnLeave", Chrome.ChipOnLeave)
     item.swatch:SetSize(10, 10)
     item.label:SetPoint("LEFT", item.swatch, "RIGHT", 3, 0)
     legend.items[index] = item
@@ -1331,10 +1340,10 @@ end
 -- aggregate), so a caller that already fetched char-scope stats for its own
 -- render can hand them over here instead of paying for the same walk twice;
 -- omitting `stats` fetches (and caches) them fresh.
-local function RefreshLegend(stats)
+function HistoryListMixin:RefreshLegend(stats)
   local legend = listPane and listPane.legend
   if not legend then return end
-  stats = stats or GetHistoryStats("char")
+  stats = stats or Data.GetHistoryStats("char")
   local byCategory = stats and stats.lifetime and stats.lifetime.byCategory or {}
   -- SFT-085: floodBadgeCount, not floodCount -- the swatch explains the grey
   -- stripe, and RenderRow stripes/badges Flood on ANY outcome (no blocked
@@ -1350,7 +1359,7 @@ local function RefreshLegend(stats)
     if count > 0 or not RETIRED_CATEGORY_SET[cat] then
       index = index + 1
       local tipTitle, tipBody = HistoryPanel.LegendTipKeys(cat)
-      lx = ShowLegendItem(legend, index, lx, CATEGORY_COLORS[cat] or "888",
+      lx = listPane:ShowLegendItem(legend, index, lx, CATEGORY_COLORS[cat] or "888",
         L[CATEGORY_BADGE_LABELS[cat] or cat], tipTitle, tipBody)
     end
   end
@@ -1364,7 +1373,7 @@ local function RefreshLegend(stats)
   if floodBadgeCount > 0 then
     index = index + 1
     local tipTitle, tipBody = HistoryPanel.LegendTipKeys("Flood")
-    ShowLegendItem(legend, index, lx, "888", L["Spam wave"], tipTitle, tipBody)
+    listPane:ShowLegendItem(legend, index, lx, "888", L["Spam wave"], tipTitle, tipBody)
   end
   for i = index + 1, #legend.items do
     legend.items[i].host:Hide()
@@ -1373,9 +1382,9 @@ local function RefreshLegend(stats)
   end
 end
 
-local function RefreshStatsArea()
+function HistoryStatsMixin:RefreshStatsArea()
   if not detailPane or not detailPane.stats then return end
-  local stats = GetHistoryStats(statsScope)
+  local stats = Data.GetHistoryStats(statsScope)
   local lifetime = stats.lifetime or {}
 
   local detected = tonumber(lifetime.detections) or 0
@@ -1461,7 +1470,7 @@ local function RefreshStatsArea()
   -- can make a retired category's last rows disappear). `stats` above is
   -- already char-scoped when statsScope is "char", so hand it over directly;
   -- account scope still needs the legend's own char-scope fetch.
-  RefreshLegend(statsScope == "char" and stats or nil)
+  if listPane then listPane:RefreshLegend(statsScope == "char" and stats or nil) end
 
   -- BSP-055 / Argus Nit 1: size the scrollChild to fit actual content so
   -- pathological label wrapping (zhCN/ruRU, new surfaces, new categories)
@@ -1484,7 +1493,7 @@ local function RefreshStatsArea()
   end
 end
 
-local function RenderBodyFlex(entry)
+function HistoryDetailMixin:RenderBodyFlex(entry)
   if not detailPane or not detailPane.body then return end
   local body = detailPane.body
   local original = entry and entry.original or ""
@@ -1499,7 +1508,7 @@ local function RenderBodyFlex(entry)
   body:SetHeight(desired)
 end
 
-local function RenderBreakdownChips(breakdown)
+function HistoryDetailMixin:RenderBreakdownChips(breakdown)
   if not detailPane or not detailPane.footer or not detailPane.footer.breakdownRow then return end
   local row = detailPane.footer.breakdownRow
   row.chips = row.chips or {}
@@ -1529,8 +1538,8 @@ local function RenderBreakdownChips(breakdown)
       -- The chip frame itself is the hover host. Nothing clickable sits
       -- beneath it.
       chip:EnableMouse(true)
-      chip:HookScript("OnEnter", ChipOnEnter)
-      chip:HookScript("OnLeave", ChipOnLeave)
+      chip:HookScript("OnEnter", Chrome.ChipOnEnter)
+      chip:HookScript("OnLeave", Chrome.ChipOnLeave)
       row.chips[index] = chip
     end
     local hex = CATEGORY_COLORS[item.cat] or "888"
@@ -1551,30 +1560,30 @@ local function RenderBreakdownChips(breakdown)
   end
 end
 
-RefreshDetail = function()
+function HistoryDetailMixin:RefreshDetail()
   if not detailPane or not detailPane.sections then return end
 
-  local entries = CurrentEntries()
+  local entries = Data.CurrentEntries()
   if #entries == 0 then
-    ShowEmptyState(true)
-    RefreshStatsArea()
+    detailPane:ShowEmptyState(true)
+    if detailPane.stats then detailPane.stats:RefreshStatsArea() end
     return
   end
-  ShowEmptyState(false)
+  detailPane:ShowEmptyState(false)
 
-  local entry = FindEntryById(selectedEntryId, entries)
+  local entry = Data.FindEntryById(selectedEntryId, entries)
   if not entry then
-    local sorted = ApplyFilterAndSort(entries)
+    local sorted = Data.ApplyFilterAndSort(entries)
     entry = sorted[1]
     if entry then selectedEntryId = entry.id end
   end
-  if not entry then RefreshStatsArea() return end
+  if not entry then if detailPane.stats then detailPane.stats:RefreshStatsArea() end return end
 
   -- Header
-  local channel      = FormatChannel(entry)
+  local channel      = Data.FormatChannel(entry)
   local linkSuffix   = entry.containsItemLinks and ("   " .. L["contains item link"]) or ""
   local surfaceLabel = (entry.surface and SURFACE_LABELS[entry.surface]) or entry.surface or "?"
-  detailPane.header.senderText:SetText(FormatSender(entry))
+  detailPane.header.senderText:SetText(Data.FormatSender(entry))
 
   local outcome = entry.outcome or "blocked"
   local statusText
@@ -1614,27 +1623,27 @@ RefreshDetail = function()
   detailPane.header.metaText:SetText(string.format("%s   %s%s%s%s",
     L[surfaceLabel], channel, linkSuffix, pauseReason, keywordNote))
 
-  RenderBodyFlex(entry)
-  RenderBreakdownChips(entry.breakdown)
-  RenderSenderHistory(entry, entries)
-  RenderActions(entry)
-  RefreshStatsArea()
+  detailPane:RenderBodyFlex(entry)
+  detailPane:RenderBreakdownChips(entry.breakdown)
+  detailPane:RenderSenderHistory(entry, entries)
+  detailPane:RenderActions(entry)
+  if detailPane.stats then detailPane.stats:RefreshStatsArea() end
 end
 
-RefreshList = function()
+function HistoryListMixin:RefreshList()
   if not listPane or not listPane.listBackend then return end
 
-  local allEntries = GetEntries() or {}
+  local allEntries = Data.GetEntries() or {}
   -- The revision this draw reflects, so a later classic click can tell
   -- whether the rows on screen are still current (see SelectEntry).
   HistoryPanel._listRevision = NS.History and NS.History.GetRevision and NS.History.GetRevision()
   currentEntriesSnapshot = allEntries
-  UpdateHistoryStatsText()
-  local filtered = ApplyFilterAndSort(allEntries)
+  Data.UpdateHistoryStatsText()
+  local filtered = Data.ApplyFilterAndSort(allEntries)
 
   if listPane.listBackend == "classic" then
     local scroll = listPane.scroll
-    local visibleRows = VisibleRowCount(scroll)
+    local visibleRows = listPane:VisibleRowCount(scroll)
     local scrollable = #filtered > visibleRows
     if not scrollable and scroll.SetVerticalScroll then
       scroll:SetVerticalScroll(0)
@@ -1644,7 +1653,7 @@ RefreshList = function()
     -- Hide only the scrollbar chrome when there is nothing to scroll.
     FauxScrollFrame_Update(scroll, #filtered, visibleRows, LAYOUT.LIST_ROW_HEIGHT,
       nil, nil, nil, nil, nil, nil, true)
-    local scrollBar = ClassicScrollBar(scroll)
+    local scrollBar = listPane:ClassicScrollBar(scroll)
     if scrollBar then
       scrollBar:SetShown(scrollable)
     end
@@ -1655,7 +1664,7 @@ RefreshList = function()
       local entry = filtered[offset + i]
       if row and entry and i <= visibleRows then
         row.entry = entry
-        RenderRow(row, entry)
+        row:RenderRow(entry)
         row.selection:SetShown(selectedEntryId == entry.id)
         row:Show()
       elseif row then
@@ -1673,11 +1682,11 @@ RefreshList = function()
     provider:InsertTable(filtered)
   end
 
-  RefreshDetail()
+  if detailPane then detailPane:RefreshDetail() end
   currentEntriesSnapshot = nil
 end
 
-SelectEntry = function(id)
+function HistoryListMixin:SelectEntry(id)
   selectedEntryId = id
   -- Classic backend: the rows on screen were drawn from a specific History
   -- revision (see RefreshList). Usually a click is just a selection change
@@ -1689,14 +1698,14 @@ SelectEntry = function(id)
   if listPane and listPane.listBackend == "classic" then
     local revision = NS.History and NS.History.GetRevision and NS.History.GetRevision()
     if revision ~= nil and revision ~= HistoryPanel._listRevision then
-      if RefreshList then RefreshList() end
+      if listPane then listPane:RefreshList() end
       -- RefreshList paints its own row highlights against the id just
       -- clicked, but the RefreshDetail it runs afterward can still move the
       -- selection (the clicked row itself may be the one that trimmed away,
       -- which falls back to the first visible entry). Repaint below, now
       -- that selectedEntryId has settled, instead of trusting that pass.
     else
-      if RefreshDetail then RefreshDetail() end
+      if detailPane then detailPane:RefreshDetail() end
     end
     local scroll = listPane.scroll
     if scroll and scroll.rows then
@@ -1708,7 +1717,7 @@ SelectEntry = function(id)
     end
     return
   end
-  if RefreshDetail then RefreshDetail() end
+  if detailPane then detailPane:RefreshDetail() end
   -- Modern backend: update the existing-selection visual on rendered rows
   -- without rebuilding the data provider (which would reset scroll). Route
   -- through the controller so the abstraction is respected and Destroy()
@@ -1722,9 +1731,10 @@ SelectEntry = function(id)
   end
 end
 
-local function InitListRow(button)
+function HistoryRowMixin.InitListRow(button)
   if button.bsInit then return end
   button.bsInit = true
+  Mixin(button, HistoryRowMixin)
 
   button.stripe = button:CreateTexture(nil, "ARTWORK")
   button.stripe:SetPoint("TOPLEFT",    button, "TOPLEFT",    0, 0)
@@ -1762,15 +1772,15 @@ local function InitListRow(button)
   -- (RegisterForClicks above) is unaffected. The row is a Button,
   -- mouse-enabled by the widget type itself, so no EnableMouse call is
   -- needed here.
-  button:HookScript("OnEnter", RowOnEnter)
-  button:HookScript("OnLeave", RowOnLeave)
+  button:HookScript("OnEnter", HistoryRowMixin.RowOnEnter)
+  button:HookScript("OnLeave", HistoryRowMixin.RowOnLeave)
 end
 
-local function UseModernHistoryList()
+function Chrome.UseModernHistoryList()
   return not NS.Compat or NS.Compat.hasModernHistoryList ~= false
 end
 
-local function CreateListHeader()
+function HistoryListMixin:CreateListHeader()
   -- Filter chips/dropdowns are anchored to the parent frame (see
   -- CreateHeaderFilters), not nested inside listPane. Column header sits at
   -- listPane's TOPLEFT; ScrollBox starts 18 px below it.
@@ -1814,7 +1824,7 @@ local function CreateListHeader()
     host:SetPoint("BOTTOM", header, "BOTTOM", 0, 0)
     host:SetPoint("LEFT", label, "LEFT", 0, 0)
     host:SetPoint("RIGHT", label, "RIGHT", 0, 0)
-    AttachTooltip(host, title, body)
+    Chrome.AttachTooltip(host, title, body)
   end
   AddHeaderTip(header.timeLabel,   "Time",     TIPS.TIME)
   AddHeaderTip(header.senderLabel, "Sender",   TIPS.SENDER)
@@ -1822,8 +1832,8 @@ local function CreateListHeader()
   AddHeaderTip(header.scoreLabel,  "Score",    TIPS.SCORE)
 end
 
-local function CreateModernListPane()
-  CreateListHeader()
+function HistoryListMixin:CreateModernListPane()
+  listPane:CreateListHeader()
 
   -- BSP-066 / FND-006 Phase E: replace hand-wired ScrollBox composition with
   -- Foundry.List:New(). F.List builds the five-object ScrollBox system
@@ -1841,25 +1851,25 @@ local function CreateModernListPane()
     extent      = LAYOUT.LIST_ROW_HEIGHT,
     spacing     = 0,
     initializer = function(button, entry)
-      InitListRow(button)
-      RenderRow(button, entry)
+      HistoryRowMixin.InitListRow(button)
+      button:RenderRow(entry)
       button.selection:SetShown(selectedEntryId == entry.id)
       button:SetScript("OnClick", function(self, mouseButton)
         if mouseButton == "RightButton" then
           self._lastClick = nil
-          OpenRowContextMenu(self, entry)
+          Actions.OpenRowContextMenu(self, entry)
           return
         end
         local now = GetTime()
         if self._lastClick and (now - self._lastClick) < LAYOUT.DOUBLE_CLICK_WINDOW then
           self._lastClick = nil
-          PerformRestore(entry)
-          if ContextEntryCanAllowlist(entry) then
-            PerformAlwaysAllow(entry)
+          Actions.PerformRestore(entry)
+          if Actions.ContextEntryCanAllowlist(entry) then
+            Actions.PerformAlwaysAllow(entry)
           end
         else
           self._lastClick = now
-          SelectEntry(entry.id)
+          listPane:SelectEntry(entry.id)
         end
       end)
     end,
@@ -1901,14 +1911,16 @@ local function CreateModernListPane()
   listPane.listBackend = "modern"
 end
 
-local function CreateClassicListPane()
-  CreateListHeader()
+function HistoryListMixin:CreateClassicListPane()
+  listPane:CreateListHeader()
+
+  local function refreshList() listPane:RefreshList() end
 
   local scroll = CreateFrame("ScrollFrame", "SiftHistoryListScroll", listPane, "FauxScrollFrameTemplate")
   scroll:SetPoint("TOPLEFT",     listPane, "TOPLEFT",     0, -18)
   scroll:SetPoint("BOTTOMRIGHT", listPane, "BOTTOMRIGHT", -LAYOUT.SCROLLBAR_GUTTER, 18)
   scroll:SetScript("OnVerticalScroll", function(self, yOffset)
-    FauxScrollFrame_OnVerticalScroll(self, yOffset, LAYOUT.LIST_ROW_HEIGHT, RefreshList)
+    FauxScrollFrame_OnVerticalScroll(self, yOffset, LAYOUT.LIST_ROW_HEIGHT, refreshList)
   end)
 
   scroll.rows = {}
@@ -1922,7 +1934,7 @@ local function CreateClassicListPane()
     else
       row:SetPoint("TOP", scroll.rows[i - 1], "BOTTOM", 0, 0)
     end
-    InitListRow(row)
+    HistoryRowMixin.InitListRow(row)
     row:SetScript("OnClick", function(self, mouseButton)
       local entry = self.entry
       if not entry then
@@ -1930,19 +1942,19 @@ local function CreateClassicListPane()
       end
       if mouseButton == "RightButton" then
         self._lastClick = nil
-        OpenRowContextMenu(self, entry)
+        Actions.OpenRowContextMenu(self, entry)
         return
       end
       local now = GetTime()
       if self._lastClick and (now - self._lastClick) < LAYOUT.DOUBLE_CLICK_WINDOW then
         self._lastClick = nil
-        PerformRestore(entry)
-        if ContextEntryCanAllowlist(entry) then
-          PerformAlwaysAllow(entry)
+        Actions.PerformRestore(entry)
+        if Actions.ContextEntryCanAllowlist(entry) then
+          Actions.PerformAlwaysAllow(entry)
         end
       else
         self._lastClick = now
-        SelectEntry(entry.id)
+        listPane:SelectEntry(entry.id)
       end
     end)
     row:Hide()
@@ -1953,20 +1965,20 @@ local function CreateClassicListPane()
   listPane.listBackend = "classic"
 end
 
-local function CreateUnavailableListPane()
+function HistoryListMixin:CreateUnavailableListPane()
   local text = listPane:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
   text:SetPoint("CENTER", listPane, "CENTER", 0, 0)
   text:SetText(L["History list is unavailable in this client."])
   listPane.listBackend = "unavailable"
 end
 
-local function CreateListPane()
-  if UseModernHistoryList() then
-    CreateModernListPane()
+function HistoryListMixin:CreateListPane()
+  if Chrome.UseModernHistoryList() then
+    listPane:CreateModernListPane()
   elseif NS.Compat and NS.Compat.hasClassicHistoryList then
-    CreateClassicListPane()
+    listPane:CreateClassicListPane()
   else
-    CreateUnavailableListPane()
+    listPane:CreateUnavailableListPane()
   end
 
   local legend = CreateFrame("Frame", nil, listPane)
@@ -1975,10 +1987,10 @@ local function CreateListPane()
   legend:SetPoint("BOTTOMRIGHT", listPane, "BOTTOMRIGHT", 0, 0)
   legend.items = {}
   listPane.legend = legend
-  RefreshLegend()
+  listPane:RefreshLegend()
 end
 
-local function PlaceStatsTiles(stats)
+function HistoryStatsMixin.PlaceStatsTiles(stats)
   if not stats.tiles or not stats.tilesRow then return end
   local rowWidth = stats.tilesRow:GetWidth()
   if not rowWidth or rowWidth <= 0 then return end
@@ -1999,7 +2011,7 @@ local function PlaceStatsTiles(stats)
   end
 end
 
-local function BuildStatsArea(parent)
+function HistoryStatsMixin.BuildStatsArea(parent)
   parent.titleLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   parent.titleLabel:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, -6)
   parent.titleLabel:SetText(L["DETECTION STATS"])
@@ -2009,7 +2021,7 @@ local function BuildStatsArea(parent)
     statsScope = scope
     parent.scopeCharBtn:SetEnabled(scope ~= "char")
     parent.scopeAccountBtn:SetEnabled(scope ~= "account")
-    RefreshStatsArea()
+    parent:RefreshStatsArea()
   end
 
   parent.scopeCharBtn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
@@ -2017,7 +2029,7 @@ local function BuildStatsArea(parent)
   parent.scopeCharBtn:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -6, -4)
   parent.scopeCharBtn:SetText(L["Character"])
   parent.scopeCharBtn:SetScript("OnClick", function() SetStatsScope("char") end)
-  AttachTooltip(parent.scopeCharBtn, "Character",
+  Chrome.AttachTooltip(parent.scopeCharBtn, "Character",
     "Show detection stats for this character only.")
 
   parent.scopeAccountBtn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
@@ -2025,7 +2037,7 @@ local function BuildStatsArea(parent)
   parent.scopeAccountBtn:SetPoint("RIGHT", parent.scopeCharBtn, "LEFT", -4, 0)
   parent.scopeAccountBtn:SetText(L["Account"])
   parent.scopeAccountBtn:SetScript("OnClick", function() SetStatsScope("account") end)
-  AttachTooltip(parent.scopeAccountBtn, "Account",
+  Chrome.AttachTooltip(parent.scopeAccountBtn, "Account",
     "Show detection stats summed across every character on this account.")
 
   -- Default view is per-character; the char button starts disabled to show
@@ -2051,11 +2063,11 @@ local function BuildStatsArea(parent)
     tile.labelText:SetText(L[STATS_TILE_LABELS[key]])
     -- BSP-009: tiles are layout-only Frames, need EnableMouse for tooltips.
     local meta = STATS_TILE_TOOLTIPS[key]
-    if meta then AttachTooltip(tile, meta.title, meta.body) end
+    if meta then Chrome.AttachTooltip(tile, meta.title, meta.body) end
     parent.tiles[key] = tile
   end
-  parent.tilesRow:SetScript("OnSizeChanged", function() PlaceStatsTiles(parent) end)
-  PlaceStatsTiles(parent)
+  parent.tilesRow:SetScript("OnSizeChanged", function() parent:PlaceStatsTiles() end)
+  parent:PlaceStatsTiles()
 
   parent.bySurfaceLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   parent.bySurfaceLabel:SetPoint("TOPLEFT", parent.tilesRow, "BOTTOMLEFT", 0, -8)
@@ -2093,14 +2105,14 @@ local function BuildStatsArea(parent)
     local host = CreateFrame("Frame", nil, parent)
     host:SetPoint("TOPLEFT", labelFS, "TOPLEFT", 0, 0)
     host:SetPoint("BOTTOMRIGHT", textFS, "BOTTOMRIGHT", 0, 0)
-    AttachTooltip(host, title, body)
+    Chrome.AttachTooltip(host, title, body)
   end
   AddStatsLineTip(parent.bySurfaceLabel,  parent.bySurfaceText,  "BY SURFACE",  TIPS.STAT_SURFACE)
   AddStatsLineTip(parent.byCategoryLabel, parent.byCategoryText, "BY CATEGORY", TIPS.STAT_CATEGORY)
   AddStatsLineTip(parent.pipelineLabel,   parent.pipelineText,   "PIPELINE",    TIPS.STAT_PIPELINE)
 end
 
-local function BuildEmptyState(parent)
+function HistoryDetailMixin.BuildEmptyState(parent)
   local f = CreateFrame("Frame", nil, parent)
   f:SetAllPoints(parent)
 
@@ -2119,7 +2131,7 @@ local function BuildEmptyState(parent)
   return f
 end
 
-local function CreateDetailPane()
+function HistoryDetailMixin:CreateDetailPane()
   detailPane.sections = {}
 
   -- Status header (~50px tall, anchored TOP)
@@ -2239,7 +2251,8 @@ local function CreateDetailPane()
   -- does not collapse to zero. Height is a worst-case envelope (tiles row
   -- + 3 wrapped data rows + labels + margins); scrollbar engages above it.
   stats:SetSize(540, 280)
-  BuildStatsArea(stats)
+  Mixin(stats, HistoryStatsMixin)
+  stats:BuildStatsArea()
   statsScroll:SetScrollChild(stats)
 
   statsScroll:SetScript("OnSizeChanged", function(self, w)
@@ -2257,11 +2270,11 @@ local function CreateDetailPane()
   detailPane.sections.stats = statsScroll
 
   -- Empty state placeholder (replaces header/body/footer when nothing selected)
-  detailPane.empty = BuildEmptyState(detailPane)
+  detailPane.empty = detailPane:BuildEmptyState()
   detailPane.empty:Hide()
 end
 
-local function UpdateChipVisual(chip, cat)
+function HistoryFilterChipsMixin:UpdateChipVisual(chip, cat)
   if not filterState then return end
   local active = filterState.categories[cat] ~= false
   if active then
@@ -2282,7 +2295,7 @@ local CHIP_LABELS = {
   Custom     = "My Keywords",
 }
 
-local function PlaceCategoryChips(strip)
+function HistoryFilterChipsMixin.PlaceCategoryChips(strip)
   if not strip or not strip.chips then return end
 
   -- Size each chip to its own centered label plus button chrome, rather than
@@ -2306,7 +2319,7 @@ local function PlaceCategoryChips(strip)
   end
 end
 
-local function BuildCategoryChips(strip)
+function HistoryFilterChipsMixin.BuildCategoryChips(strip)
   local chips = {}
   for _, cat in ipairs(CATEGORIES) do
     local chip = CreateFrame("Button", nil, strip, "UIPanelButtonTemplate")
@@ -2314,8 +2327,8 @@ local function BuildCategoryChips(strip)
     chip:SetText(L[CHIP_LABELS[cat] or cat])
     chip:SetScript("OnClick", function()
       filterState.categories[cat] = (filterState.categories[cat] == false)
-      UpdateChipVisual(chip, cat)
-      if RefreshList then RefreshList() end
+      strip:UpdateChipVisual(chip, cat)
+      if listPane then listPane:RefreshList() end
     end)
     -- BSP-009: state-aware tooltip — read current filter state on every hover.
     chip:HookScript("OnEnter", function(self)
@@ -2334,15 +2347,15 @@ local function BuildCategoryChips(strip)
     chip:HookScript("OnLeave", function()
       if GameTooltip then GameTooltip:Hide() end
     end)
-    UpdateChipVisual(chip, cat)
+    strip:UpdateChipVisual(chip, cat)
     chips[cat] = chip
   end
   strip.chips = chips
-  PlaceCategoryChips(strip)
-  strip:SetScript("OnSizeChanged", function() PlaceCategoryChips(strip) end)
+  strip:PlaceCategoryChips()
+  strip:SetScript("OnSizeChanged", function() strip:PlaceCategoryChips() end)
 end
 
-local function CreateModernDropdown(parent, labelText, values, labels, getValue, setValue)
+function Chrome.CreateModernDropdown(parent, labelText, values, labels, getValue, setValue)
   local dd = CreateFrame("DropdownButton", nil, parent, "WowStyle1DropdownTemplate")
   dd:SetSize(110, 22)
   if dd.SetDefaultText then
@@ -2366,7 +2379,7 @@ local function CreateModernDropdown(parent, labelText, values, labels, getValue,
   return dd
 end
 
-local function CreateSenderFilterChip()
+function HistoryPanelMixin:CreateSenderFilterChip()
   local chip = CreateFrame("Frame", nil, frame)
   chip:SetPoint("TOPLEFT",  frame, "TOPLEFT",   8, -100)
   chip:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, -100)
@@ -2380,14 +2393,14 @@ local function CreateSenderFilterChip()
   chip.clear = CreateFrame("Button", nil, chip, "UIPanelCloseButton")
   chip.clear:SetSize(18, 18)
   chip.clear:SetPoint("LEFT", chip.label, "RIGHT", 2, 0)
-  chip.clear:SetScript("OnClick", ClearSenderFilter)
-  AttachTooltip(chip.clear, "Clear sender filter",
+  chip.clear:SetScript("OnClick", Actions.ClearSenderFilter)
+  Chrome.AttachTooltip(chip.clear, "Clear sender filter",
     "Remove the active sender filter and show entries from all senders again.")
 
   frame.senderChip = chip
 end
 
-UpdateSenderFilterChip = function()
+function HistoryPanelMixin:UpdateSenderFilterChip()
   -- BSP-008 Commit 4: chip show/hide only — listPane anchors are owned by
   -- CreatePanes + CreateSplitter (width is user-resizable and persisted), so
   -- this no longer re-anchors listPane the way it did before the restructure.
@@ -2396,14 +2409,14 @@ UpdateSenderFilterChip = function()
   if not frame or not frame.senderChip or not listPane then return end
   local chip = frame.senderChip
   if filterState and filterState.senderFilter then
-    chip.label:SetText("|cff58a0ffFiltering by:|r " .. FormatSender(filterState.senderFilter))
+    chip.label:SetText("|cff58a0ffFiltering by:|r " .. Data.FormatSender(filterState.senderFilter))
     chip:Show()
   else
     chip:Hide()
   end
 end
 
-local function SetTabHighlight()
+function HistoryPanelMixin:SetTabHighlight()
   for mode, button in pairs(tabButtons) do
     if mode == activeMode then
       button:LockHighlight()
@@ -2424,7 +2437,7 @@ end
 -- 940px configHost width re-flows narrower once resized down to Config's
 -- 700px, so a taller wrap can settle a frame late. The deferred call
 -- re-checks activeMode itself, so switching back to History first cancels it.
-local function ResizeForConfig(skipRemeasure)
+function HistoryPanelMixin:ResizeForConfig(skipRemeasure)
   if activeMode ~= "Config" or not frame then return end
   local contentBottom = NS.ConfigPanel and NS.ConfigPanel.GetEmbeddedContentBottom
     and NS.ConfigPanel.GetEmbeddedContentBottom()
@@ -2435,7 +2448,7 @@ local function ResizeForConfig(skipRemeasure)
   local width, height = HistoryPanel.ComputeConfigWindowSize(configWidth, configFloor, frame:GetTop(), contentBottom)
   HistoryPanel.ResizeKeepingTopLeft(frame, width, height)
   if not skipRemeasure and C_Timer and C_Timer.After then
-    C_Timer.After(0, function() ResizeForConfig(true) end)
+    C_Timer.After(0, function() frame:ResizeForConfig(true) end)
   end
 end
 
@@ -2458,8 +2471,8 @@ function HistoryPanel.ShowHistoryContent()
   if wasConfig and frame then
     HistoryPanel.ResizeKeepingTopLeft(frame, LAYOUT.PANEL_WIDTH, LAYOUT.PANEL_HEIGHT)
   end
-  UpdateSenderFilterChip()
-  SetTabHighlight()
+  if frame then frame:UpdateSenderFilterChip() end
+  if frame then frame:SetTabHighlight() end
 end
 
 function HistoryPanel.ShowConfigContent(section)
@@ -2480,11 +2493,11 @@ function HistoryPanel.ShowConfigContent(section)
       NS.ConfigPanel.Attach(configHost, activeConfigSection)
     end
   end
-  ResizeForConfig()
-  SetTabHighlight()
+  if frame then frame:ResizeForConfig() end
+  if frame then frame:SetTabHighlight() end
 end
 
-local function CreateTabStrip(parent)
+function HistoryPanelMixin.CreateTabStrip(parent)
   local strip = CreateFrame("Frame", nil, parent)
   strip:SetHeight(30)
   strip:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 8, 6)
@@ -2497,7 +2510,7 @@ local function CreateTabStrip(parent)
   history:SetScript("OnClick", function()
     HistoryPanel.Show()
   end)
-  AttachTooltip(history, "History",
+  Chrome.AttachTooltip(history, "History",
     "View blocked, restored, and pass-thru detections.")
   tabButtons.History = history
 
@@ -2508,16 +2521,17 @@ local function CreateTabStrip(parent)
   config:SetScript("OnClick", function()
     HistoryPanel.ShowConfig(activeConfigSection)
   end)
-  AttachTooltip(config, "Config",
+  Chrome.AttachTooltip(config, "Config",
     "Adjust thresholds, categories, surfaces, allowlist, and history settings.")
   tabButtons.Config = config
   parent.tabStrip = strip
 end
 
-local function CreateHeaderFilters()
+function HistoryPanelMixin:CreateHeaderFilters()
   -- Chips band: upper-left, right-bound by the pause-pill row so the chips
   -- get more horizontal room than they had when nested inside listPane.
   local chipsBand = CreateFrame("Frame", nil, frame)
+  Mixin(chipsBand, HistoryFilterChipsMixin)
   chipsBand:SetHeight(24)
   chipsBand:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, -28)
   if pauseRow then
@@ -2525,7 +2539,7 @@ local function CreateHeaderFilters()
   else
     chipsBand:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -360, -28)
   end
-  BuildCategoryChips(chipsBand)
+  chipsBand:BuildCategoryChips()
 
   -- Dropdowns band: full panel width, below chips band. Hosts dropdowns +
   -- Refresh. Anchoring to frame (not listPane) means the dropdown row width
@@ -2535,33 +2549,33 @@ local function CreateHeaderFilters()
   ddBand:SetPoint("TOPLEFT",  frame, "TOPLEFT",  6, -56)
   ddBand:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, -56)
 
-  ddBand.surfaceDD = CreateModernDropdown(ddBand, "Surface", SURFACE_VALUES, SURFACE_LABELS,
+  ddBand.surfaceDD = Chrome.CreateModernDropdown(ddBand, "Surface", SURFACE_VALUES, SURFACE_LABELS,
     function() return filterState.surface end,
-    function(v) filterState.surface = v; if RefreshList then RefreshList() end end)
+    function(v) filterState.surface = v; if listPane then listPane:RefreshList() end end)
   ddBand.surfaceDD:SetPoint("LEFT", ddBand, "LEFT", 0, 0)
-  AttachTooltip(ddBand.surfaceDD, "Surface",
+  Chrome.AttachTooltip(ddBand.surfaceDD, "Surface",
     "Restrict the list to detections from one chat surface. \"All\" clears the filter.")
 
-  ddBand.timeDD = CreateModernDropdown(ddBand, "Time", TIME_WINDOW_VALUES, nil,
+  ddBand.timeDD = Chrome.CreateModernDropdown(ddBand, "Time", TIME_WINDOW_VALUES, nil,
     function() return filterState.timeWindow end,
-    function(v) filterState.timeWindow = v; if RefreshList then RefreshList() end end)
+    function(v) filterState.timeWindow = v; if listPane then listPane:RefreshList() end end)
   ddBand.timeDD:SetPoint("LEFT", ddBand.surfaceDD, "RIGHT", 4, 0)
-  AttachTooltip(ddBand.timeDD, "Time",
+  Chrome.AttachTooltip(ddBand.timeDD, "Time",
     "Restrict the list to detections inside a recent time window.")
 
-  ddBand.outcomeDD = CreateModernDropdown(ddBand, "Outcome", OUTCOME_VALUES, nil,
+  ddBand.outcomeDD = Chrome.CreateModernDropdown(ddBand, "Outcome", OUTCOME_VALUES, nil,
     function() return filterState.outcome end,
-    function(v) filterState.outcome = v; if RefreshList then RefreshList() end end)
+    function(v) filterState.outcome = v; if listPane then listPane:RefreshList() end end)
   ddBand.outcomeDD:SetPoint("LEFT", ddBand.timeDD, "RIGHT", 4, 0)
-  AttachTooltip(ddBand.outcomeDD, "Outcome",
+  Chrome.AttachTooltip(ddBand.outcomeDD, "Outcome",
     "Blocked means hidden from chat. Restored means you undid the block. Pass-thru means " ..
     "it looked like spam but was left in chat because its surface or category was Paused.")
 
-  ddBand.sortDD = CreateModernDropdown(ddBand, "Sort", SORT_VALUES, SORT_LABELS,
+  ddBand.sortDD = Chrome.CreateModernDropdown(ddBand, "Sort", SORT_VALUES, SORT_LABELS,
     function() return sortMode end,
-    function(v) sortMode = v; if RefreshList then RefreshList() end end)
+    function(v) sortMode = v; if listPane then listPane:RefreshList() end end)
   ddBand.sortDD:SetPoint("LEFT", ddBand.outcomeDD, "RIGHT", 4, 0)
-  AttachTooltip(ddBand.sortDD, "Sort",
+  Chrome.AttachTooltip(ddBand.sortDD, "Sort",
     "Newest first \194\183 by Score (highest first) \194\183 by Sender (groups repeat offenders).")
 
   local refresh = CreateFrame("Button", nil, ddBand, "UIPanelButtonTemplate")
@@ -2569,9 +2583,9 @@ local function CreateHeaderFilters()
   refresh:SetPoint("RIGHT", ddBand, "RIGHT", 0, 0)
   refresh:SetText(L["Refresh"])
   refresh:SetScript("OnClick", function()
-    if RefreshList then RefreshList() end
+    if listPane then listPane:RefreshList() end
   end)
-  AttachTooltip(refresh, "Refresh",
+  Chrome.AttachTooltip(refresh, "Refresh",
     "Reload the list to show messages Sift caught since you opened this window, or after " ..
     "clearing History.")
   ddBand.refresh = refresh
@@ -2595,7 +2609,7 @@ end
 -- listPaneWidth becomes inert (existing values are clamped to the new range
 -- but no longer updated by user action).
 
-local function CreateSplitter(parent)
+function HistoryPanelMixin.CreateSplitter(parent)
   local splitter = CreateFrame("Frame", nil, parent)
   splitter:SetWidth(LAYOUT.SPLITTER_WIDTH)
   splitter:SetPoint("TOPLEFT",    listPane, "TOPRIGHT", 0, 0)
@@ -2633,7 +2647,7 @@ local PAUSE_STATE_COLOR = {
   off    = { 0.95, 0.12, 0.12, 1 },
 }
 
-local function ApplyPauseGlyph(glyph, state)
+function HistoryPauseRowMixin:ApplyPauseGlyph(glyph, state)
   if not glyph then return end
   state = (state == "paused" or state == "off") and state or "active"
 
@@ -2658,7 +2672,7 @@ local function ApplyPauseGlyph(glyph, state)
   end
 end
 
-local function PauseStateMenuSuffix(state)
+function Chrome.PauseStateMenuSuffix(state)
   state = (state == "paused" or state == "off") and state or "active"
   if NS.Compat and NS.Compat.isClassicFamily then
     return "  [" .. L[state] .. "]"
@@ -2667,7 +2681,7 @@ local function PauseStateMenuSuffix(state)
   return "  |A:" .. atlas .. ":14:14|a"
 end
 
-local function CreatePauseRow(parent)
+function HistoryPanelMixin.CreatePauseRow(parent)
   pauseRow = CreateFrame("Frame", nil, parent)
   pauseRow:SetHeight(20)
   pauseRow:SetWidth((#PAUSE_PILL_KEYS * 60) + math.max(#PAUSE_PILL_KEYS - 1, 0) * 4)
@@ -2681,6 +2695,7 @@ local function CreatePauseRow(parent)
   -- Pills must render above the NineSlice to avoid being drawn over.
   pauseRow:SetFrameLevel((parent:GetFrameLevel() or 1) + 520)
 
+  Mixin(pauseRow, HistoryPauseRowMixin)
   pausePills = {}
   local previousPill
   for i = #PAUSE_PILL_KEYS, 1, -1 do
@@ -2751,14 +2766,15 @@ function HistoryPanel.RefreshPauseRow()
   if not pausePills or not NS.PauseState then return end
   for surfaceKey, pill in pairs(pausePills) do
     local state = NS.PauseState.GetSurface(surfaceKey)
-    ApplyPauseGlyph(pill.glyph, state)
+    pauseRow:ApplyPauseGlyph(pill.glyph, state)
   end
 end
 
-local function BuildFrame()
+function Chrome.BuildFrame()
   if frame then return end
 
-  frame = CreateBackdropFrame(UIParent)
+  frame = Chrome.CreateBackdropFrame(UIParent)
+  Mixin(frame, HistoryPanelMixin)
   frame:SetMovable(true)
   -- Drop the cached entries array and stats objects (and the revisions they
   -- were fetched at) once the panel closes, however it closes -- the close
@@ -2781,24 +2797,24 @@ local function BuildFrame()
     frame.TitleContainer:SetScript("OnDragStart", function() frame:StartMoving() end)
     frame.TitleContainer:SetScript("OnDragStop", function()
       frame:StopMovingOrSizing()
-      SavePosition()
+      if frame then frame:SavePosition() end
     end)
   end
 
-  CreatePauseRow(frame)
+  frame:CreatePauseRow()
   if HistoryPanel.RefreshPauseRow then HistoryPanel.RefreshPauseRow() end
-  listPane, detailPane = CreatePanes(frame)
-  CreateSplitter(frame)
-  CreateListPane()
-  CreateDetailPane()
-  CreateHeaderFilters()
-  CreateSenderFilterChip()
+  listPane, detailPane = frame:CreatePanes()
+  frame:CreateSplitter()
+  listPane:CreateListPane()
+  detailPane:CreateDetailPane()
+  frame:CreateHeaderFilters()
+  frame:CreateSenderFilterChip()
   configHost = CreateFrame("Frame", nil, frame)
   configHost:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, -40)
   configHost:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -6, 40)
   configHost:Hide()
-  CreateTabStrip(frame)
-  UpdateSenderFilterChip()
+  frame:CreateTabStrip()
+  if frame then frame:UpdateSenderFilterChip() end
 
   -- BSP-055 Gate 2 followup-v2: no OnSizeChanged / OnHide-SaveSize wiring.
   -- The panel is fixed-size after ApplyStoredGeometry (SFT-089's Config-tab
@@ -2808,11 +2824,11 @@ local function BuildFrame()
   -- proportion within LAYOUT.MIN_LIST_PANE_WIDTH..MIN_DETAIL_PANE_WIDTH bounds
   -- derived from the fixed panel width.
 
-  ApplyStoredGeometry()
+  frame:ApplyStoredGeometry()
   tinsert(UISpecialFrames, "SiftHistoryFrame")
 end
 
-local function RegisterMinimap()
+function Chrome.RegisterMinimap()
 	local LDB     = LibStub and LibStub("LibDataBroker-1.1", true)
 	local LDBIcon = LibStub and LibStub("LibDBIcon-1.0",      true)
 	if not LDB or not LDBIcon then return end
@@ -2826,7 +2842,7 @@ local function RegisterMinimap()
         if pauseSurfaceMenu then
           pauseSurfaceMenu:CreateContextMenu(self)
         else
-          OpenConfigPanel()
+          Chrome.OpenConfigPanel()
         end
       else
         HistoryPanel.Toggle()
@@ -2839,24 +2855,24 @@ local function RegisterMinimap()
     end,
   })
 
-	local settings = GetSettings()
+	local settings = Data.GetSettings()
 	minimapOptions = minimapOptions or {}
 	minimapOptions.hide = settings.showMinimapButton == false
 	pcall(LDBIcon.Register, LDBIcon, "Sift", minimapLDB, minimapOptions)
 end
 
 function HistoryPanel.Initialize()
-  filterState = DefaultFilterState()
+  filterState = Data.DefaultFilterState()
   sortMode = "newest"
   statsScope = "char"
-  RegisterStaticPopups()
-  RegisterMinimap()
+  Chrome.RegisterStaticPopups()
+  Chrome.RegisterMinimap()
 
   -- SFT-089: a nav click inside Config changes section without ever calling
   -- HistoryPanel.ShowConfig again, so ConfigPanel calls back here to re-run
   -- the same resize ShowConfigContent runs on entry.
   if NS.ConfigPanel and NS.ConfigPanel.SetEmbeddedSectionCallback then
-    NS.ConfigPanel.SetEmbeddedSectionCallback(ResizeForConfig)
+    NS.ConfigPanel.SetEmbeddedSectionCallback(function(skip) if frame then frame:ResizeForConfig(skip) end end)
   end
 
   -- BSP-008 Commit 6: react to PauseState changes (header pills, ConfigPanel,
@@ -2867,8 +2883,8 @@ function HistoryPanel.Initialize()
       if HistoryPanel.RefreshPauseRow then HistoryPanel.RefreshPauseRow() end
       -- A hidden panel has nothing on screen to update, so this would only
       -- pull History back into the entries/stats cache for no reader.
-      if axis == "category" and RefreshDetail and frame and frame:IsShown() then
-        RefreshDetail()
+      if axis == "category" and detailPane and frame and frame:IsShown() then
+        detailPane:RefreshDetail()
       end
     end)
   end
@@ -2878,25 +2894,25 @@ function HistoryPanel.Initialize()
       name    = "NS.RowContext",
       builder = function(anchor, rootDescription, entry)
         rootDescription:CreateTitle("Sift")
-        if ContextEntryRestorable(entry) then
-          rootDescription:CreateButton("Restore", function() PerformRestore(entry) end)
-          if ContextEntryCanAllowlist(entry) then
+        if Actions.ContextEntryRestorable(entry) then
+          rootDescription:CreateButton("Restore", function() Actions.PerformRestore(entry) end)
+          if Actions.ContextEntryCanAllowlist(entry) then
             rootDescription:CreateButton("Restore + Always allow", function()
-              PerformRestore(entry)
-              PerformAlwaysAllow(entry)
+              Actions.PerformRestore(entry)
+              Actions.PerformAlwaysAllow(entry)
             end)
           end
         end
-        rootDescription:CreateButton("Filter by this sender", function() SetSenderFilter(entry) end)
+        rootDescription:CreateButton("Filter by this sender", function() Actions.SetSenderFilter(entry) end)
         if filterState and filterState.senderFilter then
-          rootDescription:CreateButton("Clear sender filter", ClearSenderFilter)
+          rootDescription:CreateButton("Clear sender filter", Actions.ClearSenderFilter)
         end
-        local reportKind = GetReportKind(entry)
-        local reportLabel = GetReportLabel(reportKind)
+        local reportKind = Actions.GetReportKind(entry)
+        local reportLabel = Actions.GetReportLabel(reportKind)
         if reportLabel then
-          rootDescription:CreateButton(reportLabel, function() PerformReport(entry) end)
+          rootDescription:CreateButton(reportLabel, function() Actions.PerformReport(entry) end)
         end
-        rootDescription:CreateButton("Copy sender name", function() ShowCopySenderPopup(entry) end)
+        rootDescription:CreateButton("Copy sender name", function() Actions.ShowCopySenderPopup(entry) end)
       end,
     })
 
@@ -2908,20 +2924,20 @@ function HistoryPanel.Initialize()
         for _, surfaceKey in ipairs(PAUSE_PILL_KEYS) do
           local labelText = SURFACE_LABELS[surfaceKey] or surfaceKey
           local s = NS.PauseState and NS.PauseState.GetSurface(surfaceKey) or "active"
-          rootDescription:CreateButton(L[labelText] .. PauseStateMenuSuffix(s), function()
+          rootDescription:CreateButton(L[labelText] .. Chrome.PauseStateMenuSuffix(s), function()
             if NS.PauseState then NS.PauseState.CycleSurface(surfaceKey, "forward") end
             return MenuResponse.Refresh
           end)
         end
         rootDescription:CreateDivider()
-        rootDescription:CreateButton(L["Open config"], function() OpenConfigPanel() end)
+        rootDescription:CreateButton(L["Open config"], function() Chrome.OpenConfigPanel() end)
       end,
     })
   end
 end
 
 function HistoryPanel.Toggle()
-  BuildFrame()
+  Chrome.BuildFrame()
   if frame:IsShown() and activeMode == "History" then
     frame:Hide()
   else
@@ -2930,14 +2946,14 @@ function HistoryPanel.Toggle()
 end
 
 function HistoryPanel.Show()
-  BuildFrame()
+  Chrome.BuildFrame()
   HistoryPanel.ShowHistoryContent()
-  RefreshList()
+  if listPane then listPane:RefreshList() end
   frame:Show()
 end
 
 function HistoryPanel.ShowConfig(section)
-  BuildFrame()
+  Chrome.BuildFrame()
   HistoryPanel.ShowConfigContent(section)
   frame:Show()
 end
@@ -2956,7 +2972,7 @@ function HistoryPanel.ResetPosition()
 	-- LAYOUT.PANEL_HEIGHT regardless of any older width/height in the store.
 	-- SFT-089: this forces the History size even if called while the Config
 	-- tab happens to be showing -- ResetPosition doesn't check activeMode.
-	ClearStoredGeometry()
+	Data.ClearStoredGeometry()
 	if frame then
 		frame:SetSize(LAYOUT.PANEL_WIDTH, LAYOUT.PANEL_HEIGHT)
 		frame:ClearAllPoints()
@@ -2968,7 +2984,7 @@ function HistoryPanel.RefreshMinimap()
 	local LDBIcon = LibStub and LibStub("LibDBIcon-1.0", true)
 	if not LDBIcon then return end
 	if not minimapLDB then
-		RegisterMinimap()
+		Chrome.RegisterMinimap()
 	end
 	if minimapOptions then
 		pcall(LDBIcon.Refresh, LDBIcon, "Sift", minimapOptions)
@@ -2986,7 +3002,7 @@ function HistoryPanel.SetMinimapShown(shown)
 	local LDBIcon = LibStub and LibStub("LibDBIcon-1.0", true)
 	if not LDBIcon then return end
 	if not minimapLDB then
-		RegisterMinimap()
+		Chrome.RegisterMinimap()
 	end
 	if value then
 		pcall(LDBIcon.Show, LDBIcon, "Sift")

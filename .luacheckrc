@@ -69,6 +69,7 @@ read_globals = {
     "FauxScrollFrame_GetOffset",
     "MinimalSliderWithSteppersMixin",
     "CreateMinimalSliderFormatter",
+    "Mixin",
 
     -- WoW API (C_ namespaces)
     "C_AddOnProfiler",
@@ -113,4 +114,10 @@ exclude_files = {
 
 ignore = {
     "21[23]",  -- callback/test helper patterns with intentionally unused args
+}
+
+files["HistoryPanel.lua"] = {
+    ignore = {
+        "432/self",  -- a closure's own self is the widget; shadowing a method's self is intended
+    },
 }

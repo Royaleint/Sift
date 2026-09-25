@@ -35,6 +35,7 @@
     "bit",
 
     "BackdropTemplateMixin",
+    "Mixin",
     "BackdropTemplate",
     "CreateFrame",
     "DEFAULT_CHAT_FRAME",
