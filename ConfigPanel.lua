@@ -74,6 +74,7 @@ local DEFAULT_SETTINGS = {
   enabledCategories = {
     RMT = true,
     Boosting = true,
+    Carrying = true,
   },
   mixedScriptEnabled = true,
   mixedScriptWeight = 1,

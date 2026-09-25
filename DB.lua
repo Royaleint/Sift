@@ -45,7 +45,7 @@ end
 local SV_NAME, SV_LEGACY_NAME = DB.DeriveSVNames(ADDON_NAME)
 local SV_NAME_ERROR = (not SV_NAME) and SV_LEGACY_NAME or nil
 
-local CURRENT_SCHEMA_VERSION = 3
+local CURRENT_SCHEMA_VERSION = 4
 local ADDON_VERSION = "1.4.0"
 local BLOCKED_ACTOR_CAP = 5000
 
@@ -86,6 +86,7 @@ local defaults = {
       enabledCategories = {
         RMT        = "active",
         Boosting   = "active",
+        Carrying   = "active",
         -- BSP-052: the user's own keyword block list, sharing the
         -- active/paused/off axis. It must be here or SetCategoryState rejects
         -- the toggle -- that setter gate-checks against this table.
@@ -213,6 +214,21 @@ migrations[3] = function(db)
         total, perCharRemoved, globalRemoved
       ))
     end
+  end
+end
+
+-- Carrying (paid raid, Mythic+ and dungeon-run sales) is split out of
+-- Boosting, which used to cover both. Every existing profile inherits its
+-- current Boosting state as Carrying's starting state, so nobody's filtering
+-- changes on upgrade. The RepairShape pass that already ran before this
+-- migration has validated Boosting into a real state and backfilled Carrying
+-- to the shipped default, so this simply overwrites that default with
+-- Boosting's validated value.
+migrations[4] = function(db)
+  local settings = (db.global and db.global.settings) or {}
+  local categories = settings.enabledCategories
+  if type(categories) == "table" and categories.Boosting then
+    categories.Carrying = categories.Boosting
   end
 end
 
@@ -847,6 +863,12 @@ local function OverlaySettings(defaultSettings, legacySettings)
           if legacySubtree[innerKey] ~= nil then
             out[key][innerKey] = legacySubtree[innerKey]
           end
+        end
+        -- Carrying split out of Boosting after this legacy layout shipped: a
+        -- legacy store with no Carrying key of its own inherits the legacy
+        -- Boosting state instead of falling back to Carrying's default.
+        if key == "enabledCategories" and legacySubtree.Carrying == nil and legacySubtree.Boosting ~= nil then
+          out[key].Carrying = legacySubtree.Boosting
         end
       end
     elseif legacySettings[key] ~= nil then

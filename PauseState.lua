@@ -20,7 +20,9 @@ local SURFACE_KEYS = { "chat", "whisper", "bn-whisper" }
 -- BSP-052: "Custom" is the user's own keyword block list, not a corpus category.
 -- It earns a button so the list can be paused without deleting it, and it is
 -- deliberately NOT retired -- it has no frozen state to fall back on.
-local CATEGORY_KEYS = { "RMT", "Boosting", "Custom" }
+-- "Carrying" splits the paid raid, Mythic+ and dungeon-run sales out of
+-- "Boosting", which now covers powerleveling and related services only.
+local CATEGORY_KEYS = { "RMT", "Boosting", "Carrying", "Custom" }
 local RETIRED_CATEGORY_STATES = {
   Casino     = "active",
   Phishing   = "active",
