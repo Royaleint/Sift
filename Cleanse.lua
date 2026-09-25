@@ -164,37 +164,35 @@ function Cleanse._Stage5_StyledAlnum(text)
   end)
 end
 
--- Stage 6: in-word leetspeak via single-pass character loop.
--- Each candidate leet char gets substituted only if BOTH neighbors are ASCII letters.
--- The loop never revisits a position, so overlapping substitutions all fire correctly.
+-- Stage 6: in-word leetspeak via a single gsub pass over candidate positions.
+-- Each candidate leet char gets substituted only if BOTH neighbors are ASCII
+-- letters. The position capture lets the replacement read the original
+-- neighbors directly, without walking the string byte by byte.
 Cleanse._leetMap = {
   ["0"] = "o", ["1"] = "l", ["3"] = "e", ["4"] = "a", ["5"] = "s",
   ["7"] = "t", ["8"] = "b", ["@"] = "a", ["$"] = "s",
 }
+local _LEET_CHARS = "0134578@$"
+local _LEET_NEIGHBOR_PATTERN = "[A-Za-z][" .. _LEET_CHARS .. "][A-Za-z]"
+local _LEET_GSUB_PATTERN = "()([" .. _LEET_CHARS .. "])"
 local function _isAsciiLetter(byte)
-  return (byte >= 0x41 and byte <= 0x5A) or (byte >= 0x61 and byte <= 0x7A)
+  return byte ~= nil and ((byte >= 0x41 and byte <= 0x5A) or (byte >= 0x61 and byte <= 0x7A))
+end
+local _leetSource
+local function _LeetReplace(pos, c)
+  if _isAsciiLetter(string.byte(_leetSource, pos - 1)) and _isAsciiLetter(string.byte(_leetSource, pos + 1)) then
+    return Cleanse._leetMap[c]
+  end
+  return nil
 end
 function Cleanse._Stage6_Leetspeak(text)
   local n = #text
   if n < 3 then return text end
-  if not string.find(text, "[A-Za-z][0134578@$][A-Za-z]") then return text end
-  local out = {}
-  for i = 1, n do
-    local c = string.sub(text, i, i)
-    local sub = Cleanse._leetMap[c]
-    if sub and i > 1 and i < n then
-      local prev = string.byte(text, i - 1)
-      local next_ = string.byte(text, i + 1)
-      if _isAsciiLetter(prev) and _isAsciiLetter(next_) then
-        out[#out + 1] = sub
-      else
-        out[#out + 1] = c
-      end
-    else
-      out[#out + 1] = c
-    end
-  end
-  return table.concat(out)
+  if not string.find(text, _LEET_NEIGHBOR_PATTERN) then return text end
+  _leetSource = text
+  local result = string.gsub(text, _LEET_GSUB_PATTERN, _LeetReplace)
+  _leetSource = nil
+  return result
 end
 
 -- Stage 7: lowercase (ASCII-only post-stages-4-5).
