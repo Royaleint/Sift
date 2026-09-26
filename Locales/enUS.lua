@@ -48,6 +48,7 @@ L["History list is unavailable in this client."] = "History list is unavailable 
 L["Gold selling"] = "Gold selling"
 L["My Keywords"] = "My Keywords"
 L["Boosting"] = "Boosting"
+L["Carrying"] = "Carrying"
 L["DETECTED"] = "DETECTED"
 L["BLOCKED"] = "BLOCKED"
 L["PASS-THRU"] = "PASS-THRU"
@@ -158,7 +159,8 @@ L["Restored \195\183 Blocked. A rough false-positive rate. Lower is better."] = 
 
 -- History panel: category filter chips (CHIP_FULL_NAMES + the two hover bodies)
 L["Gold selling (real-money trading)"] = "Gold selling (real-money trading)"
-L["Boosting (paid carry ads)"] = "Boosting (paid carry ads)"
+L["Boosting (paid leveling and other services)"] = "Boosting (paid leveling and other services)"
+L["Carrying (paid raid, Mythic+, and dungeon runs)"] = "Carrying (paid raid, Mythic+, and dungeon runs)"
 L["My Keywords (phrases you added yourself)"] = "My Keywords (phrases you added yourself)"
 L["Currently included in the list. Click to hide entries in this category."] = "Currently included in the list. Click to hide entries in this category."
 L["Currently hidden from the list. Click to show entries in this category."] = "Currently hidden from the list. Click to show entries in this category."
