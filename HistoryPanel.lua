@@ -92,19 +92,20 @@ local LAYOUT = {
 
 local CATEGORY_COLORS = {
   RMT        = "c44",
-  Boosting   = "d80",
+  Boosting   = "e60",
+  Carrying   = "c8b",
   Casino     = "a4c",
   Phishing   = "58a",
   Commercial = "5a7",
   Anti       = "888",
-  -- BSP-052: the player's own phrases. Teal, chosen to sit clear of the six
+  -- The player's own phrases. Teal, chosen to sit clear of the seven
   -- above rather than fall through to the grey Anti shares.
   Custom     = "2bc",
 }
 -- Internal category keys that differ from the words the player sees. Every
 -- surface that prints a category key routes through this map so "Custom" and
--- "RMT" never leak; keys not listed here (Boosting, the retired categories)
--- already read as plain words.
+-- "RMT" never leak; keys not listed here (Boosting, Carrying, the retired
+-- categories) already read as plain words.
 local CATEGORY_BADGE_LABELS = {
   RMT    = "Gold selling",
   Custom = "My Keywords",
@@ -115,12 +116,13 @@ local CATEGORY_BADGE_LABELS = {
   Throttle     = "Repeat",
   ManualBlock  = "Manual block",
 }
--- Chip tooltip bodies for the three user-filterable categories -- keep the
+-- Chip tooltip bodies for the four user-filterable categories -- keep the
 -- chip label terse and rely on the tooltip to spell out what the category
 -- covers.
 local CHIP_FULL_NAMES = {
   RMT        = "Gold selling (real-money trading)",
-  Boosting   = "Boosting (paid carry ads)",
+  Boosting   = "Boosting (paid leveling and other services)",
+  Carrying   = "Carrying (paid raid, Mythic+, and dungeon runs)",
   Custom     = "My Keywords (phrases you added yourself)",
 }
 -- Keys that describe WHY a message was caught rather than WHAT KIND of spam it
@@ -873,9 +875,8 @@ function HistoryPanel.LegendTipKeys(cat)
   if cat == "Flood" then
     return CATEGORY_BADGE_LABELS.Flood or "Flood", TIPS.SPAM_WAVE_SWATCH
   end
-  if RETIRED_CATEGORY_SET[cat] then
-    return CATEGORY_BADGE_LABELS[cat] or cat, TIPS.RETIRED
-  end
+  -- No RETIRED_CATEGORY_SET branch: RefreshLegend never passes a retired
+  -- category here; its loop skips every retired category unconditionally.
   if CHIP_FULL_NAMES[cat] then
     return CHIP_FULL_NAMES[cat], nil
   end
@@ -1333,9 +1334,11 @@ function HistoryListMixin:ShowLegendItem(legend, index, lx, hex, label, tipTitle
   return lx + 12 + item.label:GetStringWidth() + 8
 end
 
--- The legend under the list follows the same residue rule as the stats line:
--- active categories always, retired ones only while this character's lifetime
--- counts still carry them. Items are reused across rebuilds, never destroyed.
+-- The legend shows only the live categories PauseState declares; retired
+-- categories never appear here, at any lifetime count. This differs from the
+-- by-category stats line below, which keeps its own residue rule and still
+-- shows a retired category while old rows carry it. Items are reused across
+-- rebuilds, never destroyed.
 -- The legend always describes this character (never the account-scope
 -- aggregate), so a caller that already fetched char-scope stats for its own
 -- render can hand them over here instead of paying for the same walk twice;
@@ -1344,7 +1347,6 @@ function HistoryListMixin:RefreshLegend(stats)
   local legend = listPane and listPane.legend
   if not legend then return end
   stats = stats or Data.GetHistoryStats("char")
-  local byCategory = stats and stats.lifetime and stats.lifetime.byCategory or {}
   -- SFT-085: floodBadgeCount, not floodCount -- the swatch explains the grey
   -- stripe, and RenderRow stripes/badges Flood on ANY outcome (no blocked
   -- check there), so the swatch must show for a restored or pass-thru
@@ -1355,21 +1357,20 @@ function HistoryListMixin:RefreshLegend(stats)
   local lx = 4
   local index = 0
   for _, cat in ipairs(DISPLAY_CATEGORIES) do
-    local count = tonumber(byCategory[cat]) or 0
-    if count > 0 or not RETIRED_CATEGORY_SET[cat] then
+    if not RETIRED_CATEGORY_SET[cat] then
       index = index + 1
       local tipTitle, tipBody = HistoryPanel.LegendTipKeys(cat)
       lx = listPane:ShowLegendItem(legend, index, lx, CATEGORY_COLORS[cat] or "888",
         L[CATEGORY_BADGE_LABELS[cat] or cat], tipTitle, tipBody)
     end
   end
-  -- SFT-085: Flood is a reason, not a category (IGNORED_BREAKDOWN_KEYS) -- it
+  -- Flood is a reason, not a category (IGNORED_BREAKDOWN_KEYS) -- it
   -- has no CATEGORY_COLORS/PauseState entry and is deliberately not a filter
   -- chip -- but a flood-badge row still renders a grey stripe in the list
   -- (RenderRow falls back to "888" when DominantCategory returns nil), and
   -- that stripe needs a legend entry the same as every other stripe colour
-  -- does. Shown only while a flood-badge row is currently retained (not the
-  -- retired-category residue rule above -- Flood isn't a category at all).
+  -- does. Shown only while a flood-badge row is currently retained. Flood
+  -- isn't a category, so no retired-category skip applies to it here.
   if floodBadgeCount > 0 then
     index = index + 1
     local tipTitle, tipBody = HistoryPanel.LegendTipKeys("Flood")
@@ -1439,7 +1440,7 @@ function HistoryStatsMixin:RefreshStatsArea()
     -- categories are pure noise for every profile that never saw them.
     if count > 0 or not RETIRED_CATEGORY_SET[cat] then
       local hex = CATEGORY_COLORS[cat] or "888"
-      local hexFull = hex .. hex  -- 3-char hex doubled to 6 for color codes
+      local hexFull = (hex:gsub(".", "%0%0"))  -- 3-char hex expanded per digit to 6 for color codes
       local state = NS.PauseState and NS.PauseState.GetCategory and NS.PauseState.GetCategory(cat) or "active"
       local part
       local catLabel = CATEGORY_BADGE_LABELS[cat] or cat
@@ -2290,6 +2291,7 @@ end
 local CHIP_LABELS = {
   RMT        = "Gold selling",
   Boosting   = "Boosting",
+  Carrying   = "Carrying",
   -- Named for the settings section the player manages these in, not for the
   -- internal key the score breakdown uses.
   Custom     = "My Keywords",

@@ -4,12 +4,12 @@
 -- seen set changes only on Apply or Keep current settings. Dismissal writes
 -- nothing. With LIVE = false and dev mode off, no player ever sees this panel.
 --
--- Ships dark: RMT and Boosting already default to active for every player, so
--- showing this today would only ask them to confirm two categories nobody
--- needs to see yet. The framework ships now anyway, gated by Chooser.LIVE, so
--- it never reaches a live player until BSP-040 adds rows that actually need a
--- choice and that ticket flips LIVE = true. Until then the only way to see
--- the panel is /bdev chooser (dev mode) or Chooser.LIVE set true by a test.
+-- Ships dark: RMT, Boosting, and Carrying already default to active for every
+-- player, so showing this today would only ask them to confirm categories
+-- nobody needs to see yet. The framework ships now anyway, gated by
+-- Chooser.LIVE, so it never reaches a live player until a future row needs a
+-- real choice and flips LIVE = true. Until then the only way to see the
+-- panel is /bdev chooser (dev mode) or Chooser.LIVE set true by a test.
 local addonName, NS = ...
 local L = NS.L
 
@@ -30,7 +30,7 @@ local ROW_TOP = -88
 local LOGO = string.format("Interface\\AddOns\\%s\\Media\\SiftPortrait.tga", addonName)
 
 -- Ordered so the panel lists rows in a stable sequence. A future entry here
--- (e.g. BSP-040) also needs: its label added to Locales/enUS.lua AND to
+-- also needs: its label added to Locales/enUS.lua AND to
 -- INDIRECTLY_REACHED_STRINGS in run_locale_tests.lua (the label reaches L[]
 -- through row.label, not a literal call site); and SameSettings/CopyState
 -- extended for any new settings key it introduces (ChatScanner.lua).
@@ -55,6 +55,17 @@ local REGISTRY = {
     setState = function(state)
       NS.PauseState.SetCategory("Boosting", state)
       return NS.PauseState.GetCategory("Boosting") == state
+    end,
+  },
+  {
+    key = "Carrying",
+    label = "Carrying",
+    shippedState = "active",
+    defaultFor = function(_compat) return true end,
+    getState = function() return NS.PauseState.GetCategory("Carrying") end,
+    setState = function(state)
+      NS.PauseState.SetCategory("Carrying", state)
+      return NS.PauseState.GetCategory("Carrying") == state
     end,
   },
 }

@@ -42,7 +42,7 @@ Available on CurseForge (project 1549238). For a manual/dev install:
 
 ## How It Works
 
-Sift scores incoming messages against a private hand-curated pattern set across six categories (RMT, Boosting, Casino, Phishing, Commercial, Anti). Each message is cleansed through a 9-stage normalization pipeline (homoglyph swaps, zero-width strip, leet-to-letter, etc.) before scoring, so common evasion tricks don't bypass the filter. Messages over the block threshold are suppressed and logged to history; everything else passes through untouched.
+Sift scores incoming messages against a private hand-curated pattern set. Gold selling (RMT), Boosting, and Carrying each have their own Active, Paused, or Off setting, and My Keywords adds phrases you choose yourself. A few older casino, phishing, and commercial rules still run at fixed settings, with no setting of their own. Each message is cleansed through a 9-stage normalization pipeline (homoglyph swaps, zero-width strip, leet-to-letter, etc.) before scoring, so common evasion tricks don't bypass the filter. Messages over the block threshold are suppressed and logged to history; everything else passes through untouched.
 
 Trust short-circuits run before scoring. Party, raid, guild, friends, and Battle.net friends are never filtered. Senders on your personal allowlist are also never filtered.
 
