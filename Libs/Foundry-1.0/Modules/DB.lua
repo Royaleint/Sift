@@ -20,37 +20,51 @@ end
 -- winning copy, this is a redundant embedded copy — load nothing.
 if F:HasModule("DB") then return end
 
--- Graft-guard (FND-007 #1). The bootstrap gate above protects against a redundant
--- copy of THE SAME core, but not against this cross-version graft: TOC load order
--- is Foundry -> Commands -> Events -> Lifecycle -> DB -> List, so when a consumer
--- embeds a NEWER Foundry but an OLDER standalone already won _G.Foundry_1_0, this
--- newer DB.lua runs against the OLD winning core. That old core has no DB module,
--- so HasModule("DB") is false and we fall through -- about to graft a new DB onto a
--- core whose Lifecycle predates the post-logout seam DB:New consumes
--- (F.Lifecycle._RegisterPostLogout, ~line 795). Grafting would defer the failure to
--- a cryptic "_RegisterPostLogout (a nil value)" deep in :New, far from the cause.
+-- Graft-guard (FND-007 #1). The bootstrap gate above protects against a
+-- redundant copy of THE SAME core, but not this cross-version graft: TOC load
+-- order is Foundry -> Commands -> Events -> Lifecycle -> DB -> List, so a
+-- consumer embedding a NEWER Foundry when an OLDER standalone already won
+-- _G.Foundry_1_0 runs this newer DB.lua against the OLD core, which is missing
+-- one or both of the two seams this DB.lua needs from Lifecycle: the
+-- post-logout strip registration, and (added alongside the addon-loaded
+-- identity hold) the shared player-identity check. Grafting would defer the
+-- failure to a cryptic nil-value error deep in :New instead.
 --
--- So feature-detect the EXACT seam DB needs and stand down if it is absent. We
--- detect the function itself, not an API_VERSION number, so the check cannot drift
--- as versions bump and it tolerates a core that carries no Lifecycle at all. Standing
--- down (not registering) is deliberate: the consumer is broken either way against an
--- old core, but a clear load-time error plus an absent F.DB (a clean RequireModule
--- "not present") beats a cryptic deep crash mid-session. This guard is provably inert
--- on the normal load: Lifecycle always loads before DB, so the winning copy's seam
--- always exists and we never reach the stand-down.
+-- Feature-detect the exact seams DB needs (the functions themselves, not an
+-- API_VERSION number, so the check can't drift and tolerates a core with no
+-- Lifecycle at all) and stand down if either is absent: a clear load-time
+-- error plus an absent F.DB beats a cryptic deep crash mid-session. Provably
+-- inert on the
+-- normal load, since Lifecycle always loads before DB.
 if type(F.Lifecycle) ~= "table"
-    or type(F.Lifecycle._RegisterPostLogout) ~= "function" then
+    or type(F.Lifecycle._RegisterPostLogout) ~= "function"
+    or type(F.Lifecycle._PlayerIdentity) ~= "function" then
     F:RaiseDevError("DB requires Lifecycle's post-logout seam "
-        .. "(F.Lifecycle._RegisterPostLogout), which the Foundry core serving this "
-        .. "session does not provide. This embedded Foundry is " .. tostring(F.VERSION)
-        .. " (API_VERSION " .. tostring(F.API_VERSION) .. "), but an older standalone "
-        .. "Foundry addon won the runtime and is serving everyone. Update the standalone "
-        .. "Foundry addon to at least this version. DB is unavailable this session.")
+        .. "(F.Lifecycle._RegisterPostLogout) and its player-identity check "
+        .. "(F.Lifecycle._PlayerIdentity), which the Foundry core serving this "
+        .. "session does not provide. The Foundry core serving this session reports "
+        .. "version " .. tostring(F.VERSION) .. " (API_VERSION " .. tostring(F.API_VERSION)
+        .. "), from " .. tostring(F.SOURCE) .. ". This has two possible causes: either "
+        .. "an older standalone Foundry addon won the runtime and is serving everyone "
+        .. "(update that addon to a newer version), or Foundry's files loaded in the "
+        .. "wrong order and Lifecycle has not run yet (load through Foundry-1.0.xml, "
+        .. "or list Lifecycle ahead of DB by hand). DB is unavailable this session.")
+    return
+end
+if type(F.Events) ~= "table" or type(F.Events.New) ~= "function" then
+    F:RaiseDevError("DB requires Foundry.Events, which the Foundry core serving this "
+        .. "session does not provide. The Foundry core serving this session reports "
+        .. "version " .. tostring(F.VERSION) .. ", from " .. tostring(F.SOURCE)
+        .. ". This has two possible causes: either an older standalone Foundry addon "
+        .. "won the runtime and is serving everyone (update that addon to a newer "
+        .. "version), or Foundry's files loaded in the wrong order and Events has "
+        .. "not run yet (load through Foundry-1.0.xml, or list Events ahead of DB "
+        .. "by hand). DB is unavailable this session.")
     return
 end
 
 local DB = {}
-DB.API_VERSION = 1
+DB.API_VERSION = 2
 
 --------------------------------------------------------------------------------
 -- Shared private state (one set of upvalues per loaded library, lazy)
@@ -60,29 +74,37 @@ DB.API_VERSION = 1
 -- rejection. A Destroyed controller releases its slot so a later :New may reuse it.
 local liveControllers = {}
 
--- Controller -> store association, held OFF the controller in a file-local side
--- table (Defect 2). The store must NOT live at a present controller field such as
--- `c._store`: Lua 5.1 __newindex fires only on ABSENT keys, so a present `_store`
--- lets `db._store = x` raw-overwrite the live store pointer and the underscore
--- write-guard never fires. Keyed off the side table, the controller carries ZERO
--- present fields, so __index/__newindex see EVERY access and the guards stay
--- enforceable for the controller's whole life. GC is a non-issue: every store is
--- already retained for the session in the file-local `stores` registry (it backs
--- the logout strip and never leaves it), so the controller key here is reachable
--- exactly as long as the session lives -- a weak table would buy nothing and a
--- plain table introduces no new leak.
+-- Live controllers by owning addon name, in DB construction order. One addon
+-- may own more than one SavedVariables global, while the client warning names
+-- only the addon; notify every live DB that belongs to that addon.
+local liveControllersByAddon = {}
+
+-- Controller -> store association, held OFF the controller in a file-local
+-- side table (Defect 2). The store must NOT live at a present controller
+-- field like `c._store`: Lua 5.1 __newindex fires only on ABSENT keys, so a
+-- present `_store` lets `db._store = x` raw-overwrite the live store pointer
+-- and the underscore write-guard never fires. Keyed off the side table, the
+-- controller carries ZERO present fields, so __index/__newindex see EVERY
+-- access and the guards stay enforceable for its whole life. GC is a
+-- non-issue: every store is already retained for the session in `stores`
+-- (it backs the logout strip), so a weak table would buy nothing here.
 local controllerStore = {}
 
 -- EVERY store constructed this session, in construction order. A "store" is a
 -- plain record capturing the sv name, the resolved sv table, the defaults table,
 -- and the per-section materialization flags -- everything the logout strip needs,
 -- independent of whether a live controller still exists. Live, Destroyed, and
--- §8.2 step-6 refused stores all land here, so the strip runs for all of them.
+-- §8.2 step-6 refused stores all land here; at logout the newest store per sv
+-- table strips (FND-030; see onLogout for the rule and its rationale).
 local stores = {}
 
 -- One-time guard: DB registers its single strip callback with Lifecycle's
 -- post-logout seam exactly once, at the first :New.
 local postLogoutRegistered = false
+
+-- DB owns one library-scoped listener for the client warning. It is created on
+-- the first DB so there is no frame at all for consumers that do not use DB.
+local sizeWarningEvents = nil
 
 -- The three managed section names and the SV sub-tables they live under. char
 -- and profile are keyed maps; global is flat (no key layer).
@@ -114,23 +136,73 @@ local DENY_LIST = {
 -- fields. Writes to any of these fail through __newindex.
 local RESERVED = {
     profile = true, char = true, global = true, sv = true,
-    OnReady = true, GetNativeHandles = true, Destroy = true,
+    OnReady = true, OnSavedVariablesTooLarge = true, GetNativeHandles = true, Destroy = true,
 }
 
 local REFERENCE_TAIL = "; see the DB Reference page"
 
--- Direct both-builds refusal (locked decision D3, Charter §3.4.1 clarification).
--- For every condition with NO checked-return refusal path -- the :New validation
--- refusals, the §5 unsupported-surface deny-list, destroyed-controller SECTION
--- reads, and the consumer-migrate-raised surfacing -- the raise IS the release
--- refusal: the same clear, named error fires identically in dev and release.
--- F:RaiseDevError (dev raise / release print+nil) is reserved for the one class
--- whose release contract is print+return nil: destroyed-controller METHOD calls
--- (§7 row 6). Level 3 points the error at the consumer's call site: level 1 is
--- refuse itself, level 2 is the calling :New body / __index / __newindex
--- metamethod, level 3 is the consumer line that triggered it.
+-- Direct both-builds refusal (locked decision D3, Charter §3.4.1). For every
+-- condition with NO checked-return refusal path -- :New validation, the §5
+-- deny-list, destroyed-controller SECTION reads, and migrate-raised surfacing
+-- -- the raise IS the release refusal: the same named error fires identically
+-- in dev and release. F:RaiseDevError (dev raise / release print+nil) is
+-- reserved for the one class whose release contract is print+return nil:
+-- destroyed-controller METHOD calls (§7 row 6). Level 3 points at the
+-- consumer's call site (1 = refuse itself, 2 = the calling :New/__index/
+-- __newindex, 3 = the consumer line that triggered it).
 local function refuse(msg)
     error("Foundry-1.0: " .. tostring(msg), 3)
+end
+
+local function onSavedVariablesTooLarge(_, addonName)
+    local controllers = liveControllersByAddon[addonName]
+    if not controllers then return end
+    local svNames, callbackFailed, callbackErr = {}, false, nil
+    -- Snapshot recipients and their handlers before invoking consumer code. A
+    -- callback may Destroy() a DB or register another handler; the snapshot
+    -- preserves the complete dispatch set at signal entry. Destroy affects a
+    -- later client warning, not the callbacks already captured for this one.
+    local snapshot = {}
+    for i = 1, #controllers do
+        local controller = controllers[i]
+        local store = controllerStore[controller]
+        local handlers = {}
+        if store and not store.destroyed then
+            for j = 1, #store.sizeWarningHandlers do
+                handlers[j] = store.sizeWarningHandlers[j]
+            end
+            svNames[#svNames + 1] = store.svName
+        end
+        snapshot[i] = { controller = controller, store = store, handlers = handlers }
+    end
+    for i = 1, #snapshot do
+        local recipient = snapshot[i]
+        local controller, store = recipient.controller, recipient.store
+        if store then
+            for j = 1, #recipient.handlers do
+                local handler = recipient.handlers[j]
+                local ok, err = pcall(handler, controller, addonName, store.svName)
+                if not ok then
+                    if not callbackFailed then callbackErr = err end
+                    callbackFailed = true
+                end
+            end
+        end
+    end
+    if #svNames > 0 then
+        local message = "DB: addon '" .. addonName .. "' SavedVariables globals '"
+            .. table.concat(svNames, "', '") .. "' were too large for the client to save"
+        if callbackFailed then
+            message = message .. "; a size-warning callback errored: " .. tostring(callbackErr)
+        end
+        F:RaiseDevError(message)
+    end
+end
+
+local function registerSizeWarning()
+    if sizeWarningEvents then return end
+    sizeWarningEvents = F.Events:New("Foundry.DB")
+    sizeWarningEvents:Register("SAVED_VARIABLES_TOO_LARGE", onSavedVariablesTooLarge)
 end
 
 --------------------------------------------------------------------------------
@@ -224,9 +296,10 @@ end
 -- The logout strip (rides Lifecycle's post-logout seam)
 --------------------------------------------------------------------------------
 
--- Strip one store. Idempotent over concrete defaults, so a Destroyed-then-
--- re-:New'd store double-stripping is safe. Reads only the captured refs, never
--- a controller, so it runs for live, Destroyed, and refused stores alike.
+-- Strip one store. Idempotent over concrete defaults, so a repeated
+-- post-logout seam re-stripping the newest store is safe. Reads only the
+-- captured refs, never a controller, so it runs for live, Destroyed, and
+-- refused stores alike (newest-per-sv selection happens in onLogout).
 local function stripStore(store)
     local sv = store.sv
     if type(sv) ~= "table" then return end
@@ -292,9 +365,28 @@ end
 -- another's; surface once after the loop, gated on the RAISED flag (never the
 -- error VALUE's truthiness -- the §3.4.1 falsy-error rule). A store registering
 -- a new store mid-strip (via re-:New) is intentionally not in this snapshot.
+--
+-- Newest-store-per-sv rule (FND-030): only the LAST-constructed store for
+-- each sv TABLE strips. A Destroyed store whose sv was re-:New'd with
+-- CHANGED defaults must not strip: its stale defaults could delete a stored
+-- value the user deliberately set that happens to equal an OLD default --
+-- silent save-data deletion, the failure this module rules out. The newer
+-- store's defaults are authoritative for that sv; the trade (spec §2.2
+-- re-decided) is that a stale old-default value the user never touched now
+-- freezes as ordinary data instead of being stripped -- wrong-but-safe, and
+-- indistinguishable from a deliberate choice. The same exclusion applies with
+-- IDENTICAL defaults when only materialization differs (the frozen section
+-- strips on a later logout that materializes it there too). A Destroyed
+-- store with NO successor still strips as before (skipping it would freeze
+-- its own materialized defaults -- the phantom-deviation trap).
 local function onLogout()
+    local newest = {}
+    for i = 1, #stores do newest[stores[i].sv] = stores[i] end
     local snapshot, n = {}, 0
-    for i = 1, #stores do n = n + 1; snapshot[n] = stores[i] end
+    for i = 1, #stores do
+        local s = stores[i]
+        if newest[s.sv] == s then n = n + 1; snapshot[n] = s end
+    end
     local raised, firstErr = false, nil
     for i = 1, n do
         local ok, err = pcall(stripStore, snapshot[i])
@@ -349,12 +441,18 @@ local function materialize(store, section)
         sectionDefaults = defaults and defaults.char
     end
 
+    -- Flag and cache BEFORE applying defaults (FND-035): applyDefaults can
+    -- raise mid-walk via onMismatch (dev builds), and an unflagged section
+    -- whose defaults were already partially written would be skipped by the
+    -- logout strip -- freezing fresh defaults onto disk as phantom user data,
+    -- the exact trap the strip exists to prevent.
+    cache[section] = tbl
+    store.materialized[section] = true
+
     if type(sectionDefaults) == "table" then
         applyDefaults(tbl, sectionDefaults, store.onMismatch, section .. ".")
     end
 
-    cache[section] = tbl
-    store.materialized[section] = true
     return tbl
 end
 
@@ -392,6 +490,25 @@ function Controller.OnReady(self, handler)
     handler(self)
 end
 
+-- Register a handler for the client's end-of-session SavedVariables size
+-- warning. Unlike OnReady, this is event-driven: it runs only when the client
+-- reports that this DB's owning addon could not be saved.
+function Controller.OnSavedVariablesTooLarge(self, handler)
+    local store = controllerStore[self]
+    if store == nil then
+        refuse("DB:OnSavedVariablesTooLarge called on a non-controller value")
+    end
+    if store.destroyed then
+        F:RaiseDevError("DB:OnSavedVariablesTooLarge called on a destroyed controller")
+        return
+    end
+    if type(handler) ~= "function" then
+        F:RaiseDevError("DB:OnSavedVariablesTooLarge: handler must be a function")
+        return
+    end
+    store.sizeWarningHandlers[#store.sizeWarningHandlers + 1] = handler
+end
+
 function Controller.GetNativeHandles(self)
     local store = controllerStore[self]
     -- Non-controller value: see Controller.OnReady.
@@ -425,16 +542,29 @@ function Controller.Destroy(self)
         F:RaiseDevError("DB:Destroy called on a destroyed controller")
         return
     end
-    -- Release the controller surface and free the sv slot for a later :New. Never
-    -- deletes or mutates saved data; the consumer's section references stay valid
-    -- as fully-merged plain tables. The store's END-OF-SESSION strip duty SURVIVES
-    -- this -- the store stays in `stores` and the logout strip still runs over it
-    -- via the captured refs (skipping it would freeze stale materialized defaults
-    -- onto disk: the phantom-deviation trap, spec §2.2).
+    -- Release the controller surface and free the sv slot for a later :New.
+    -- Never deletes or mutates saved data; the consumer's section references
+    -- stay valid as fully-merged plain tables. The store's end-of-session
+    -- strip duty SURVIVES this -- it stays in `stores` and still strips at
+    -- logout -- UNLESS a later :New covers the same sv, in which case the
+    -- newest store strips instead (FND-030; see onLogout).
     store.destroyed = true
     if liveControllers[store.svName] == self then
         liveControllers[store.svName] = nil
     end
+    local byAddon = liveControllersByAddon[store.addonName]
+    if byAddon then
+        for i = #byAddon, 1, -1 do
+            if byAddon[i] == self then
+                table.remove(byAddon, i)
+                break
+            end
+        end
+        if #byAddon == 0 then
+            liveControllersByAddon[store.addonName] = nil
+        end
+    end
+    store.sizeWarningHandlers = {}
 end
 
 -- The controller metatable. __index: section names -> materialized section;
@@ -522,22 +652,80 @@ local function validateDefaults(defaults)
     return nil
 end
 
--- Resolve the running character's identity. Returns (charKey, errMessage): a nil
--- charKey with a message means the identity gate refused (computed lazily, never
--- at file load). nil / "" / "Unknown" all refuse before any mutation, so a junk
--- key ("nil - Realm", "Name - ", "Unknown - Realm") is never computed.
+-- Resolve the running character's identity. Returns (charKey, legacyKey,
+-- firstName), or (nil, errMessage) on the identity gate's own refusal --
+-- computed lazily, never at file load; on failure the second return holds
+-- the error message. Shares its check with Foundry.Lifecycle's addon-loaded
+-- identity hold (F.Lifecycle._PlayerIdentity), so "what counts as resolved"
+-- has one definition: nil / "" / the literal "Unknown" / the client's own
+-- localized placeholder for an unresolved unit name, or an unsettled
+-- regional surname, all refuse before any mutation, so a junk key is never
+-- computed. On a client with region-wide unique names, charKey is the full
+-- name and legacyKey is the "First - Realm" key that character used before
+-- this build, present only when a string surname resolved; every other
+-- client's charKey IS its legacyKey ("Name - Realm"), so legacyKey is nil
+-- there.
+--
+-- A cheap defense: a core new enough to have _PlayerIdentity but too old to
+-- return the full-name key (return 3) refuses here rather than building a
+-- junk key from a non-string value.
 local function resolveCharKey()
-    local name = UnitName("player")
-    local realm = GetRealmName()
-    if type(name) ~= "string" or name == "" or name == "Unknown" then
-        return nil, "DB:New: player identity is not available yet (UnitName "
-            .. "returned '" .. tostring(name) .. "'); construction refused"
+    local name, realmOrMsg, keyOrReason, legacyKey = F.Lifecycle._PlayerIdentity()
+    if not name then
+        return nil, "DB:New: " .. realmOrMsg .. "; construction refused"
     end
-    if type(realm) ~= "string" or realm == "" or realm == "Unknown" then
-        return nil, "DB:New: realm identity is not available yet (GetRealmName "
-            .. "returned '" .. tostring(realm) .. "'); construction refused"
+    if type(keyOrReason) ~= "string" then
+        return nil, "DB:New: the Foundry core serving this session predates the "
+            .. "full-name character key; construction refused"
     end
-    return name .. " - " .. realm, nil
+    return keyOrReason, legacyKey, name
+end
+
+-- Read-only pre-mutation check: may this construction move data saved under
+-- `legacyKey` onto the new `charKey`? Called after the
+-- step-8 malformed checks and before step 9's profile resolution. Never
+-- writes and never raises -- an ineligible move is skipped, not refused.
+-- `first` is the character's first name alone (resolveCharKey's third
+-- return), used only for the claimant scan below.
+local function planLegacyMove(existing, charKey, legacyKey, first)
+    if legacyKey == nil then return false end          -- no legacy key to move
+    if type(existing) ~= "table" then return false end  -- fresh SV: nothing to move
+
+    local pk = type(existing.profileKeys) == "table" and existing.profileKeys or nil
+    local ch = type(existing.char) == "table" and existing.char or nil
+
+    local legacyProfileKey = pk and pk[legacyKey] or nil
+    if legacyProfileKey == nil and not (ch and type(ch[legacyKey]) == "table") then
+        return false   -- neither section holds the legacy key
+    end
+    if legacyProfileKey ~= nil and type(legacyProfileKey) ~= "string" then
+        return false   -- malformed profileKeys[legacyKey]: skip the move, never refuse
+    end
+
+    if (pk and pk[charKey] ~= nil) or (ch and ch[charKey] ~= nil) then
+        return false   -- charKey must be absent from both sections
+    end
+
+    -- No other claimant in either section: a string key k claims first's
+    -- data when k ~= charKey, k contains no " - " (legacy-shaped keys never
+    -- count), and k == first or k starts with "first ". A bare "first" counts,
+    -- accepted as an exception to the invariant that this move is always
+    -- unambiguous; a "" surname's key "first " counts for every other
+    -- same-first-name character.
+    local prefix = first .. " "
+    local function hasClaimant(section)
+        if not section then return false end
+        for k in pairs(section) do
+            if type(k) == "string" and k ~= charKey and not k:find(" - ", 1, true)
+                and (k == first or k:sub(1, #prefix) == prefix) then
+                return true
+            end
+        end
+        return false
+    end
+    if hasClaimant(pk) or hasClaimant(ch) then return false end
+
+    return true
 end
 
 -- Read the raw stored schema stamp (pre-defaults, the single read the seam ever
@@ -680,11 +868,15 @@ function DB:New(config)
             .. "available. Construct DB inside the addon-loaded window")
     end
 
-    -- 7. Identity gate (nil / "" / "Unknown" all refuse before any mutation).
-    local charKey, identityErr = resolveCharKey()
+    -- 7. Identity gate, shared with Lifecycle's addon-loaded hold (nil / "" /
+    -- "Unknown" / the client's localized placeholder / an unsettled regional
+    -- surname all refuse before any mutation). On failure, the second return
+    -- holds the refusal message instead (resolveCharKey's dual-purpose slot).
+    local charKey, legacyKeyOrErr, first = resolveCharKey()
     if not charKey then
-        refuse(identityErr)
+        refuse(legacyKeyOrErr)
     end
+    local legacyKey = legacyKeyOrErr
 
     -- 8. Read the existing SV global (RAW -- may be nil for a fresh save). The
     -- downgrade check below reads the stamp RAW, pre-defaults. Malformed
@@ -737,12 +929,20 @@ function DB:New(config)
         end
     end
 
+    -- Read-only: may this construction move data from the pre-full-name-key
+    -- legacy key onto the new full-name key? Decided before any mutation;
+    -- step 9 and the apply below both consume the answer.
+    local movePlanned = planLegacyMove(existing, charKey, legacyKey, first)
+
     -- 9. profileKey resolution (raw, pre-mutation): saved profileKeys[charKey]
     -- first, else "Default" (the normalized defaultProfile = true). Saved keys
-    -- remain arbitrary strings and resolve exactly as AceDB resolved them.
+    -- remain arbitrary strings and resolve exactly as AceDB resolved them. A
+    -- planned move resolves from profileKeys[legacyKey] instead: planLegacyMove's
+    -- charKey-absent check already guarantees profileKeys[charKey] is absent.
     local profileKey = "Default"
     if not freshSV and type(existing.profileKeys) == "table" then
-        local saved = existing.profileKeys[charKey]
+        local lookupKey = movePlanned and legacyKey or charKey
+        local saved = existing.profileKeys[lookupKey]
         if type(saved) == "string" and saved ~= "" then
             profileKey = saved
         end
@@ -772,6 +972,19 @@ function DB:New(config)
     end
     local sv = _G[config.sv]
 
+    -- The one-time legacy-key move: the first mutation after VALIDATION
+    -- COMPLETE, strictly before the profileKeys write-back below, so that
+    -- write-back is the only profileKeys entry this character gets.
+    if movePlanned then
+        if type(sv.char) == "table" and sv.char[legacyKey] ~= nil then
+            sv.char[charKey] = sv.char[legacyKey]
+            sv.char[legacyKey] = nil
+        end
+        if type(sv.profileKeys) == "table" then
+            sv.profileKeys[legacyKey] = nil
+        end
+    end
+
     -- profileKeys write-back: record the resolved mapping. Constructing a db is
     -- never read-only; both consumers' files carry profileKeys.
     if type(sv.profileKeys) ~= "table" then sv.profileKeys = {} end
@@ -779,13 +992,15 @@ function DB:New(config)
 
     -- Build the store record (the strip's view of this db, controller-independent).
     local store = {
+        addonName = config.name,
         svName = config.sv,
         sv = sv,
         defaults = config.defaults,
         charKey = charKey,
         profileKey = profileKey,
         sections = {},        -- section name -> live table (the cache)
-        materialized = {},    -- section name -> true once read
+        materialized = {},    -- section name -> true once a read begins (strip-owned; FND-035)
+        sizeWarningHandlers = {},
         destroyed = false,
     }
     -- A loud dev diagnostic for each value-level type mismatch (D2 preserve-skip).
@@ -818,20 +1033,16 @@ function DB:New(config)
             materialize(store, section)  -- ensure the rooted section is live
             writeStamp(sv, schemaPath, schema.version)
         elseif not (type(storedVersion) == "number" and storedVersion == schema.version) then
-            -- Stored < declared, or nothing / a non-number: call migrate. (Stored
-            -- == declared is a no-op, handled by skipping this branch entirely.)
-            -- The consumer's nil path must be an idempotent repair: storedVersion
-            -- is nil for a populated-but-unversioned save.
+            -- Stored < declared, or nothing / a non-number: call migrate (stored
+            -- == declared is a no-op, handled by skipping this branch). The
+            -- consumer's nil path must be an idempotent repair: storedVersion is
+            -- nil for a populated-but-unversioned save.
             --
-            -- A PRESENT-but-non-number stamp fires a loud dev diagnostic BEFORE
-            -- proceeding. Such a value bypasses §8.3's
-            -- downgrade check by type (the check only fires for a numeric stamp),
-            -- so the otherwise-silent overwrite path gets dev visibility. Dev
-            -- build: RaiseDevError raises, the author sees the corrupt stamp
-            -- immediately. Release build: it prints and the existing nil-path
-            -- migrate/repair proceeds unchanged (storedVersion is non-number, so
-            -- mv is nil below either way). This matches the D2 onMismatch transport
-            -- precedent already in this file.
+            -- A PRESENT-but-non-number stamp bypasses §8.3's downgrade check (it
+            -- only fires for a numeric stamp), so fire a loud dev diagnostic
+            -- before proceeding: dev raises immediately; release prints and the
+            -- nil-path migrate/repair proceeds unchanged (mv is nil either way;
+            -- D2 onMismatch transport precedent).
             if storedVersion ~= nil and type(storedVersion) ~= "number" then
                 F:RaiseDevError("DB:New: schema stamp at '" .. schema.key
                     .. "' is present but not a number (got a " .. type(storedVersion)
@@ -844,7 +1055,8 @@ function DB:New(config)
                 -- A raised error (gated on the RAISED flag, never value
                 -- truthiness) refuses construction -- a half-migrated store is
                 -- never handed out. The store stays in `stores` so its
-                -- (possibly partially-written) SV is still stripped at logout.
+                -- (possibly partially-written) SV is still stripped at logout
+                -- (by this store or a successor's, per the newest-per-sv rule).
                 store.destroyed = true
                 liveControllers[config.sv] = nil
                 refuse("DB:New: schema.migrate raised; construction "
@@ -857,6 +1069,14 @@ function DB:New(config)
             writeStamp(sv, schemaPath, schema.version)
         end
     end
+
+    local byAddon = liveControllersByAddon[config.name]
+    if not byAddon then
+        byAddon = {}
+        liveControllersByAddon[config.name] = byAddon
+    end
+    byAddon[#byAddon + 1] = c
+    registerSizeWarning()
 
     return c
 end
