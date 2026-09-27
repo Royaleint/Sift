@@ -115,6 +115,41 @@ function Controller:GetNativeHandles()
 end
 
 --------------------------------------------------------------------------------
+-- Extending Blizzard-owned tagged menus (Menu.ModifyMenu)
+--------------------------------------------------------------------------------
+
+-- The API above wraps menus the consumer owns: CreateContextMenu and
+-- SetupDropdown both build content the consumer defines from scratch.
+-- Extending a menu Blizzard owns (a world map filter dropdown, a unit frame
+-- right-click menu, and so on) is a different shape, and Foundry.Menu has no
+-- wrapper for it. The raw global Menu.ModifyMenu(tag, callback) is the
+-- Blizzard-supported consumer path for that case, not a workaround;
+-- GetNativeHandles() above hands back the raw Menu table for exactly this
+-- purpose. Two disciplines govern it, both load-bearing in Blizzard's own
+-- implementation:
+--
+--   1. Register once per tag. Calling Menu.ModifyMenu(tag, callback) again
+--      for a tag that already has a registration adds a second, independent
+--      callback; it does not replace the first. If that tag's menu was
+--      already built this session, a duplicate registration also adds its
+--      section to the existing menu immediately, appended after the
+--      earlier registration's section. Gate registration behind the
+--      consumer's own idempotent init path.
+--   2. Build from live state inside the callback. Blizzard fires the
+--      registered callback every time it builds the tagged menu's
+--      description (every open, plus some dropdown refreshes), and once
+--      more immediately at registration time if that tag was already built
+--      this session. The callback closure must read current data when it
+--      runs; a value captured back when Menu.ModifyMenu was called goes
+--      stale the moment the underlying state changes.
+--
+-- Menu tags are addon-facing string identifiers. Blizzard documents one
+-- naming convention (UnitPopup tags follow MENU_UNIT_<UNIT_TYPE>) in
+-- Blizzard_Menu's implementation guide; for any other tag, EventTrace shows
+-- a "Menu.OpenMenuTag" event when the tagged menu opens, and
+-- Menu.PrintOpenMenuTags() lists every tag currently open.
+
+--------------------------------------------------------------------------------
 -- Factory
 --------------------------------------------------------------------------------
 
@@ -129,20 +164,17 @@ end
 --                         "F.Menu.anon.N" (N = module-level counter, never reused).
 --                         Two live controllers with the same name are refused.
 function Menu:New(config)
-    -- 1. config is a table.
     if type(config) ~= "table" then
         F:RaiseDevError("Menu:New: config must be a table")
         return
     end
 
-    -- 2. config.builder is a function.
     local builder = config.builder
     if type(builder) ~= "function" then
         F:RaiseDevError("Menu:New: config.builder must be a function")
         return
     end
 
-    -- 3. Resolve name (duplicate-refusal key); validate if explicitly supplied.
     local name = config.name
     if name ~= nil then
         if type(name) ~= "string" or name == "" then
@@ -154,15 +186,14 @@ function Menu:New(config)
         name = "F.Menu.anon." .. anonCounter
     end
 
-    -- 4. Duplicate-key check.
     if liveKeys[name] then
         F:RaiseDevError("Menu:New: a live controller already owns the name '"
             .. name .. "'; :Destroy() it before re-registering")
         return
     end
 
-    -- 5. Feature-detect MenuUtil (runs last per house style: a consumer with a
-    --    typo in builder sees the builder error, not a misleading "MenuUtil absent").
+    -- Feature-detect MenuUtil last (house style): a consumer with a typo in
+    -- builder sees the builder error, not a misleading "MenuUtil absent".
     if not hasMenuUtil() then
         F:RaiseDevError("Menu:New: MenuUtil is not available on this client; "
             .. "Foundry.Menu requires Blizzard_Menu (Retail 11.0+, Classic Era 1.15.x, "
@@ -170,25 +201,22 @@ function Menu:New(config)
         return
     end
 
-    -- 6. Build controller c. The generatorWrapper closure captures c by upvalue so
-    --    :Destroy() (which sets c._destroyed) silences all future deliveries without
-    --    any public unregister call — identical to Tooltip's in-place disable pattern.
+    -- generatorWrapper captures c by upvalue so :Destroy() (which sets
+    -- c._destroyed) silences all future deliveries with no unregister call --
+    -- identical to Tooltip's in-place disable pattern.
     local c = setmetatable({}, Controller)
     c._name      = name
     c._builder   = builder
     c._destroyed = false
 
-    -- 7. Build generatorWrapper closure capturing c.
     local function generatorWrapper(owner, rootDescription, ...)
         if c._destroyed then return end
         c._builder(owner, rootDescription, ...)
     end
     c._generatorWrapper = generatorWrapper
 
-    -- 8. Register the key in the live-key registry.
     liveKeys[name] = true
 
-    -- 9. Return the controller.
     return c
 end
 
