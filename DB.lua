@@ -33,9 +33,11 @@ end
 local SV_NAME, SV_LEGACY_NAME = DB.DeriveSVNames(ADDON_NAME)
 local SV_NAME_ERROR = (not SV_NAME) and SV_LEGACY_NAME or nil
 
--- Bump only with a matching migrations[N]: ApplyMigrations stamps the version
--- even when that entry is missing.
-local CURRENT_SCHEMA_VERSION = 4
+-- Bump only with a matching migrations[N]: a missing entry still stamps N.
+-- A migration that returns false stops the loop before stamping and retries
+-- at the next login; a permanently deferred migration would block every
+-- later one, which is unreachable in the shipped load order.
+local CURRENT_SCHEMA_VERSION = 5
 local ADDON_VERSION = "1.4.0"
 local BLOCKED_ACTOR_CAP = 5000
 
@@ -195,6 +197,38 @@ migrations[4] = function(db)
   local categories = settings.enabledCategories
   if type(categories) == "table" and categories.Boosting then
     categories.Carrying = categories.Boosting
+  end
+end
+
+-- The repeat-collapse fix changes what a phrase containing certain
+-- multi-byte characters (mostly CJK) cleanses to. A phrase saved before the
+-- fix can hold the old, damaged form and stop matching, so every non-ASCII
+-- saved phrase is rebuilt from its raw spelling once. Returns false to defer
+-- the whole migration (see ApplyMigrations below) only when Cleanse itself
+-- is missing and a stored rule needs it; UserRules missing entirely still
+-- stamps schema 5, since there is nothing to migrate.
+migrations[5] = function(db)
+  local UserRules = NS.UserRules
+  if not (UserRules and UserRules.RecleanseStore) then return end
+  local L = NS.L
+  local lists = {
+    { db.global.customBlocks, L["My Keywords"] },
+    { db.global.allowKeywords, L["Never Block"] },
+  }
+  local results = {}
+  for index, list in ipairs(lists) do
+    local changed, merged, kept = UserRules.RecleanseStore(list[1])
+    if changed == false then return false end
+    results[index] = { merged, kept }
+  end
+  for index, list in ipairs(lists) do
+    local merged, kept = results[index][1], results[index][2]
+    if merged > 0 then
+      Print(L["%d of your %s phrases matched another phrase already in the list, so we combined the duplicates. What gets filtered has not changed."]:format(merged, list[2]))
+    end
+    if kept > 0 then
+      DevLog("Kept " .. kept .. " keyword rule(s) unchanged: the phrase normalizes to nothing.")
+    end
   end
 end
 
@@ -361,8 +395,9 @@ local function ApplyMigrations(db)
 
   for nextVersion = version + 1, CURRENT_SCHEMA_VERSION do
     local migration = migrations[nextVersion]
-    if migration then
-      migration(db)
+    if migration and migration(db) == false then
+      DevLog("Migration " .. nextVersion .. " deferred; will retry next login.")
+      return
     end
     db.global.schemaVersion = nextVersion
   end
