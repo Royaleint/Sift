@@ -1,7 +1,8 @@
 -- Sift/BubbleSuppressor.lua
 -- Hides the chat bubble of a blocked say/yell line by turning the chatBubbles
 -- CVar off until the next chat line, NPC say/yell, or logout.
--- chatBubbles is a saved CVar; every Engage must be undone by MaybeRestore (next line, logout) or bubbles stay off.
+-- chatBubbles is a saved CVar: every Engage must be undone by MaybeRestore, or
+-- bubbles stay off.
 
 local _, NS = ...
 local BubbleSuppressor = {}
