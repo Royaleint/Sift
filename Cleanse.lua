@@ -422,7 +422,8 @@ function Cleanse._FusedFrontPass(text)
   end
   if wordHasLatin and wordHasOther then mixed = true end
 
-  -- latinCount > 0 is load-bearing: a digits-only run (a quoted price) is not an island.
+  -- latinCount > 0 is load-bearing: a digits-only run (a quoted price) is not an
+  -- island.
   local scriptIsland = cjkCount >= ISLAND_MIN_CJK
     and cjkCount > latinCount
     and latinCount > 0
@@ -431,7 +432,8 @@ function Cleanse._FusedFrontPass(text)
   return table.concat(out), mixed, hasTokenSeparator, scriptIsland
 end
 
--- Output is saved: keyword rules store it and are never re-cleansed, so a change to it needs a migration.
+-- Output is saved: keyword rules store it and are never re-cleansed, so a
+-- change to it needs a migration.
 function Cleanse.Analyze(text)
   if type(text) ~= "string" then
     return {
