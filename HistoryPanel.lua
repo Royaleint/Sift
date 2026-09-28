@@ -90,10 +90,13 @@ local LAYOUT = {
   CHIP_MIN_WIDTH = 38,
   CHIP_HEIGHT    = 22,
   CHIPS_TOP      = 28,
-  -- Gaps below the chip band and the dropdown row (SFT-147), each matching
-  -- what the two fixed offsets they replace already sat apart by.
+  -- Vertical gaps: chip band to dropdown row, dropdown row to list/detail.
   CHIP_BAND_GAP  = 6,
   LIST_TOP_GAP   = 6,
+  -- The sender filter chip sits 14px below the list's own top edge, slightly
+  -- over the column header, so it reads as a banner over the list rather
+  -- than a separate reserved row.
+  SENDER_CHIP_LIST_OFFSET = 14,
 }
 
 local CATEGORY_COLORS = {
@@ -2310,14 +2313,10 @@ function HistoryFilterChipsMixin.PlaceCategoryChips(strip)
   -- dividing the strip width among the chips. Width-division was invisible
   -- with six categories but made the two post-SFT-080 chips enormous
   -- (Gate 2 finding, 2026-07-28). LAYOUT.CHIP_MIN_WIDTH stays as the floor so a
-  -- short label still reads as a button.
-  --
-  -- SFT-147: wrap to a new row instead of overflowing the band once the next
-  -- chip would cross the strip's actual width -- translated category names
-  -- can run well past what the four English labels need. GetWidth() is 0
-  -- before the strip's anchor chain resolves once (never on a live panel,
-  -- but true of a bare mock in a test harness); skip wrapping rather than
-  -- collapse every chip onto the first pixel in that case.
+  -- short label still reads as a button. Wraps to a new row instead of
+  -- overflowing once the next chip would cross the strip's actual width.
+  -- A zero width means the anchor chain hasn't resolved yet; skip wrapping
+  -- rather than collapse every chip onto the first pixel.
   local availableWidth = strip:GetWidth()
   local x, y, rows = 0, 0, 1
   for _, cat in ipairs(CATEGORIES) do
@@ -2374,9 +2373,8 @@ function HistoryFilterChipsMixin.BuildCategoryChips(strip)
   end
   strip.chips = chips
   strip:PlaceCategoryChips()
-  -- SFT-147: a width change can also change the row count PlaceCategoryChips
-  -- needs, which OnChipsReflowed (set by CreateHeaderFilters, once ddBand/
-  -- listPane/detailPane exist) repositions everything below the band for.
+  -- A width change can also change the row count, which OnChipsReflowed (set
+  -- by CreateHeaderFilters) repositions everything below the band for.
   strip:SetScript("OnSizeChanged", function()
     strip:PlaceCategoryChips()
     if strip.OnChipsReflowed then strip:OnChipsReflowed() end
@@ -2409,8 +2407,6 @@ end
 
 function HistoryPanelMixin:CreateSenderFilterChip()
   local chip = CreateFrame("Frame", nil, frame)
-  chip:SetPoint("TOPLEFT",  frame, "TOPLEFT",   8, -100)
-  chip:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, -100)
   chip:SetHeight(18)
   chip:Hide()
 
@@ -2426,14 +2422,15 @@ function HistoryPanelMixin:CreateSenderFilterChip()
     "Remove the active sender filter and show entries from all senders again.")
 
   frame.senderChip = chip
+  -- Position it now that it exists; ReflowBelowChips already ran once
+  -- (CreateHeaderFilters, before this chip existed) and skipped it.
+  if frame.filterChipsBand and frame.filterChipsBand.OnChipsReflowed then
+    frame.filterChipsBand:OnChipsReflowed()
+  end
 end
 
 function HistoryPanelMixin:UpdateSenderFilterChip()
-  -- BSP-008 Commit 4: chip show/hide only — listPane anchors are owned by
-  -- CreatePanes + CreateSplitter (width is user-resizable and persisted), so
-  -- this no longer re-anchors listPane the way it did before the restructure.
-  -- Chip placement vs. the in-listPane filter strip will be reworked in a
-  -- later commit; for now the chip remains visible/hideable as before.
+  -- Show/hide only; position is owned by ReflowBelowChips (CreateHeaderFilters).
   if not frame or not frame.senderChip or not listPane then return end
   local chip = frame.senderChip
   if filterState and filterState.senderFilter then
@@ -2561,7 +2558,7 @@ function HistoryPanelMixin:CreateHeaderFilters()
   local chipsBand = CreateFrame("Frame", nil, frame)
   Mixin(chipsBand, HistoryFilterChipsMixin)
   -- Height is set by PlaceCategoryChips (below), from however many rows the
-  -- chips actually need (SFT-147); no fixed height here.
+  -- chips actually need; no fixed height here.
   chipsBand:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, -LAYOUT.CHIPS_TOP)
   if pauseRow then
     chipsBand:SetPoint("TOPRIGHT", pauseRow, "LEFT", -8, 0)
@@ -2573,9 +2570,7 @@ function HistoryPanelMixin:CreateHeaderFilters()
   -- Dropdowns band: full panel width, below chips band. Hosts dropdowns +
   -- Refresh. Anchoring to frame (not listPane) means the dropdown row width
   -- is bounded by the panel, not by the splitter. Top offset is recomputed
-  -- by ReflowBelowChips (below) from the chip band's actual height (SFT-147)
-  -- instead of the fixed -56 this used to be, so a wrapped second chip row
-  -- pushes the dropdowns down instead of overlapping them.
+  -- by ReflowBelowChips (below) from the chip band's actual height.
   local ddBand = CreateFrame("Frame", nil, frame)
   ddBand:SetHeight(24)
   ddBand:SetPoint("TOPLEFT",  frame, "TOPLEFT",  6, -56)
@@ -2629,29 +2624,26 @@ function HistoryPanelMixin:CreateHeaderFilters()
   frame.filterStrip = ddBand
   frame.filterChipsBand = chipsBand
 
-  -- SFT-147: ddBand, listPane, and detailPane were all given fixed offsets
-  -- from frame's top (-56 / -86), tuned for the chip band's old fixed
-  -- single-row height. Recompute those offsets from the chip band's actual
-  -- height instead, so a wrapped second chip row pushes the dropdowns and
-  -- the list/detail area down rather than overlapping them. Re-anchoring
-  -- with TOPLEFT/TOPRIGHT/BOTTOMLEFT/BOTTOMRIGHT pairs (not a mix of single
-  -- edges) matches every other anchor pair in this file and keeps each
-  -- point's x and y from the same, unambiguous offset.
+  -- Repositions everything below the chip band from its actual height, so a
+  -- wrapped second row pushes the dropdowns, the sender filter chip, and the
+  -- list/detail area down instead of overlapping them. Re-setting a single
+  -- named point (TOPLEFT, TOPRIGHT) replaces only that point; the bottom
+  -- anchors CreatePanes already set on listPane/detailPane are untouched.
   local function ReflowBelowChips()
     local ddTop = -LAYOUT.CHIPS_TOP - chipsBand:GetHeight() - LAYOUT.CHIP_BAND_GAP
-    ddBand:ClearAllPoints()
     ddBand:SetPoint("TOPLEFT",  frame, "TOPLEFT",  6, ddTop)
     ddBand:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, ddTop)
 
     local listTop = ddTop - ddBand:GetHeight() - LAYOUT.LIST_TOP_GAP
-    local listWidth = listPane:GetWidth()
-    listPane:ClearAllPoints()
-    listPane:SetPoint("TOPLEFT",    frame, "TOPLEFT",    6, listTop)
-    listPane:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 6, 40)
-    detailPane:ClearAllPoints()
-    detailPane:SetPoint("TOPLEFT",     frame, "TOPLEFT",
-      6 + listWidth + LAYOUT.SPLITTER_WIDTH + 4, listTop)
-    detailPane:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -6, 40)
+    listPane:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, listTop)
+    detailPane:SetPoint("TOPLEFT", frame, "TOPLEFT",
+      6 + listPane:GetWidth() + LAYOUT.SPLITTER_WIDTH + 4, listTop)
+
+    if frame.senderChip then
+      local chipTop = listTop - LAYOUT.SENDER_CHIP_LIST_OFFSET
+      frame.senderChip:SetPoint("TOPLEFT",  frame, "TOPLEFT",   8, chipTop)
+      frame.senderChip:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, chipTop)
+    end
   end
   chipsBand.OnChipsReflowed = ReflowBelowChips
   ReflowBelowChips()
