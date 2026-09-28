@@ -2708,8 +2708,8 @@ function ConfigPanel.OpenFPExportDialog(limit)
     "Close", nil)
 end
 
--- Meta breakdown keys, never a content category. Copies in ChatScanner, History, HistoryPanel, ShadowLog, Signals, ConfigPanel:
--- keep all six in step.
+-- Meta breakdown keys, never a content category. Copies in ChatScanner,
+-- History, HistoryPanel, ShadowLog, Signals, ConfigPanel: keep all six in step.
 local HISTORY_EXPORT_IGNORED_KEYS = {
   MixedScript = true,
   BlockedActor = true,
