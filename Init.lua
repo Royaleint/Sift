@@ -175,8 +175,15 @@ local function NormalizeSender(value)
 	return string.lower(value)
 end
 
+local function IsRegionalNames()
+	return NS.Compat and NS.Compat.RegionalNames and NS.Compat.RegionalNames() or false
+end
+
 local function ResolveHistorySender(nameRealm)
-	local target = NormalizeSender(nameRealm)
+	-- A Forever name matches in either separator form, whichever one the
+	-- History record was stored with.
+	local regional = IsRegionalNames()
+	local target = NormalizeSender(regional and NS.Compat.NormalizeFullName(nameRealm) or nameRealm)
 	if not target or not NS.History or not NS.History.GetAll then
 		return nil
 	end
@@ -188,6 +195,9 @@ local function ResolveHistorySender(nameRealm)
 		if record.realm and record.realm ~= "" then
 			label = label .. "-" .. record.realm
 		end
+		if regional then
+			label = NS.Compat.NormalizeFullName(label)
+		end
 		if NormalizeSender(label) == target and record.guid then
 			return record.guid, record.name, record.realm
 		end
@@ -198,7 +208,8 @@ end
 local function AllowFromHistory(rest)
 	local guid, name, realm = ResolveHistorySender(rest)
 	if not guid then
-		Print("allow requires a sender from History, formatted as Name-Realm.")
+		Print(IsRegionalNames() and "allow requires a sender from History, by their full name."
+			or "allow requires a sender from History, formatted as Name-Realm.")
 		return
 	end
 

@@ -569,6 +569,18 @@ function DB.GetBlockedActor(guid)
   return type(blockedActors) == "table" and blockedActors[guid] or nil
 end
 
+-- Each field keeps its older value when the new one is unusable. On WoW
+-- Forever a usable name replaces the pair whole instead: its names carry no
+-- realm, and an older stored realm would be shown after the full name.
+local function WriteActorName(entry, name, realm)
+  if UsableString(name) and NS.Compat and NS.Compat.RegionalNames and NS.Compat.RegionalNames() then
+    entry.name, entry.realm = name, nil
+    return
+  end
+  entry.name = UsableString(name) and name or entry.name
+  entry.realm = UsableString(realm) and realm or entry.realm
+end
+
 function DB.RecordBlockedActor(record, category)
   local global = DB.GetGlobal()
   if not global or type(record) ~= "table" or not UsableString(record.guid) then
@@ -591,8 +603,7 @@ function DB.RecordBlockedActor(record, category)
     blockedActors[guid] = entry
   end
 
-  entry.name = UsableString(record.name) and record.name or entry.name
-  entry.realm = UsableString(record.realm) and record.realm or entry.realm
+  WriteActorName(entry, record.name, record.realm)
   entry.lastBlockedAt = tonumber(record.ts) or Now()
   entry.count = (tonumber(entry.count) or 0) + 1
   entry.surfaces = type(entry.surfaces) == "table" and entry.surfaces or {}
@@ -656,8 +667,7 @@ function DB.BlockActorManually(guid, name, realm)
 
   entry.manual = true
   entry.manualBlockedAt = Now()
-  entry.name = UsableString(name) and name or entry.name
-  entry.realm = UsableString(realm) and realm or entry.realm
+  WriteActorName(entry, name, realm)
   entry.lastBlockedAt = tonumber(entry.lastBlockedAt) or entry.manualBlockedAt
 
   TouchBlockedRevision()

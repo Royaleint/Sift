@@ -713,6 +713,10 @@ local function Lower(value)
   return string.lower(tostring(value or ""))
 end
 
+local function IsRegionalNames()
+  return NS.Compat and NS.Compat.RegionalNames and NS.Compat.RegionalNames() or false
+end
+
 local function MatchesSearch(entry, guid, search)
   search = Lower(search)
   if search == "" then
@@ -821,8 +825,31 @@ local function MaxPage(total)
   return maxPage
 end
 
+-- A Forever player is matched by full name in either separator form, so a
+-- History record stored as ("First", "Surname") still matches "First Surname".
+local function FindRegionalHistorySender(text)
+  local wanted = Lower(NS.Compat.NormalizeFullName(text))
+  if wanted == "" then
+    return nil, "Enter a sender by their full name."
+  end
+
+  local entries = NS.History and NS.History.GetAll and NS.History.GetAll() or {}
+  for _, entry in ipairs(entries) do
+    if entry.guid and entry.guid ~= ""
+       and Lower(NS.Compat.NormalizeFullName(SenderLabel(entry))) == wanted then
+      return entry
+    end
+  end
+
+  return nil, "Sift can only manually allow players already present in History."
+end
+
 local function FindHistorySender(text)
   text = tostring(text or "")
+  if IsRegionalNames() then
+    return FindRegionalHistorySender(text)
+  end
+
   local name, realm = string.match(text, "^%s*([^%-]+)%-(.-)%s*$")
   if not name or name == "" or not realm or realm == "" then
     return nil, "Enter a sender as Name-Realm."
@@ -1796,11 +1823,16 @@ RenderAllowlist = function()
   local y = AddSectionTitle("Allowlist", "Manage senders that Sift should trust.")
   y = AddStatus(y, sectionStatus.Allowlist)
 
+  local regional = IsRegionalNames()
+
   AddText("Search", "GameFontNormalSmall", CONTENT_PAD, y + 2, 48)
   local search = AddEditBox(CONTENT_PAD + 54, y + 5, 160, listState.allowlistSearch,
     "Search",
-    "Type part of a name or realm, then click Apply to filter the list below. You can also " ..
-    "search the word shown under each name: manual, history, or import.")
+    regional
+      and ("Type part of a name, then click Apply to filter the list below. You can also " ..
+        "search the word shown under each name: manual, history, or import.")
+      or ("Type part of a name or realm, then click Apply to filter the list below. You can also " ..
+        "search the word shown under each name: manual, history, or import."))
   AddNativeButton("Apply", CONTENT_PAD + 222, y + 6, 70, function()
     listState.allowlistSearch = search:GetText() or ""
     listState.allowlistPage = 1
@@ -1817,13 +1849,17 @@ RenderAllowlist = function()
   AddText("Add from History", "GameFontNormalSmall", CONTENT_PAD, y + 2, 104)
   local addBox = AddEditBox(CONTENT_PAD + 112, y + 5, 180, listState.allowlistAddText,
     "Add from History",
-    "Enter as Name-Realm. The sender must already appear in your History. You can't " ..
-    "allowlist arbitrary names, only ones Sift has actually seen.")
+    regional
+      and ("Enter the player's full name, first name and surname. The sender must already " ..
+        "appear in your History. You can't allowlist arbitrary names, only ones Sift has actually seen.")
+      or ("Enter as Name-Realm. The sender must already appear in your History. You can't " ..
+        "allowlist arbitrary names, only ones Sift has actually seen."))
   AddNativeButton("Add", CONTENT_PAD + 300, y + 6, 72, function()
     listState.allowlistAddText = addBox:GetText() or ""
     AddAllowlistFromText(listState.allowlistAddText)
     ConfigPanel.ShowSection("Allowlist")
-  end, "Add the Name-Realm in the box to the allowlist.")
+  end, regional and "Add the player named in the box to the allowlist."
+    or "Add the Name-Realm in the box to the allowlist.")
   y = y - 34
 
   if removedAllowlistEntry then

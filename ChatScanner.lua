@@ -257,6 +257,11 @@ local function SplitNameRealm(sender)
     return nil, nil
   end
 
+  -- On Forever the part after the hyphen is a surname, not a realm.
+  if NS.Compat and NS.Compat.RegionalNames and NS.Compat.RegionalNames() then
+    return NS.Compat.NormalizeFullName(sender) or sender, nil
+  end
+
   local name, realm = string.match(sender, "^([^-]+)%-(.+)$")
   return name or sender, realm
 end
