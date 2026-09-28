@@ -1,3 +1,7 @@
+-- Sift/Trust.lua
+-- Senders the filter skips: GM/dev flags, the allowlist, friends, Battle.net
+-- friends and group members. Also owns the saved allowlist.
+
 local _, NS = ...
 local Trust = {}
 
@@ -232,8 +236,7 @@ function Trust.GetAllowlist()
   return copy
 end
 
--- Returns the trust source that would mark this sender trusted, or nil if not
--- trusted, for dev diagnostics. Keep in IsTrusted's exact short-circuit order.
+-- The trust decision itself; IsTrusted delegates here. Returns the source that fired, or nil.
 function Trust.TrustReason(guid, _name, flag)
   if IsSecret(flag) then
     flag = nil
