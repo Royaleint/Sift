@@ -16,8 +16,8 @@ local REPEAT_INTEREST = 3     -- occurrences at which a message counts as repeat
 -- or the top of the ranking flattens.
 local MAX_CHANCES     = 7
 
--- Meta keys, never a category. Copies in ChatScanner, History, HistoryPanel, ShadowLog, Signals, ConfigPanel:
--- keep all six in step.
+-- Meta keys, never a category. Copies in ChatScanner, History, HistoryPanel,
+-- ShadowLog, Signals, ConfigPanel: keep all six in step.
 local IGNORED_BREAKDOWN_KEYS = {
   MixedScript = true,
   BlockedActor = true,
