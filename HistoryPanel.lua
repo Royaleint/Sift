@@ -97,7 +97,8 @@ local CHIP_FULL_NAMES = {
 }
 -- Keys that say why a message was caught, not what kind of spam it is; they
 -- never win "dominant category" but still show as breakdown chips. Copies in
--- ChatScanner, History, HistoryPanel, ShadowLog, Signals, ConfigPanel: keep all six in step.
+-- ChatScanner, History, HistoryPanel, ShadowLog, Signals, ConfigPanel: keep all
+-- six in step.
 local IGNORED_BREAKDOWN_KEYS = {
   MixedScript = true,
   BlockedActor = true,
@@ -320,7 +321,8 @@ function Data.ClearStoredGeometry()
 	if not store then return end
 	store.x = nil
 	store.y = nil
-	-- store.width / store.height are kept so the panel can return to resizable without a data migration.
+	-- store.width / store.height are kept so the panel can return to resizable
+	-- without a data migration.
 end
 
 -- Resizes `win` keeping its top-left corner fixed, anchored the same way as
