@@ -1,3 +1,8 @@
+-- Sift/PauseState.lua
+-- Category and surface pause states (active / paused / off), the category
+-- taxonomy, and the listeners notified when a state changes.
+-- Also loaded outside the game by the pattern build: keep file scope free of WoW API and NS lookups.
+
 local _, NS = ...
 local PauseState = {}
 
