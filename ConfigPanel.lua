@@ -394,14 +394,8 @@ local function AddSectionTitle(title, subtitle)
   return -48
 end
 
--- SFT-128: the design width Config content is laid out at, not a live
--- content:GetWidth() read. In embedded mode, Config can render at History's
--- wider pre-ResizeForConfig host width (see HistoryPanelMixin:ResizeForConfig's
--- "940px configHost" note) before the window actually shrinks down to
--- GetEmbeddedWidth()'s target -- so a wrap measured against the live width
--- would be measuring against a size the window is about to leave. Standalone
--- reads frame:GetWidth() because ApplyStoredGeometry calls frame:SetSize
--- synchronously before any section ever renders, so it's already correct.
+-- The width Config content is laid out at, not a live GetWidth() read, since
+-- the host frame can still be wider than that while it's mid-resize.
 local function ContentWidth()
   if embeddedMode then
     -- configHost insets Config's outer frame 6px on each side
