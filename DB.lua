@@ -764,6 +764,21 @@ local function MergeCountMap(a, b, useMax)
   return out
 end
 
+-- A hand-block on either side stays a hand-block. Its time comes from the
+-- manual side; when both are manual, the earlier real time wins.
+local function MergedManualBlockedAt(sift, legacy)
+  if legacy.manual and not sift.manual then
+    return legacy.manualBlockedAt
+  end
+  if sift.manual and legacy.manual then
+    local siftAt, legacyAt = sift.manualBlockedAt or 0, legacy.manualBlockedAt or 0
+    if legacyAt > 0 and (siftAt <= 0 or legacyAt < siftAt) then
+      return legacy.manualBlockedAt
+    end
+  end
+  return sift.manualBlockedAt
+end
+
 -- One collision between an existing Sift entry and a legacy entry for the
 -- same guid. Equal-and-positive firstBlockedAt means both sides are counting
 -- the same original block, so counts take the max instead of summing; the
@@ -775,8 +790,8 @@ local function MergeBlockedActorCollision(guid, sift, legacy)
     guid = guid,
     firstBlockedAt = math.min(sift.firstBlockedAt, legacy.firstBlockedAt),
     lastBlockedAt = math.max(sift.lastBlockedAt, legacy.lastBlockedAt),
-    manual = sift.manual,
-    manualBlockedAt = sift.manualBlockedAt,
+    manual = (sift.manual == true) or (legacy.manual == true),
+    manualBlockedAt = MergedManualBlockedAt(sift, legacy),
   }
   if sameOrigin then
     merged.count = math.max(sift.count, legacy.count)
@@ -808,6 +823,14 @@ local function DeepEqual(a, b)
     if a[key] == nil then return false end
   end
   return true
+end
+
+-- The older saved layout dropped the schema stamp whenever it equalled its
+-- default, so a missing stamp is that older layout. Only a missing stamp or
+-- 3 was ever left on disk by a released build; any other value brings the
+-- lists over and nothing else.
+local function LegacyStampAccepted(stamp)
+  return stamp == nil or stamp == 3
 end
 
 -- Legacy settings only ever overlay onto a still-default profile (the caller
@@ -928,14 +951,14 @@ function DB.MergeLegacyStore(siftSV, legacySV, now)
   end
 
   local settingsImported, newSettings = false, nil
-  if legacySV.global.schemaVersion == 3 and type(legacySV.global.settings) == "table"
+  if LegacyStampAccepted(legacySV.global.schemaVersion) and type(legacySV.global.settings) == "table"
      and DeepEqual(siftSV.global.settings, CopyDefaults(defaults.global.settings)) then
     newSettings = OverlaySettings(defaults.global.settings, legacySV.global.settings)
     settingsImported = true
   end
 
   local charAdoptions, charCount = {}, 0
-  if legacySV.global.schemaVersion == 3 and type(legacySV.char) == "table" then
+  if LegacyStampAccepted(legacySV.global.schemaVersion) and type(legacySV.char) == "table" then
     for charKey, legacyChar in pairs(legacySV.char) do
       if type(charKey) == "string" and type(legacyChar) == "table"
          and IsEmptyCharSlot(siftSV.char and siftSV.char[charKey]) then
