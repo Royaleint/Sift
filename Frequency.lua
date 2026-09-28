@@ -4,10 +4,10 @@
 --
 -- Two lanes with different keys; neither can stand in for the other:
 --
---   Flood  (pre-score)  — keyed on cleansed text, ANY sender, TIME window.
+--   Flood  (pre-score):  keyed on cleansed text, ANY sender, TIME window.
 --                         Returns a count that ChatScanner turns into a score
 --                         boost, so a flood blocks even at content score 0.
---   Repeat (post-score) — keyed on (event, cleansed text, sender GUID), COUNT
+--   Repeat (post-score): keyed on (event, cleansed text, sender GUID), COUNT
 --                         buffer, no time component. Returns a boolean and only
 --                         ever sees messages already confirmed as spam.
 --
