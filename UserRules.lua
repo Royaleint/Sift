@@ -217,6 +217,56 @@ function UserRules.RepairStore(store)
   return dropped
 end
 
+-- Rebuilds every non-ASCII entry's cleansed form from its raw spelling.
+-- Called once, from migrations[5]. Returns changed, merged, kept (all >= 0),
+-- or false, "unavailable" if Cleanse isn't loaded and an entry needs it --
+-- checked before that entry (or any after it) is written, so a deferred
+-- migration leaves the store exactly as it found it.
+--
+-- Dedupes converging entries itself, first-wins, rather than leaving it to
+-- the closing RepairShape pass, whose dev-only "malformed" wording would
+-- misdescribe a clean merge and silently drop a phrase in a release build.
+function UserRules.RecleanseStore(store)
+  if type(store) ~= "table" then return 0, 0, 0 end
+  local changed, kept = 0, 0
+  for index = 1, #store do
+    local entry = store[index]
+    if type(entry) == "table" and type(entry.raw) == "string" and string.find(entry.raw, "[\128-\255]") then
+      local recleansed = CleanseText(entry.raw)
+      if recleansed == nil then
+        return false, "unavailable"
+      elseif recleansed == "" then
+        kept = kept + 1
+      elseif recleansed ~= entry.cleansed then
+        entry.cleansed = recleansed
+        changed = changed + 1
+      end
+    end
+  end
+
+  local deduped, merged = {}, 0
+  local seen = {}
+  for index = 1, #store do
+    local entry = store[index]
+    local cleansed = type(entry) == "table" and entry.cleansed or nil
+    if type(cleansed) == "string" and not seen[cleansed] then
+      seen[cleansed] = true
+      deduped[#deduped + 1] = entry
+    else
+      merged = merged + 1
+    end
+  end
+  for index = #store, 1, -1 do
+    store[index] = nil
+  end
+  for index = 1, #deduped do
+    store[index] = deduped[index]
+  end
+
+  if changed > 0 or merged > 0 then TouchRevision() end
+  return changed, merged, kept
+end
+
 function UserRules.GetRevision()
   return revision
 end

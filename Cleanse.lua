@@ -199,12 +199,22 @@ function Cleanse._Stage7_Lowercase(text)
   return string.lower(text)
 end
 
--- Stage 8: run-length collapse. "goooold" → "gold".
--- Lua 5.1 patterns disallow quantifiers on back-references, so iterate (.)%1 to fixed point.
+-- Stage 8: run-length collapse. "goooold" → "gold". Collapses runs of the same
+-- ASCII character only (letters, digits, punctuation) -- a byte >= 0x80 is
+-- never collapsed, because two equal adjacent bytes there are always the two
+-- continuation bytes of one multi-byte character, not a repeated character.
+-- Lua 5.1 patterns disallow quantifiers on back-references, so iterate to a
+-- fixed point either way.
 function Cleanse._Stage8_RunLength(text)
   local n
+  if not string.find(text, "[\128-\255]") then
+    repeat
+      text, n = string.gsub(text, "(.)%1", "%1")
+    until n == 0
+    return text
+  end
   repeat
-    text, n = string.gsub(text, "(.)%1", "%1")
+    text, n = string.gsub(text, "([%z\1-\127])%1", "%1")
   until n == 0
   return text
 end
@@ -432,8 +442,7 @@ function Cleanse._FusedFrontPass(text)
   return table.concat(out), mixed, hasTokenSeparator, scriptIsland
 end
 
--- Output is saved: keyword rules store it and are never re-cleansed, so a
--- change to it needs a migration.
+-- Output is saved by keyword rules, so a change here needs a matching migration.
 function Cleanse.Analyze(text)
   if type(text) ~= "string" then
     return {
