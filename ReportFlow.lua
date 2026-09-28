@@ -1,3 +1,7 @@
+-- Sift/ReportFlow.lua
+-- Remembers the chat line behind each blocked History entry so the player can
+-- open Blizzard's spam report for it later.
+
 local _, NS = ...
 local ReportFlow = {}
 
