@@ -1272,7 +1272,7 @@ function HistoryListMixin:RefreshLegend(stats)
 end
 
 function HistoryStatsMixin:RefreshStatsArea()
-  if not detailPane or not detailPane.stats then return end
+  if not detailPane or not self then return end
   local stats = Data.GetHistoryStats(statsScope)
   local lifetime = stats.lifetime or {}
 
@@ -1294,7 +1294,7 @@ function HistoryStatsMixin:RefreshStatsArea()
     restored       = tostring(restored),
     falsePositives = fpRate,
   }
-  for key, tile in pairs(detailPane.stats.tiles) do
+  for key, tile in pairs(self.tiles) do
     tile.valueText:SetText(values[key] or "-")
     local color = STATS_TILE_COLORS[key]
     if color then
@@ -1311,7 +1311,7 @@ function HistoryStatsMixin:RefreshStatsArea()
     local label = SURFACE_LABELS[s] or s
     surfaceParts[#surfaceParts + 1] = string.format("%s |cffffffff%d|r", L[label], tonumber(bySurface[s]) or 0)
   end
-  detailPane.stats.bySurfaceText:SetText(table.concat(surfaceParts, "   "))
+  self.bySurfaceText:SetText(table.concat(surfaceParts, "   "))
 
   -- By-category inline line; paused/off categories render muted.
   local byCategory = lifetime.byCategory or {}
@@ -1333,7 +1333,7 @@ function HistoryStatsMixin:RefreshStatsArea()
       categoryParts[#categoryParts + 1] = part
     end
   end
-  detailPane.stats.byCategoryText:SetText(table.concat(categoryParts, "   "))
+  self.byCategoryText:SetText(table.concat(categoryParts, "   "))
 
   local throttled = tonumber(lifetime.throttled) or 0
   local bubbles   = tonumber(lifetime.bubblesSuppressed) or 0
@@ -1341,7 +1341,7 @@ function HistoryStatsMixin:RefreshStatsArea()
   -- count stays white: all-grey reads as paused/off on the line above.
   local retained = stats.retained or {}
   local flood = tonumber(retained.floodCount) or 0
-  detailPane.stats.pipelineText:SetText(string.format(
+  self.pipelineText:SetText(string.format(
     "%s |cffffffff%d|r   %s |cffffffff%d|r   |cff888888%s|r |cffffffff%d|r",
     L["Repeats"], throttled, L["Bubbles suppressed"], bubbles, L["Spam wave (recent)"], flood))
 
@@ -1353,8 +1353,8 @@ function HistoryStatsMixin:RefreshStatsArea()
   -- can be nil before layout, which falls back to the 280px envelope.
   if C_Timer and C_Timer.After then
     C_Timer.After(0, function()
-      if not detailPane or not detailPane.stats or not detailPane.stats.pipelineText then return end
-      local s = detailPane.stats
+      if not detailPane or not self or not self.pipelineText then return end
+      local s = self
       local statsTop = s:GetTop()
       local lastBottom = s.pipelineText:GetBottom()
       if statsTop and lastBottom then
