@@ -1918,20 +1918,23 @@ RenderBlocked = function()
     end
     row:Show()
 
+    local isManualBlock = type(rowData.entry) == "table" and rowData.entry.manual == true
+
     local label = TrackNative(row:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
     label:SetPoint("LEFT", row, "LEFT", 8, 6)
-    if type(rowData.entry) == "table" and rowData.entry.manual == true then
+    label:SetJustifyH("LEFT")
+    label:SetWordWrap(false)
+    if isManualBlock then
       label:SetText(L["%s (blocked by you)"]:format(rowData.label))
     else
-      label:SetText(rowData.label)
+      label:SetText(L["%s (blocked by Sift)"]:format(rowData.label))
     end
     label:Show()
 
     local meta = TrackNative(row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"))
     meta:SetPoint("LEFT", row, "LEFT", 8, -8)
     -- A manual block can have zero recorded blocks; say who added it.
-    local origin = (type(rowData.entry) == "table" and rowData.entry.manual == true)
-      and "blocked by you - " or ""
+    local origin = isManualBlock and "blocked by you - " or "blocked by Sift - "
     meta:SetText(origin .. "blocks " .. tostring(BlockedEntryCount(rowData.entry))
       .. " - last " .. RelativeTime(BlockedEntryLastSeen(rowData.entry)))
     meta:Show()
@@ -1946,6 +1949,11 @@ RenderBlocked = function()
     AttachTooltip(remove, "Remove",
       L["Take %s off the Blocked list."]:format(rowData.label))
     remove:Show()
+
+    -- The label has no width of its own, so pin its right edge to the
+    -- button now that it exists: a long name truncates instead of running
+    -- underneath Remove.
+    label:SetPoint("RIGHT", remove, "LEFT", -6, 6)
 
     y = y - (ROW_HEIGHT + 4)
   end
