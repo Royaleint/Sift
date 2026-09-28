@@ -1,3 +1,6 @@
+-- Sift/UserRules.lua
+-- The player's own keyword block and allow lists.
+
 local _, NS = ...
 local UserRules = {}
 local revision = 0
