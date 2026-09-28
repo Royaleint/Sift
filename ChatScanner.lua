@@ -1,3 +1,8 @@
+-- Sift/ChatScanner.lua
+-- Installs Sift's message event filter on the scanned chat events and runs each
+-- line through the block pipeline: manual block, trust, scoring, keyword rules,
+-- pause states, repeat dedupe, then the History record.
+
 local _, NS = ...
 local ChatScanner = {}
 
@@ -28,6 +33,8 @@ local EVENT_TO_SURFACE = {
 local filterInstalled = {}
 local filterAdd = nil
 local BLOCKED_ACTOR_BOOST = 2
+-- Meta keys, never a category. Copies in ChatScanner, History, HistoryPanel, ShadowLog, Signals, ConfigPanel:
+-- keep all six in step.
 local IGNORED_BREAKDOWN_KEYS = {
   MixedScript = true,
   BlockedActor = true,
@@ -113,6 +120,7 @@ local function SameCategories(slot, categories)
   return true
 end
 
+-- Any settings field Pipeline reads must be compared here and copied in CopyState.
 local function SameSettings(slot, settings)
   if type(settings) ~= "table" then return false end
   return slot.threshold == settings.threshold and slot.mixedScriptEnabled == settings.mixedScriptEnabled
@@ -455,6 +463,7 @@ local function Pipeline(
     local throttled = NS.Frequency and NS.Frequency.CheckRepeat
       and NS.Frequency.CheckRepeat(event, manualAnalysis.normalized, guid) or false
 
+    -- Last arg suppresses the spam report: a manual block is a personal choice, not a spam accusation.
     AppendBlockedHistory(BuildHistoryRecord(
       event,
       message,
