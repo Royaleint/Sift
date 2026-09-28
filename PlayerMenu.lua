@@ -140,21 +140,44 @@ local function IsSelf(guid)
   return ok and guid == selfGUID
 end
 
+local function IsRegionalNames()
+  return NS.Compat and NS.Compat.RegionalNames and NS.Compat.RegionalNames() or false
+end
+
 local function ResolveTarget(contextData)
   local guid = ResolveGUID(contextData)
+  local regional = IsRegionalNames()
   local name = IsUsableName(contextData.name) and contextData.name or nil
-  local realm = IsUsableName(contextData.server) and contextData.server or nil
+  local realm = nil
+  if regional then
+    -- Blizzard fills .surname instead of .server here, and only on unit menus;
+    -- name-only menus leave the full name unsplit in .name.
+    if name and IsUsableName(contextData.surname) then
+      name = NS.Compat.FullName(name, contextData.surname)
+    end
+  else
+    realm = IsUsableName(contextData.server) and contextData.server or nil
+  end
 
   -- Fall back to the unit so a blocked actor never shows as a bare GUID.
   if not name and IsUsableString(contextData.unit) and type(UnitName) == "function" then
     local ok, unitName, unitRealm = pcall(UnitName, contextData.unit)
     if ok and IsUsableName(unitName) then
-      name = unitName
-      realm = realm or (IsUsableName(unitRealm) and unitRealm or nil)
+      if regional then
+        name = NS.Compat.FullName(unitName, IsUsableName(unitRealm) and unitRealm or nil)
+      else
+        name = unitName
+        realm = realm or (IsUsableName(unitRealm) and unitRealm or nil)
+      end
     end
   end
 
-  name, realm = NormalizeTarget(name, realm)
+  -- On Forever the hyphen split would file the surname as a realm.
+  if regional then
+    name = NS.Compat.NormalizeFullName(name)
+  else
+    name, realm = NormalizeTarget(name, realm)
+  end
 
   -- A reopened chat link can lack its lineID. Reuse the same-session name ->
   -- GUID mapping only while that GUID is still manually blocked; otherwise a
@@ -171,8 +194,13 @@ local function ResolveTarget(contextData)
   if not name and guid and string.find(guid, "^Player%-") and type(GetPlayerInfoByGUID) == "function" then
     local ok, _, _, _, _, _, infoName, infoRealm = pcall(GetPlayerInfoByGUID, guid)
     if ok and IsUsableName(infoName) then
-      name = infoName
-      realm = realm or (IsUsableName(infoRealm) and infoRealm or nil)
+      if regional then
+        -- What the realm return holds on Forever is unverified; never store it.
+        name = NS.Compat.NormalizeFullName(infoName)
+      else
+        name = infoName
+        realm = realm or (IsUsableName(infoRealm) and infoRealm or nil)
+      end
     end
   end
 

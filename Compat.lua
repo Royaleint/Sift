@@ -60,6 +60,51 @@ function Compat.Detect(env)
   return Detect(env)
 end
 
+-- WoW Forever names are regionally unique: a character is "First Surname",
+-- with no realm. Sift stores that full name in `name` and leaves `realm` nil,
+-- the same form Foundry keys the character by.
+--
+-- Only a true answer is cached: a false one read early in login must not
+-- stick, so it is asked again until it turns true. Where the function does
+-- not exist this costs a lookup and a type check.
+local regionalNames = false
+
+function Compat.RegionalNames()
+  if not regionalNames then
+    local enabled = rawget(_G, "RegionalUniqueNamesEnabled")
+    if type(enabled) == "function" then
+      local ok, result = pcall(enabled)
+      regionalNames = ok and result == true
+    end
+  end
+  return regionalNames
+end
+
+function Compat.FullName(firstName, surname)
+  if type(surname) == "string" and surname ~= "" then
+    return firstName .. " " .. surname
+  end
+  return firstName
+end
+
+-- Chat and name-only menus hand over the full name as one string. Its
+-- separator is not known to be the same on every surface, so accept a hyphen
+-- or a space.
+function Compat.NormalizeFullName(text)
+  if type(text) ~= "string" then
+    return nil
+  end
+  text = string.match(text, "^%s*(.-)%s*$")
+  if text == "" then
+    return nil
+  end
+  local firstName, surname = string.match(text, "^([^%s%-]+)[%s%-]+(.+)$")
+  if firstName then
+    return Compat.FullName(firstName, surname)
+  end
+  return text
+end
+
 local runtime = Detect(_G)
 for key, value in pairs(runtime) do
   Compat[key] = value

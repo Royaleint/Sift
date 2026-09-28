@@ -254,6 +254,7 @@ L["Also hides the chat bubble for blocked Say and Yell messages. To do this, Sif
 
 -- Config panel: Allowlist section
 L["Type part of a name or realm, then click Apply to filter the list below. You can also search the word shown under each name: manual, history, or import."] = "Type part of a name or realm, then click Apply to filter the list below. You can also search the word shown under each name: manual, history, or import."
+L["Type part of a name, then click Apply to filter the list below. You can also search the word shown under each name: manual, history, or import."] = "Type part of a name, then click Apply to filter the list below. You can also search the word shown under each name: manual, history, or import."
 L["Apply"] = "Apply"
 L["Apply the search box to the allowlist below and reset to page 1."] = "Apply the search box to the allowlist below and reset to page 1."
 L["Export"] = "Export"
@@ -262,8 +263,10 @@ L["Import"] = "Import"
 L["Paste in a previously exported allowlist to add those entries to your current one."] = "Paste in a previously exported allowlist to add those entries to your current one."
 L["Add from History"] = "Add from History"
 L["Enter as Name-Realm. The sender must already appear in your History. You can't allowlist arbitrary names, only ones Sift has actually seen."] = "Enter as Name-Realm. The sender must already appear in your History. You can't allowlist arbitrary names, only ones Sift has actually seen."
+L["Enter the player's full name, first name and surname. The sender must already appear in your History. You can't allowlist arbitrary names, only ones Sift has actually seen."] = "Enter the player's full name, first name and surname. The sender must already appear in your History. You can't allowlist arbitrary names, only ones Sift has actually seen."
 L["Add"] = "Add"
 L["Add the Name-Realm in the box to the allowlist."] = "Add the Name-Realm in the box to the allowlist."
+L["Add the player named in the box to the allowlist."] = "Add the player named in the box to the allowlist."
 L["Undo"] = "Undo"
 L["Restore the entry you just removed."] = "Restore the entry you just removed."
 L["Prev"] = "Prev"
