@@ -1980,7 +1980,7 @@ RenderBlocked = function()
     -- The label has no width of its own, so pin its right edge to the
     -- button now that it exists: a long name truncates instead of running
     -- underneath Remove.
-    label:SetPoint("RIGHT", remove, "LEFT", -6, 0)
+    label:SetPoint("RIGHT", remove, "LEFT", -6, 6)
 
     y = y - (ROW_HEIGHT + 4)
   end
