@@ -7,22 +7,16 @@ local IGNORED_BREAKDOWN_KEYS = {
   MixedScript = true,
   BlockedActor = true,
   Flood = true,
-  -- BSP-029: repeat-dedupe blocks carry a synthesized { Throttle = threshold }
-  -- breakdown, which counted as a spam category and dominated byCategory. The
-  -- repeat count is already reported separately as stats.throttled.
+  -- Repeat blocks carry a synthesized Throttle weight; it is counted in
+  -- stats.throttled, not as a category.
   Throttle = true,
-  -- BSP-037: manual blocks carry { ManualBlock = 1 } for the same reason, and
-  -- must not land in byCategory as a category the sender never posted.
+  -- Manual blocks carry ManualBlock = 1, which is not a category either.
   ManualBlock = true,
 }
 
 -- Bumped by every function below that changes a stored record or a lifetime
--- counter, so a reader (HistoryPanel) can tell "nothing changed since I last
--- looked" apart from "go read it again" without diffing the data itself.
--- History is also written directly outside this file (legacy-store merge,
--- shape repair, migrations), but only at load/login, before anything could
--- have read a revision yet; any such direct write reachable later would need
--- its own bump here.
+-- counter, so HistoryPanel can skip a re-read when nothing changed. Any new
+-- write to history after login, in this file or elsewhere, must bump it too.
 local dataRevision = 0
 
 local function BumpRevision()
@@ -49,11 +43,8 @@ local function MaxEntries()
   return value
 end
 
--- BSP-052: a phrase the player wrote owns the attribution when it is what caught
--- the message. The largest breakdown weight can belong to a category that never
--- blocked anything on its own -- negative trust weight can hold a bigger number
--- under the threshold -- so crediting it files the block under a category the
--- player never involved, and hides it from their own filter chip.
+-- A custom-rule block is always filed under Custom, even when another category
+-- carries a larger weight.
 local function RecordCategory(record)
   if type(record) ~= "table" then return nil end
   if record.customRule then return "Custom" end
@@ -71,25 +62,11 @@ local function RecordCategory(record)
   return bestCat
 end
 
--- SFT-085: Flood is deliberately excluded from byCategory (IGNORED_BREAKDOWN_KEYS
--- above) -- it's a reason, not a kind of spam -- so it has no lifetime counter the
--- way Throttle has stats.throttled. Two questions need two different predicates.
--- IsFloodBadgeRow reproduces HistoryPanel.lua's RenderRow badge condition (no
--- dominant category, a Flood weight, not a manual block) using RecordCategory
--- rather than RenderRow's own DominantCategory(breakdown) -- the two agree on
--- whether a category exists at all (never on which one, when they'd disagree)
--- because ApplyCustomBlock (ChatScanner.lua) always adds a Custom weight equal
--- to the block threshold (clamped 1-10) to a custom-rule row's breakdown, so
--- RecordCategory's customRule shortcut and DominantCategory's plain breakdown
--- loop both return SOME category for that row -- just not necessarily the same
--- one if another weight in the breakdown outscores Custom. Either way, "has a
--- category" excludes it from both predicates. RenderRow has no outcome check,
--- so a restored or pass-thru row can still badge "Flood" and stripe grey.
--- IsFloodOnlyBlock narrows that to blocked rows only, which is SFT-085's own
--- definition for the PIPELINE count. `category` lets a caller that already ran
--- RecordCategory (CountRetained, for byCategory) pass its result in instead of
--- paying for it twice -- pass `false` for "already computed, no category" or
--- omit it entirely to have it computed here (nil means "not supplied").
+-- Flood is a reason, not a category, so it gets its own counts.
+-- IsFloodBadgeRow must match HistoryPanel's RenderRow badge condition (no
+-- category, a Flood weight, not a manual block), for any outcome.
+-- IsFloodOnlyBlock counts blocked rows only. `category`: pass RecordCategory's
+-- result if already computed (false for "none"); nil computes it here.
 local function IsFloodBadgeRow(record, category)
   if type(record) ~= "table" then return false end
   if record.reason == "manual-block" then return false end
@@ -135,10 +112,7 @@ local function CountRetained(history)
       if bestCat then
         retained.byCategory[bestCat] = (retained.byCategory[bestCat] or 0) + 1
       end
-      -- `or false`: bestCat is nil (a real, already-computed "no category"
-      -- result) for exactly the rows these predicates care about, and nil
-      -- means "not supplied, please compute" to them -- false says "already
-      -- computed, and it's nothing" instead, so they don't redo the work.
+      -- `or false`: nil would mean "not supplied" and recompute the category.
       if IsFloodBadgeRow(record, bestCat or false) then
         retained.floodBadgeCount = retained.floodBadgeCount + 1
       end
@@ -253,12 +227,9 @@ function History.Append(record)
   return record.id
 end
 
--- BSP-023: returns references to the live records, not copies. Each call
--- previously allocated a fresh shallow-copy table per entry; with a 1000-
--- entry cap that's ~500 KB of per-call churn driving HistoryPanel's 2-3 MB
--- per Show/Hide cycle. All callers iterate read-only; mutations route through
--- MarkRestored / RetroactiveBlock / Append by id. Do not mutate returned
--- records.
+-- Returns the live records, not copies (copying churned memory on every panel
+-- show). Do not mutate them; changes go through MarkRestored / RetroactiveBlock
+-- / Append by id.
 function History.GetRecent(limit)
   local char = GetChar()
   local history = char and char.history or {}
@@ -313,15 +284,9 @@ function History.GetStats()
   }
 end
 
--- BSP-036: account-wide aggregate. char.stats is a running lifetime counter
--- (IncrementStats increments it forever; History.TrimToMax / TrimAllCharacters
--- only prune the retained `history` record array, never char.stats), so
--- summing char.stats across every stored character namespace is an accurate
--- account-wide lifetime total. Live aggregation, not a maintained db.global
--- running total: no SavedVariables migration, no double-count risk if a
--- counter and its source ever drift. This is the same cross-char loop
--- BSP-063's account-history-total already uses over `history`; here it sums
--- `stats` instead.
+-- Account-wide totals, summed live across every stored character. char.stats
+-- is a lifetime counter that trimming never touches, so the sum is accurate
+-- without a stored global total.
 function History.GetAccountStats()
   local total = {
     detections = 0, blocked = 0, passThru = 0, restored = 0,
@@ -357,14 +322,9 @@ function History.GetAccountStats()
         if type(charData.history) == "table" then
           local history = charData.history
           retainedTotal = retainedTotal + #history
-          -- SFT-085: this account view previously only counted rows (#history,
-          -- above) and made no per-row pass. This adds one, per character,
-          -- using the SAME IsFloodOnlyBlock predicate CountRetained uses for
-          -- the per-character view, so the two views cannot define "Flood"
-          -- differently. No floodBadgeCount here -- the legend swatch always
-          -- reads the per-character NS.History.GetStats() (RefreshLegend has
-          -- no account-scope path), so an account-wide badge count has no
-          -- reader.
+          -- Same IsFloodOnlyBlock predicate as the per-character view, so the
+          -- two cannot define Flood differently. No badge count: nothing reads
+          -- one account-wide.
           for index = 1, #history do
             local record = history[index]
             if IsFloodOnlyBlock(record, RecordCategory(record) or false) then
@@ -484,11 +444,8 @@ function History.TrimAllCharacters()
   local charTable = NS.DB.db.sv.char
   if type(charTable) ~= "table" then return 0, 0 end
 
-  -- Caps are clamped at the data-layer boundary (DB.SetSetting on slider commit,
-  -- RepairSettings on DB.Initialize, ResetSettings via CopyDefaults+RepairSettings).
-  -- By the time we run, settings are already in range; defaults via `or N` cover
-  -- nil / non-numeric. Trusting the input here lets unit tests exercise the
-  -- algorithm at small scales (e.g. globalCap=2) without re-deriving the cap layer.
+  -- Caps are clamped when settings are written and repaired, so they are
+  -- trusted here unclamped (tests rely on small caps); `or N` covers nil.
   local settings   = (NS.DB.GetSettings and NS.DB.GetSettings()) or {}
   local perCharCap = tonumber(settings.historyMaxEntries) or 300
   local globalCap  = tonumber(settings.historyGlobalMaxEntries) or 1000
