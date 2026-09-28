@@ -2597,17 +2597,27 @@ function HistoryPanelMixin:CreateHeaderFilters()
   -- doesn't spill past the button. Never UIButtonFitToTextBehaviorMixin's
   -- own SetTextToFit -- it grows the button with no upper bound. Past
   -- REFRESH_MAX_WIDTH the button's own FontString is capped and word wrap
-  -- stays off, so it clips instead of growing further.
+  -- stays off, so it clips instead of growing further. Below the cap the
+  -- FontString is left unbound: its natural width is exactly what sized the
+  -- button, so constraining it to that same number would risk a sub-pixel
+  -- rounding difference clipping a character that was never meant to go.
   do
     local REFRESH_MIN_WIDTH, REFRESH_MAX_WIDTH, REFRESH_TEXT_PADDING = 60, 160, 24
     local refreshWidth = refresh:GetTextWidth() + REFRESH_TEXT_PADDING
-    if refreshWidth < REFRESH_MIN_WIDTH then refreshWidth = REFRESH_MIN_WIDTH end
-    if refreshWidth > REFRESH_MAX_WIDTH then refreshWidth = REFRESH_MAX_WIDTH end
+    local needsClip = false
+    if refreshWidth < REFRESH_MIN_WIDTH then
+      refreshWidth = REFRESH_MIN_WIDTH
+    elseif refreshWidth > REFRESH_MAX_WIDTH then
+      refreshWidth = REFRESH_MAX_WIDTH
+      needsClip = true
+    end
     refresh:SetSize(refreshWidth, 22)
     local refreshFontString = refresh:GetFontString()
     if refreshFontString then
       refreshFontString:SetWordWrap(false)
-      refreshFontString:SetWidth(refreshWidth - REFRESH_TEXT_PADDING)
+      if needsClip then
+        refreshFontString:SetWidth(refreshWidth - REFRESH_TEXT_PADDING)
+      end
     end
   end
   refresh:SetScript("OnClick", function()
@@ -2759,13 +2769,18 @@ function HistoryPanelMixin.CreatePauseRow(parent)
     pill.label:SetText(L[PAUSE_PILL_LABELS[surfaceKey]])
 
     local pillWidth = (pill.label:GetStringWidth() or 0) + PILL_LABEL_PADDING
-    if pillWidth < PILL_MIN_WIDTH then pillWidth = PILL_MIN_WIDTH end
-    if pillWidth > PILL_MAX_WIDTH then pillWidth = PILL_MAX_WIDTH end
+    if pillWidth < PILL_MIN_WIDTH then
+      pillWidth = PILL_MIN_WIDTH
+    elseif pillWidth > PILL_MAX_WIDTH then
+      pillWidth = PILL_MAX_WIDTH
+      -- Only bound the label when it's actually being clipped at the cap.
+      -- An unclamped label already fits inside pillWidth by construction --
+      -- pillWidth was measured from it -- so forcing its width to that same
+      -- number would risk a sub-pixel rounding difference clipping a
+      -- character it was never meant to lose.
+      pill.label:SetWidth(pillWidth - PILL_LABEL_PADDING)
+    end
     pill:SetSize(pillWidth, 18)
-    -- Bounds the label to the pill's own content width, so a label that hit
-    -- the cap above clips at the pill's edge (word wrap is already off)
-    -- instead of drawing into the neighboring pill.
-    pill.label:SetWidth(pillWidth - PILL_LABEL_PADDING)
     if previousPill then
       pill:SetPoint("RIGHT", previousPill, "LEFT", -4, 0)
       totalWidth = totalWidth + 4

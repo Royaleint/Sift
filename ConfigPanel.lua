@@ -1665,13 +1665,28 @@ local function AddAxisPauseRow(axis, key, displayLabel, y)
     -- GetUnboundedStringWidth ignores whatever width a previous call left
     -- on pill.text, so a short word after a long one measures correctly.
     local width = pill.text:GetUnboundedStringWidth() + PILL_TEXT_PADDING
-    if width < PILL_MIN_WIDTH then width = PILL_MIN_WIDTH end
-    if width > PILL_MAX_WIDTH then width = PILL_MAX_WIDTH end
+    local needsClip = false
+    if width < PILL_MIN_WIDTH then
+      width = PILL_MIN_WIDTH
+    elseif width > PILL_MAX_WIDTH then
+      width = PILL_MAX_WIDTH
+      needsClip = true
+    end
     pill:SetWidth(width)
-    -- Bounds the label to the pill's own content width, so a word that hit
-    -- the cap above clips (word wrap is already off) instead of drawing
-    -- past the pill.
-    pill.text:SetWidth(width - PILL_TEXT_PADDING)
+    if needsClip then
+      -- Only bound the label when it's actually being clipped at the cap.
+      -- An unclamped label already fits inside `width` by construction, so
+      -- forcing its width to that same number would risk a sub-pixel
+      -- rounding difference clipping a character it was never meant to
+      -- lose.
+      pill.text:SetWidth(width - PILL_TEXT_PADDING)
+    else
+      -- A previous click may have left pill.text bounded from the clip
+      -- branch above; clear that constraint (the documented way to reset a
+      -- FontString's width) so this shorter word isn't measured or rendered
+      -- against a stale box on the next click.
+      pill.text:SetWidth(0)
+    end
   end
 
   pill:SetScript("OnClick", function(self, mouseButton)
