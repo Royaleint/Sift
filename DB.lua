@@ -1,3 +1,7 @@
+-- Sift/DB.lua
+-- SavedVariables: defaults, shape repair, migrations, settings setters, the
+-- blocked-actor store, and the one-time import of legacy BawrSpam data.
+
 local ADDON_NAME, NS = ...
 local DB = {}
 
@@ -5,6 +9,8 @@ local DB = {}
 -- the DevBuild's TOC declares ("SiftDB" -> "SiftDB_DevBuild"), or the build
 -- stores its data in a global it never saves, or in the other build's.
 -- "Sift_DevBuild" must yield "SiftDB_DevBuild", not "Sift_DevBuildDB".
+-- The suffix also lives where the dev build's TOC is generated; nothing in Lua
+-- enforces the match, so change both together.
 local LIVE_ADDON_NAME = "Sift"
 local BASE_SV_NAME = "SiftDB"
 local LEGACY_SV_NAME = "BawrSpamDB"
@@ -27,6 +33,7 @@ end
 local SV_NAME, SV_LEGACY_NAME = DB.DeriveSVNames(ADDON_NAME)
 local SV_NAME_ERROR = (not SV_NAME) and SV_LEGACY_NAME or nil
 
+-- Bump only with a matching migrations[N]: ApplyMigrations stamps the version even when that entry is missing.
 local CURRENT_SCHEMA_VERSION = 4
 local ADDON_VERSION = "1.4.0"
 local BLOCKED_ACTOR_CAP = 5000
@@ -202,9 +209,7 @@ local function CopyDefaults(source)
   return copy
 end
 
--- CopyDefaults is a plain recursive table copy; the legacy-data merge below
--- reuses it under a name that reads correctly for copying arbitrary data,
--- not only the defaults table.
+-- Alias; CopyDefaults is a general deep copy.
 local DeepCopy = CopyDefaults
 
 local function ClampNumber(value, minValue, maxValue, fallback)
@@ -692,13 +697,6 @@ function DB.DevLog(message)
   DevLog(message)
 end
 
--- Merges the legacy BawrSpam store into an already-populated Sift store,
--- once. Pure: no NS and no WoW API, so it is exercised outside the client. It
--- never mutates legacySV. Two phases: Build reads both stores (siftSV only to
--- detect collisions) and deep-copies whatever it needs into fresh working
--- tables; Commit is then plain assignment with nothing left that can raise.
--- A raise during Build therefore leaves siftSV untouched -- a failed import
--- assigns nothing.
 local function CoerceBlockedActor(guid, raw)
   local entry = {
     guid = guid,
@@ -753,11 +751,7 @@ local function MergeBlockedActorCollision(guid, sift, legacy)
     merged.surfaces = MergeCountMap(sift.surfaces, legacy.surfaces, false)
     merged.categories = MergeCountMap(sift.categories, legacy.categories, false)
   end
-  -- The most recently active side names the entry; a tie keeps Sift's own
-  -- name/realm, matching every other tie in this merge favouring Sift. If
-  -- that side's own name or realm is unusable, the other side's value is
-  -- used instead of losing it -- the same "or entry.name" fallback
-  -- DB.RecordBlockedActor uses when only one side has a real value.
+  -- Newer side names the entry (a tie keeps Sift's); an unusable name/realm falls back to the other side.
   local newer, older = sift, legacy
   if legacy.lastBlockedAt > sift.lastBlockedAt then
     newer, older = legacy, sift
@@ -822,6 +816,13 @@ local function IsEmptyCharSlot(char)
   return detections == 0 and blocked == 0
 end
 
+-- Merges the legacy BawrSpam store into an already-populated Sift store,
+-- once. Pure: no NS and no WoW API, so it is exercised outside the client. It
+-- never mutates legacySV. Two phases: Build reads both stores (siftSV only to
+-- detect collisions) and deep-copies whatever it needs into fresh working
+-- tables; Commit is then plain assignment with nothing left that can raise.
+-- A raise during Build therefore leaves siftSV untouched -- a failed import
+-- assigns nothing.
 function DB.MergeLegacyStore(siftSV, legacySV, now)
   if type(siftSV) ~= "table" or type(siftSV.global) ~= "table" then
     return nil, "no Sift store"
