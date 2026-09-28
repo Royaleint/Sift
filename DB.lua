@@ -849,6 +849,14 @@ local function DeepEqual(a, b)
   return true
 end
 
+-- The older saved layout dropped the schema stamp whenever it equalled its
+-- default, so a missing stamp is that older layout. Only a missing stamp or
+-- 3 was ever left on disk by a released build; any other value brings the
+-- lists over and nothing else.
+local function LegacyStampAccepted(stamp)
+  return stamp == nil or stamp == 3
+end
+
 -- Legacy settings only ever overlay onto a still-default profile (the caller
 -- already checked that), and even then only one level into the three subtree
 -- settings. A retired category or throttle key that no longer exists in the
@@ -960,14 +968,14 @@ function DB.MergeLegacyStore(siftSV, legacySV, now)
   end
 
   local settingsImported, newSettings = false, nil
-  if legacySV.global.schemaVersion == 3 and type(legacySV.global.settings) == "table"
+  if LegacyStampAccepted(legacySV.global.schemaVersion) and type(legacySV.global.settings) == "table"
      and DeepEqual(siftSV.global.settings, CopyDefaults(defaults.global.settings)) then
     newSettings = OverlaySettings(defaults.global.settings, legacySV.global.settings)
     settingsImported = true
   end
 
   local charAdoptions, charCount = {}, 0
-  if legacySV.global.schemaVersion == 3 and type(legacySV.char) == "table" then
+  if LegacyStampAccepted(legacySV.global.schemaVersion) and type(legacySV.char) == "table" then
     for charKey, legacyChar in pairs(legacySV.char) do
       if type(charKey) == "string" and type(legacyChar) == "table"
          and IsEmptyCharSlot(siftSV.char and siftSV.char[charKey]) then
