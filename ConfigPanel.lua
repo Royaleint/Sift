@@ -1949,6 +1949,8 @@ RenderBlocked = function()
 
     local label = TrackNative(row:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
     label:SetPoint("LEFT", row, "LEFT", 8, 6)
+    label:SetJustifyH("LEFT")
+    label:SetWordWrap(false)
     if isManualBlock then
       label:SetText(L["%s (blocked by you)"]:format(rowData.label))
     else
@@ -1958,9 +1960,7 @@ RenderBlocked = function()
 
     local meta = TrackNative(row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"))
     meta:SetPoint("LEFT", row, "LEFT", 8, -8)
-    -- BSP-037 / SFT-127: a hand-blocked actor can sit here with zero recorded
-    -- blocks, which on its own reads like a stray row, and an auto-blocked
-    -- one otherwise carries no origin at all. Say who put it there either way.
+    -- Every row says who put the player here, even one with no recorded blocks.
     local origin = isManualBlock and "blocked by you - " or "blocked by Sift - "
     meta:SetText(origin .. "blocks " .. tostring(BlockedEntryCount(rowData.entry))
       .. " - last " .. RelativeTime(BlockedEntryLastSeen(rowData.entry)))
@@ -1976,6 +1976,11 @@ RenderBlocked = function()
     AttachTooltip(remove, "Remove",
       L["Take %s off the Blocked list."]:format(rowData.label))
     remove:Show()
+
+    -- The label has no width of its own, so pin its right edge to the
+    -- button now that it exists: a long name truncates instead of running
+    -- underneath Remove.
+    label:SetPoint("RIGHT", remove, "LEFT", -6, 0)
 
     y = y - (ROW_HEIGHT + 4)
   end
