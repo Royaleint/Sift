@@ -1712,21 +1712,21 @@ function HistoryListMixin:CreateModernListPane()
       HistoryRowMixin.InitListRow(button)
       button:RenderRow(entry)
       button.selection:SetShown(selectedEntryId == entry.id)
-      button:SetScript("OnClick", function(self, mouseButton)
+      button:SetScript("OnClick", function(rowButton, mouseButton)
         if mouseButton == "RightButton" then
-          self._lastClick = nil
-          Actions.OpenRowContextMenu(self, entry)
+          rowButton._lastClick = nil
+          Actions.OpenRowContextMenu(rowButton, entry)
           return
         end
         local now = GetTime()
-        if self._lastClick and (now - self._lastClick) < LAYOUT.DOUBLE_CLICK_WINDOW then
-          self._lastClick = nil
+        if rowButton._lastClick and (now - rowButton._lastClick) < LAYOUT.DOUBLE_CLICK_WINDOW then
+          rowButton._lastClick = nil
           Actions.PerformRestore(entry)
           if Actions.ContextEntryCanAllowlist(entry) then
             Actions.PerformAlwaysAllow(entry)
           end
         else
-          self._lastClick = now
+          rowButton._lastClick = now
           listPane:SelectEntry(entry.id)
         end
       end)
@@ -1769,8 +1769,8 @@ function HistoryListMixin:CreateClassicListPane()
   local scroll = CreateFrame("ScrollFrame", "SiftHistoryListScroll", listPane, "FauxScrollFrameTemplate")
   scroll:SetPoint("TOPLEFT",     listPane, "TOPLEFT",     0, -18)
   scroll:SetPoint("BOTTOMRIGHT", listPane, "BOTTOMRIGHT", -LAYOUT.SCROLLBAR_GUTTER, 18)
-  scroll:SetScript("OnVerticalScroll", function(self, yOffset)
-    FauxScrollFrame_OnVerticalScroll(self, yOffset, LAYOUT.LIST_ROW_HEIGHT, refreshList)
+  scroll:SetScript("OnVerticalScroll", function(scrollFrame, yOffset)
+    FauxScrollFrame_OnVerticalScroll(scrollFrame, yOffset, LAYOUT.LIST_ROW_HEIGHT, refreshList)
   end)
 
   scroll.rows = {}
@@ -1785,25 +1785,25 @@ function HistoryListMixin:CreateClassicListPane()
       row:SetPoint("TOP", scroll.rows[i - 1], "BOTTOM", 0, 0)
     end
     HistoryRowMixin.InitListRow(row)
-    row:SetScript("OnClick", function(self, mouseButton)
-      local entry = self.entry
+    row:SetScript("OnClick", function(rowButton, mouseButton)
+      local entry = rowButton.entry
       if not entry then
         return
       end
       if mouseButton == "RightButton" then
-        self._lastClick = nil
-        Actions.OpenRowContextMenu(self, entry)
+        rowButton._lastClick = nil
+        Actions.OpenRowContextMenu(rowButton, entry)
         return
       end
       local now = GetTime()
-      if self._lastClick and (now - self._lastClick) < LAYOUT.DOUBLE_CLICK_WINDOW then
-        self._lastClick = nil
+      if rowButton._lastClick and (now - rowButton._lastClick) < LAYOUT.DOUBLE_CLICK_WINDOW then
+        rowButton._lastClick = nil
         Actions.PerformRestore(entry)
         if Actions.ContextEntryCanAllowlist(entry) then
           Actions.PerformAlwaysAllow(entry)
         end
       else
-        self._lastClick = now
+        rowButton._lastClick = now
         listPane:SelectEntry(entry.id)
       end
     end)
@@ -2059,12 +2059,12 @@ function HistoryDetailMixin:CreateDetailPane()
   footer.btn2:Hide()
 
   -- Reads .tipTitle / .tipBody, which RenderActions refreshes.
-  local function ActionOnEnter(self)
-    if not GameTooltip or not self.tipTitle then return end
-    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
-    GameTooltip:AddLine(L[self.tipTitle])
-    if self.tipBody then
-      GameTooltip:AddLine(L[self.tipBody], 1.00, 1.00, 1.00, true)
+  local function ActionOnEnter(actionButton)
+    if not GameTooltip or not actionButton.tipTitle then return end
+    GameTooltip:SetOwner(actionButton, "ANCHOR_TOPRIGHT")
+    GameTooltip:AddLine(L[actionButton.tipTitle])
+    if actionButton.tipBody then
+      GameTooltip:AddLine(L[actionButton.tipBody], 1.00, 1.00, 1.00, true)
     end
     GameTooltip:Show()
   end
@@ -2098,7 +2098,7 @@ function HistoryDetailMixin:CreateDetailPane()
   stats:BuildStatsArea()
   statsScroll:SetScrollChild(stats)
 
-  statsScroll:SetScript("OnSizeChanged", function(self, w)
+  statsScroll:SetScript("OnSizeChanged", function(scrollFrame, w)
     if w and w > 0 then stats:SetWidth(w) end
   end)
 
@@ -2176,7 +2176,7 @@ function HistoryFilterChipsMixin.BuildCategoryChips(strip)
       if listPane then listPane:RefreshList() end
     end)
     -- Reads the current filter state on every hover.
-    chip:HookScript("OnEnter", function(self)
+    chip:HookScript("OnEnter", function(chipButton)
       if not GameTooltip then return end
       local fullName = CHIP_FULL_NAMES[cat] or cat
       local active = filterState and filterState.categories
@@ -2184,7 +2184,7 @@ function HistoryFilterChipsMixin.BuildCategoryChips(strip)
       local body = active
         and "Currently included in the list. Click to hide entries in this category."
         or  "Currently hidden from the list. Click to show entries in this category."
-      GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
+      GameTooltip:SetOwner(chipButton, "ANCHOR_BOTTOMRIGHT")
       GameTooltip:AddLine(L[fullName])
       GameTooltip:AddLine(L[body], 1.00, 1.00, 1.00, true)
       GameTooltip:Show()
@@ -2616,17 +2616,17 @@ function HistoryPanelMixin.CreatePauseRow(parent)
     totalWidth = totalWidth + pillWidth
 
     -- Left-click cycles forward, right-click backward.
-    pill:SetScript("OnClick", function(self, mouseButton)
+    pill:SetScript("OnClick", function(pillButton, mouseButton)
       if not NS.PauseState then return end
       local direction = (mouseButton == "RightButton") and "backward" or "forward"
-      NS.PauseState.CycleSurface(self.surfaceKey, direction)
+      NS.PauseState.CycleSurface(pillButton.surfaceKey, direction)
     end)
 
     -- Reads current PauseState on every hover so the tooltip never goes stale.
-    pill:HookScript("OnEnter", function(self)
+    pill:HookScript("OnEnter", function(pillButton)
       if not GameTooltip then return end
-      local fullName = SURFACE_LABELS[self.surfaceKey] or self.surfaceKey
-      local state = NS.PauseState and NS.PauseState.GetSurface(self.surfaceKey) or "active"
+      local fullName = SURFACE_LABELS[pillButton.surfaceKey] or pillButton.surfaceKey
+      local state = NS.PauseState and NS.PauseState.GetSurface(pillButton.surfaceKey) or "active"
       local stateBody
       if state == "active" then
         stateBody = "Active \194\183 detected spam is blocked from chat."
@@ -2635,7 +2635,7 @@ function HistoryPanelMixin.CreatePauseRow(parent)
       else
         stateBody = "Off \194\183 this surface is not scanned."
       end
-      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:SetOwner(pillButton, "ANCHOR_RIGHT")
       GameTooltip:AddLine(L[fullName])
       GameTooltip:AddLine(L[stateBody], 1.00, 1.00, 1.00, true)
       GameTooltip:AddLine(L["Left-click cycles forward · Right-click cycles back."],
