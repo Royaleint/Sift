@@ -34,7 +34,8 @@ function Scoring._ScoreHits(hits, analysis, options)
       seenRules[h.ruleId] = true
       auditHits[#auditHits + 1] = h.ruleId
       local categoryState = enabled[h.category]
-      -- Paused still scores: ChatScanner downgrades the block to a pass-thru History row.
+      -- Paused still scores: ChatScanner downgrades the block to a pass-thru
+      -- History row.
       if categoryState == true or categoryState == "active" or categoryState == "paused" then
         if h.weight < 0 then
           antiRaw = antiRaw + h.weight
