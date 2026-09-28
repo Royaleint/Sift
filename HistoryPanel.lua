@@ -2,8 +2,7 @@ local _, NS = ...
 local L = NS.L
 local HistoryPanel = {}
 
--- BSP-066: Foundry-1.0 is a hard dependency (## Dependencies: Foundry-1.0).
--- Bound at file load so CreateModernListPane can call F:RequireModule at use-time.
+-- Foundry-1.0 is loaded before this file (see Init.lua).
 local F = _G.Foundry_1_0
 
 local Data = {}
@@ -17,12 +16,9 @@ local HistoryStatsMixin = {}
 local HistoryFilterChipsMixin = {}
 local HistoryPauseRowMixin = {}
 
--- BSP-009: GameTooltip helper for widget hover help. Static title/body/hint
--- variant. For state-aware widgets (pause pills, detail-pane action buttons)
--- the OnEnter handler is wired inline so the tooltip can read live state.
--- `widget.frame or widget` is a historical compatibility fallback retained
--- so any future widget wrapper that exposes `.frame` still works. EnableMouse
--- is asserted because layout-only BackdropTemplate frames default off.
+-- GameTooltip hover help with a static title/body/hint. State-aware widgets
+-- wire their own OnEnter. EnableMouse is set because layout-only
+-- BackdropTemplate frames default to mouse-disabled.
 function Chrome.AttachTooltip(widget, title, body, hint)
   if not widget then return end
   local host = widget.frame or widget
@@ -41,33 +37,12 @@ function Chrome.AttachTooltip(widget, title, body, hint)
   end)
 end
 
--- BSP-055 Gate 2 followup-v2: HistoryPanel is now a fixed-size window
--- (940 x 560). Min == default; SetResizable is removed. This eliminates
--- the legend-overflow-at-narrow-listPane and tile-label-clip-at-narrow-
--- detailPane edge cases from BSP-022 / BSP-055 Gate 2 because the panel
--- can never reach a width where those elements don't fit. The splitter
--- still lets the user nudge the list/detail proportion within the
--- locked outer size (~20 px range given current pane minimums).
--- SFT-089: this still holds for the History tab itself -- the panel only
--- leaves this size while the embedded Config tab is showing, and restores
--- it on return.
+-- Every plain-number layout constant for this file, in one local.
 --
--- SFT-089: embedded Config auto-resize. Matches configHost's own
--- BOTTOMRIGHT offset (see BuildFrame) so the height computed from measured
--- content restores the same bottom margin configHost already reserves below
--- it. CONFIG_MIN_EMBEDDED_HEIGHT is a defensive backstop for the
--- (never-expected) case ConfigPanel reports no measurable content -- the nav
--- column itself is part of that measurement, so it is what actually keeps a
--- resize from clipping the nav, not this constant.
---
--- listPane is locked at DEFAULT_LIST_PANE_WIDTH after BSP-055 followup-v3
--- (splitter no longer draggable). MIN_LIST_PANE_WIDTH is retained as a
--- clamp on GetStoredListPaneWidth so any pre-existing too-narrow value
--- in SavedVariables snaps up to a width where the BSP-008 legend strip
--- and column headers still fit.
---
--- Every plain-number layout constant for this file lives here, one local
--- instead of one per constant.
+-- The panel is fixed-size (min == default) so the legend and stat tiles always
+-- fit; it leaves that size only while the embedded Config tab shows. The
+-- embedded Config bottom offset must match configHost's BOTTOMRIGHT offset in
+-- BuildFrame. MIN_LIST_PANE_WIDTH clamps an older, too-narrow saved width.
 local LAYOUT = {
   PANEL_WIDTH  = 940,
   PANEL_HEIGHT = 560,
@@ -98,14 +73,11 @@ local CATEGORY_COLORS = {
   Phishing   = "58a",
   Commercial = "5a7",
   Anti       = "888",
-  -- The player's own phrases. Teal, chosen to sit clear of the seven
-  -- above rather than fall through to the grey Anti shares.
+  -- The player's own phrases: teal, distinct from the colours above.
   Custom     = "2bc",
 }
 -- Internal category keys that differ from the words the player sees. Every
--- surface that prints a category key routes through this map so "Custom" and
--- "RMT" never leak; keys not listed here (Boosting, Carrying, the retired
--- categories) already read as plain words.
+-- surface that prints a category key routes through this map.
 local CATEGORY_BADGE_LABELS = {
   RMT    = "Gold selling",
   Custom = "My Keywords",
@@ -116,39 +88,30 @@ local CATEGORY_BADGE_LABELS = {
   Throttle     = "Repeat",
   ManualBlock  = "Manual block",
 }
--- Chip tooltip bodies for the four user-filterable categories -- keep the
--- chip label terse and rely on the tooltip to spell out what the category
--- covers.
+-- Chip tooltip bodies for the user-filterable categories.
 local CHIP_FULL_NAMES = {
   RMT        = "Gold selling (real-money trading)",
   Boosting   = "Boosting (paid leveling and other services)",
   Carrying   = "Carrying (paid raid, Mythic+, and dungeon runs)",
   Custom     = "My Keywords (phrases you added yourself)",
 }
--- Keys that describe WHY a message was caught rather than WHAT KIND of spam it
--- is. Letting them win "dominant category" mislabels the row: a boosting ad
--- caught during a flood would take the flood's colour and be filtered as though
--- boosting were not its category. They stay visible as breakdown chips in the
--- detail pane, which is where the "why" belongs. ChatScanner keeps its own
--- copy of this set; BSP-029 aligned the two (Throttle included in both --
--- an earlier note here claimed ChatScanner deliberately omitted it, which
--- stopped being true when the repeat lane moved into Frequency).
+-- Keys that say why a message was caught, not what kind of spam it is; they
+-- never win "dominant category" but still show as breakdown chips. Other
+-- files keep copies of this set; keep them in step.
 local IGNORED_BREAKDOWN_KEYS = {
   MixedScript = true,
   BlockedActor = true,
   Flood = true,
   Throttle = true,
-  -- BSP-037: manual blocks carry { ManualBlock = 1 }, an identity decision
-  -- rather than a content category, so it is excluded on the same grounds.
+  -- A manual block is an identity decision, not a content category.
   ManualBlock = true,
 }
 
 -- Categories the user can filter by. PauseState is the single declaration.
 local CATEGORIES = NS.PauseState.GetCategoryKeys()
 
--- Every category a stored row can still carry, including the retired ones.
--- History is never rewritten, so old rows keep their categories forever and the
--- colour legend and lifetime counts have to keep describing them.
+-- Every category a stored row can still carry, including retired ones: stored
+-- rows are never rewritten.
 local DISPLAY_CATEGORIES = {}
 local RETIRED_CATEGORY_SET = {}
 do
@@ -162,11 +125,8 @@ do
   for _, cat in ipairs(retired) do DISPLAY_CATEGORIES[#DISPLAY_CATEGORIES + 1] = cat end
 end
 
--- Surface uses canonical lowercase keys ("chat", "whisper") to match what
--- ChatScanner writes into entry.surface. SURFACE_LABELS maps the key to its
--- display name so the dropdown UI stays user-friendly. An unmapped key (e.g. a
--- stale surface string from a removed feature persisted in old SavedVariables)
--- falls back to its raw surface string rather than erroring or being dropped.
+-- Lowercase surface keys, as ChatScanner writes them. An unmapped key (an old
+-- saved surface) displays as its raw string rather than erroring.
 local SURFACE_VALUES = { "All", "chat", "whisper", "bn-whisper" }
 local SURFACE_LABELS = {
   All               = "All",
@@ -175,11 +135,7 @@ local SURFACE_LABELS = {
   ["bn-whisper"]    = "Bnet whisper",
 }
 
--- Friendly labels for the WoW chat event names persisted as entry.channel.
--- entry.channelName (when present, captured from the live event payload) is
--- preferred over this map — these labels are the fallback when channelName
--- is nil (e.g. SAY/YELL/WHISPER events where there's no channel name) or
--- for old entries written before ChatScanner started capturing channelName.
+-- Labels for entry.channel, used when the entry has no channelName.
 local CHAT_EVENT_LABELS = {
   CHAT_MSG_SAY        = "Say",
   CHAT_MSG_YELL       = "Yell",
@@ -210,9 +166,7 @@ local SORT_LABELS = {
   sender = "Sender",
 }
 
--- BSP-008 Commit 5: stats area tile metadata (used by BuildStatsArea +
--- RefreshStatsArea below; declared at file scope so RenderActions / other
--- helpers don't need to forward-reference them).
+-- Stats-area tile metadata, at file scope so later helpers can reach it.
 local STATS_TILE_KEYS = { "detected", "blocked", "passThru", "restored", "falsePositives" }
 local STATS_TILE_LABELS = {
   detected       = "DETECTED",
@@ -221,7 +175,7 @@ local STATS_TILE_LABELS = {
   restored       = "RESTORED",
   falsePositives = "FALSE POSITIVES",
 }
--- BSP-009: tooltip bodies for the lifetime-stats tiles.
+-- Tooltip bodies for the lifetime-stats tiles.
 local STATS_TILE_TOOLTIPS = {
   detected = {
     title = "Detected",
@@ -295,9 +249,7 @@ local configHost
 local tabButtons = {}
 local activeMode = "History"
 local activeConfigSection = "Detection"
--- BSP-036: "char" (this character) or "account" (summed across every stored
--- character). Deliberately session-local view state, like sortMode and
--- filterState -- it resets to "char" each login and is not persisted.
+-- "char" or "account". Session-only view state, deliberately not persisted.
 local statsScope = "char"
 
 function Data.DefaultFilterState()
@@ -332,11 +284,6 @@ function Data.GetStoredListPaneWidth()
   return w
 end
 
--- BSP-055 Gate 2 followup-v3: SaveListPaneWidth removed. The splitter is
--- locked (CreateSplitter has no drag handler) so listPaneWidth no longer
--- changes after the initial CreatePanes seed. The SV key keeps any older
--- value harmlessly; GetStoredListPaneWidth clamps it to LAYOUT.MIN_LIST_PANE_WIDTH.
-
 function HistoryPanelMixin:SavePosition()
   if not frame then return end
   local store = Data.GetCharStore()
@@ -345,14 +292,7 @@ function HistoryPanelMixin:SavePosition()
   store.y = frame:GetTop()
 end
 
--- BSP-055 Gate 2 followup-v2: SaveSize removed — panel is fixed-size and
--- the width/height SavedVariables keys are no longer written. ApplyStoredGeometry
--- still reads position (store.x / store.y) but the size is forced to the
--- compile-time constants. Existing users with store.width / store.height set
--- by older builds get their values ignored on next open — harmless.
--- SFT-089's Config-tab resize doesn't change any of this -- it is
--- runtime-only and is never saved here either.
-
+-- Restores the saved position only; the size is always the fixed panel size.
 function HistoryPanelMixin:ApplyStoredGeometry()
   local store = Data.GetCharStore() or {}
 
@@ -360,9 +300,8 @@ function HistoryPanelMixin:ApplyStoredGeometry()
 
   frame:ClearAllPoints()
   if store.x and store.y then
-    -- BSP-008: clamp off-screen geometry that pre-BSP-008 builds left behind.
-    -- PortraitFrameTemplate's NineSlice extends ~13px beyond the client area,
-    -- so existing TOPLEFT positions that were near-edge may now spill off-screen.
+    -- Clamp an off-screen saved position; the template's NineSlice extends
+    -- ~13px beyond the client area.
     local screenW = GetScreenWidth and GetScreenWidth() or 1920
     local screenH = GetScreenHeight and GetScreenHeight() or 1080
     if store.x < -200 or store.x > screenW - 100
@@ -381,17 +320,11 @@ function Data.ClearStoredGeometry()
 	if not store then return end
 	store.x = nil
 	store.y = nil
-	-- store.width / store.height intentionally not cleared here — the keys
-	-- may still be present from older builds but ApplyStoredGeometry ignores
-	-- them. Leaving them allows a future bump back to resizable without a
-	-- data migration.
+	-- store.width / store.height are left alone on purpose; nothing reads them.
 end
 
--- SFT-089: resize `win` in place while keeping its top-left corner fixed on
--- screen, re-anchoring through TOPLEFT/BOTTOMLEFT-of-UIParent either way --
--- the same convention ApplyStoredGeometry / SavePosition already use. `win`
--- only needs GetLeft/GetTop/SetSize/ClearAllPoints/SetPoint, so a duck-typed
--- fake drives this offline without a WoW client.
+-- Resizes `win` keeping its top-left corner fixed, anchored the same way as
+-- ApplyStoredGeometry / SavePosition.
 function HistoryPanel.ResizeKeepingTopLeft(win, width, height)
   local left, top = win:GetLeft(), win:GetTop()
   win:SetSize(width, height)
@@ -401,15 +334,9 @@ function HistoryPanel.ResizeKeepingTopLeft(win, width, height)
   end
 end
 
--- SFT-089: the embedded Config window's target size. Width comes from
--- ConfigPanel's own tested embed width (GetEmbeddedWidth), never a value
--- guessed here. Height is measured from Config's actually-rendered content
--- (contentBottom, ConfigPanel.GetEmbeddedContentBottom's return) rather than
--- hardcoded, so a short section and a long one each get their own fit; a nil
--- measurement (Config not yet built) falls back to the fixed History
--- height. Both axes clamp so Config can never exceed History's own
--- footprint. Pure: takes plain numbers, calls nothing WoW-specific, so it is
--- testable without loading either UI module.
+-- The embedded Config window's size: ConfigPanel's embed width, and a height
+-- measured from its rendered content (nil falls back to the History height).
+-- Both clamp to History's own size. Pure, for tests.
 function HistoryPanel.ComputeConfigWindowSize(configEmbedWidth, configMinHeight, frameTop, contentBottom)
   local width = configEmbedWidth or LAYOUT.PANEL_WIDTH
   if width > LAYOUT.PANEL_WIDTH then width = LAYOUT.PANEL_WIDTH end
@@ -531,8 +458,6 @@ function Chrome.OpenConfigPanel()
   HistoryPanel.ShowConfig("Detection")
 end
 
--- BSP-055 Gate 2 followup-v2: resize handle removed — panel is fixed-size.
-
 function HistoryPanelMixin.CreatePanes(parent)
   local listWidth = Data.GetStoredListPaneWidth()
 
@@ -550,13 +475,8 @@ function HistoryPanelMixin.CreatePanes(parent)
   return list, detail
 end
 
--- Neither the row list nor the stats tiles change from a click, a filter
--- edit, or a sort change. History.GetRevision() moves only when the stored
--- data actually does (see its own comment in History.lua for the exact
--- list); whenever it hasn't moved since the last fetch here, the same array
--- and stats objects are handed back instead of walking History again. The
--- cache lives on the HistoryPanel module table, as fields, rather than as
--- file-scope locals.
+-- Cached until History.GetRevision() moves; clicks, filters and sorts reuse
+-- the same array and stats objects.
 function Data.GetEntries()
   local revision = NS.History and NS.History.GetRevision and NS.History.GetRevision()
   if revision ~= nil and HistoryPanel._entriesRevision == revision then
@@ -577,10 +497,7 @@ function Data.GetEntries()
   return entries
 end
 
--- BSP-036: scope is "char" (this character, the long-standing default) or
--- "account" (summed across every stored character namespace). The two scopes
--- cache independently (HistoryPanel._stats is keyed by scope) since they
--- describe different things and can both be looked at in the same session.
+-- scope is "char" or "account"; each is cached separately.
 function Data.GetHistoryStats(scope)
   scope = scope or "char"
   local revision = NS.History and NS.History.GetRevision and NS.History.GetRevision()
@@ -622,7 +539,7 @@ function Data.GetHistoryStats(scope)
 end
 
 function Data.UpdateHistoryStatsText()
-  -- BSP-008: stats text moves to detail pane (Commit 5); placeholder while chrome transitions.
+  -- Deliberate no-op: the stats render in the detail pane.
   return
 end
 
@@ -638,10 +555,7 @@ local function TimeWindowCutoff(label)
 end
 
 local function EntryDominantCategory(entry)
-  -- BSP-052: a phrase the player wrote owns the row when it is what caught the
-  -- message. A corpus weight can be the larger number without having blocked
-  -- anything, and letting it win would colour the row for a category the player
-  -- never involved and hide the row from their own filter chip.
+  -- A custom-rule block is always Custom, whatever the largest weight.
   if entry.customRule then return "Custom" end
   if type(entry.breakdown) ~= "table" then return nil end
   local bestCat, bestVal
@@ -661,9 +575,8 @@ local function MatchesFilters(entry)
     return false
   end
 
-  -- filterState.outcome \in { "All", "Blocked", "Restored", "Pass-thru" }
-  -- Lower-cased compare matches against entry.outcome which is one of
-  -- { "blocked", "restored", "pass-thru" } (set by ChatScanner / History.RetroactiveBlock).
+  -- filterState.outcome is "All", "Blocked", "Restored" or "Pass-thru";
+  -- entry.outcome is the lower-case form.
   if filterState.outcome and filterState.outcome ~= "All" then
     local desired = string.lower(filterState.outcome)
     if (entry.outcome or "blocked") ~= desired then return false end
@@ -897,8 +810,7 @@ end
 function HistoryRowMixin.RowOnEnter(self)
   if not GameTooltip then return end
   if not self.tipTitle then
-    -- Defensive: every case above returns a tooltip title, so this branch
-    -- has no reachable caller today.
+    -- Defensive: unreachable today.
     GameTooltip:Hide()
     return
   end
@@ -955,22 +867,17 @@ function HistoryRowMixin.RenderRow(row, entry)
   -- Translated once here: badgeKey is nil only for the "?" case, which is
   -- never run through L[].
   row.badgeText:SetText(badgeKey and L[badgeKey] or "?")
-  -- BSP-037: a manual block has no score, so the usual 0 reads as a broken
-  -- row. Blank it instead.
+  -- A manual block has no score; blank it rather than show 0.
   if entry.reason == "manual-block" then
     row.scoreText:SetText("")
   else
     row.scoreText:SetText(tostring(entry.score or 0))
   end
 
-  -- Re-point the row's tooltip fields to this entry so a hover always
-  -- reflects the row currently rendered here, not whichever entry last
-  -- occupied this recycled frame.
+  -- Re-point the tooltip fields, since this frame is recycled.
   row.tipTitle, row.tipBody, row.tipBody2 = titleKey, bodyKey, nil
 
-  -- A still cursor over a row that gets re-rendered (recycling under the
-  -- pointer, or any refresh) would otherwise leave a stale tooltip showing;
-  -- re-run the hover handler so it picks up the fields just written above.
+  -- Re-run the hover if the cursor is already on this row, or the tooltip goes stale.
   if GameTooltip and GameTooltip:IsShown() and GameTooltip:GetOwner() == row
      and row:IsMouseOver() then
     row:RowOnEnter()
@@ -1050,15 +957,10 @@ function Actions.PerformRestore(entry)
   if NS.ReportFlow and NS.ReportFlow.Clear then
     NS.ReportFlow.Clear(entry.id)
   end
-  -- Keep the just-restored entry visible: when the default Outcome filter is
-  -- "Blocked", a Restore would immediately filter the row out. Promote the
-  -- filter to "All" so the user can see their action stuck and can re-toggle
-  -- to "Restored" if they want a focused view.
+  -- Under the "Blocked" filter a restored row would vanish; switch to "All".
   if filterState and filterState.outcome == "Blocked" then
     filterState.outcome = "All"
-    -- Modern WowStyle1DropdownTemplate reflects state via its getValue
-    -- closure; call GenerateMenu to refresh the visible label after we mutate
-    -- filterState.outcome externally.
+    -- The dropdown reads state through getValue; GenerateMenu refreshes its label.
     if frame and frame.filterStrip and frame.filterStrip.outcomeDD
        and frame.filterStrip.outcomeDD.GenerateMenu then
       frame.filterStrip.outcomeDD:GenerateMenu()
@@ -1071,8 +973,7 @@ function Actions.PerformAlwaysAllow(entry)
   if not entry or not entry.guid or entry.guid == "" then return end
   if NS.Trust and NS.Trust.AddAllowlist then
     local _, clearedManualBlock = NS.Trust.AddAllowlist(entry.guid, entry.name, entry.realm, "history")
-    -- BSP-037: lifting a manual block is a second, invisible consequence of
-    -- this button. Say it out loud, or the user cannot tell it happened.
+    -- Lifting a manual block is otherwise invisible; say so.
     if clearedManualBlock then
       local message = "|cff33ff99Sift|r removed your manual block on "
         .. tostring(entry.name or "that player") .. "."
@@ -1091,10 +992,8 @@ function Actions.PerformBlockRetroactively(entry)
   if NS.History and NS.History.RetroactiveBlock then
     NS.History.RetroactiveBlock(entry.id)
   end
-  -- Fire ReportFlow if a report kind exists for this surface. ReportFlow only
-  -- registers reports for blocked entries today, so retroactive block needs to
-  -- enqueue the report payload itself; the helpers below no-op if the report
-  -- record is unavailable.
+  -- ReportFlow only queues reports for entries blocked at scan time, so a
+  -- retroactive block enqueues its own; the helpers no-op without a record.
   local surface = entry.surface
   if NS.ReportFlow then
     if (surface == "chat" or surface == "whisper" or surface == "bn-whisper")
@@ -1191,8 +1090,7 @@ function HistoryDetailMixin:RenderActions(entry)
   actions.btn2:Enable()
   actions.btn1:SetScript("OnClick", nil)
   actions.btn2:SetScript("OnClick", nil)
-  -- BSP-009: clear tip strings so a stale tooltip never shows on a hidden /
-  -- repurposed button.
+  -- Clear tip strings so a hidden or repurposed button never shows a stale tooltip.
   actions.btn1.tipTitle, actions.btn1.tipBody = nil, nil
   actions.btn2.tipTitle, actions.btn2.tipBody = nil, nil
 
@@ -1238,8 +1136,7 @@ function HistoryDetailMixin:RenderActions(entry)
     return
   end
 
-  -- outcome == "blocked": existing behavior with broadened allowlist eligibility
-  -- (chat + whisper + bn-whisper now qualify, up from chat-only).
+  -- outcome == "blocked".
   local reportKind = Actions.GetReportKind(entry)
   local reportLabel = Actions.GetReportLabel(reportKind)
 
@@ -1296,9 +1193,7 @@ function HistoryDetailMixin:RenderActions(entry)
   end
 end
 
--- SFT-085: shared by the per-category loop below and the Flood swatch after
--- it, so both render a legend item the same way instead of two copies that
--- can drift apart.
+-- Shared by the per-category legend items and the Flood swatch.
 function HistoryListMixin:ShowLegendItem(legend, index, lx, hex, label, tipTitle, tipBody)
   local item = legend.items[index]
   if not item then
@@ -1334,25 +1229,16 @@ function HistoryListMixin:ShowLegendItem(legend, index, lx, hex, label, tipTitle
   return lx + 12 + item.label:GetStringWidth() + 8
 end
 
--- The legend shows only the live categories PauseState declares; retired
--- categories never appear here, at any lifetime count. This differs from the
--- by-category stats line below, which keeps its own residue rule and still
--- shows a retired category while old rows carry it. Items are reused across
--- rebuilds, never destroyed.
--- The legend always describes this character (never the account-scope
--- aggregate), so a caller that already fetched char-scope stats for its own
--- render can hand them over here instead of paying for the same walk twice;
--- omitting `stats` fetches (and caches) them fresh.
+-- The legend shows only live categories, never retired ones (unlike the
+-- by-category stats line). Items are reused, never destroyed. It always
+-- describes this character: pass char-scope `stats` if already fetched,
+-- otherwise they are fetched here.
 function HistoryListMixin:RefreshLegend(stats)
   local legend = listPane and listPane.legend
   if not legend then return end
   stats = stats or Data.GetHistoryStats("char")
-  -- SFT-085: floodBadgeCount, not floodCount -- the swatch explains the grey
-  -- stripe, and RenderRow stripes/badges Flood on ANY outcome (no blocked
-  -- check there), so the swatch must show for a restored or pass-thru
-  -- flood-only row too. The PIPELINE line below uses floodCount (blocked
-  -- only) instead; History.lua's comment on IsFloodBadgeRow/IsFloodOnlyBlock
-  -- has the full reasoning.
+  -- floodBadgeCount, not floodCount: RenderRow badges Flood on any outcome, so
+  -- the swatch must too. The PIPELINE line uses floodCount (blocked only).
   local floodBadgeCount = tonumber(stats and stats.retained and stats.retained.floodBadgeCount) or 0
   local lx = 4
   local index = 0
@@ -1364,13 +1250,8 @@ function HistoryListMixin:RefreshLegend(stats)
         L[CATEGORY_BADGE_LABELS[cat] or cat], tipTitle, tipBody)
     end
   end
-  -- Flood is a reason, not a category (IGNORED_BREAKDOWN_KEYS) -- it
-  -- has no CATEGORY_COLORS/PauseState entry and is deliberately not a filter
-  -- chip -- but a flood-badge row still renders a grey stripe in the list
-  -- (RenderRow falls back to "888" when DominantCategory returns nil), and
-  -- that stripe needs a legend entry the same as every other stripe colour
-  -- does. Shown only while a flood-badge row is currently retained. Flood
-  -- isn't a category, so no retired-category skip applies to it here.
+  -- Flood is not a category or a filter chip, but its rows still get the grey
+  -- stripe, so it gets a legend entry while such a row is retained.
   if floodBadgeCount > 0 then
     index = index + 1
     local tipTitle, tipBody = HistoryPanel.LegendTipKeys("Flood")
@@ -1416,12 +1297,7 @@ function HistoryStatsMixin:RefreshStatsArea()
 
   -- By-surface inline line.
   local bySurface = lifetime.bySurface or {}
-  -- BSP-055 Gate 2 followup-v3 revert: BY SURFACE / BY CATEGORY render
-  -- inline again (separator "   "). The earlier "\n" change produced a tall
-  -- 1-per-line column that Rawb rejected on visual review. The inline form
-  -- relies on FontString word-wrap when content exceeds the available width;
-  -- the BSP-055 ScrollFrame still wraps the stats area so any vertical
-  -- overflow scrolls cleanly.
+  -- Inline, relying on word-wrap; the stats ScrollFrame handles overflow.
   local surfaceParts = {}
   local surfaceOrder = { "chat", "whisper", "bn-whisper" }
   for _, s in ipairs(surfaceOrder) do
@@ -1435,9 +1311,7 @@ function HistoryStatsMixin:RefreshStatsArea()
   local categoryParts = {}
   for _, cat in ipairs(DISPLAY_CATEGORIES) do
     local count = tonumber(byCategory[cat]) or 0
-    -- SFT-080 residue rule (Gate 2, 2026-07-28): a retired category earns a
-    -- line item only while old rows still carry it. Zero-count retired
-    -- categories are pure noise for every profile that never saw them.
+    -- A retired category is listed only while old rows still carry it.
     if count > 0 or not RETIRED_CATEGORY_SET[cat] then
       local hex = CATEGORY_COLORS[cat] or "888"
       local hexFull = (hex:gsub(".", "%0%0"))  -- 3-char hex expanded per digit to 6 for color codes
@@ -1456,29 +1330,20 @@ function HistoryStatsMixin:RefreshStatsArea()
 
   local throttled = tonumber(lifetime.throttled) or 0
   local bubbles   = tonumber(lifetime.bubblesSuppressed) or 0
-  -- SFT-085: unlike Repeats/Bubbles suppressed, this count has no lifetime
-  -- counter -- it's derived from currently retained rows and shrinks as old
-  -- rows trim off, hence "(recent)". Grey label / white count, not all-grey:
-  -- an all-grey count reads as paused/off elsewhere on this line's neighbor
-  -- (the BY CATEGORY loop above).
+  -- Derived from retained rows, not a lifetime counter, hence "(recent)". The
+  -- count stays white: all-grey reads as paused/off on the line above.
   local retained = stats.retained or {}
   local flood = tonumber(retained.floodCount) or 0
   detailPane.stats.pipelineText:SetText(string.format(
     "%s |cffffffff%d|r   %s |cffffffff%d|r   |cff888888%s|r |cffffffff%d|r",
     L["Repeats"], throttled, L["Bubbles suppressed"], bubbles, L["Spam wave (recent)"], flood))
 
-  -- Keep the list legend in sync with the same counts (e.g. Clear history
-  -- can make a retired category's last rows disappear). `stats` above is
-  -- already char-scoped when statsScope is "char", so hand it over directly;
-  -- account scope still needs the legend's own char-scope fetch.
+  -- Keep the legend in sync. Only char-scope stats can be handed over.
   if listPane then listPane:RefreshLegend(statsScope == "char" and stats or nil) end
 
-  -- BSP-055 / Argus Nit 1: size the scrollChild to fit actual content so
-  -- pathological label wrapping (zhCN/ruRU, new surfaces, new categories)
-  -- triggers the scrollbar instead of clipping past the 280px envelope.
-  -- Defer one frame so FontString wrap heights settle after the SetText
-  -- calls above. GetTop/GetBottom return nil pre-layout; fall back to the
-  -- 280px envelope if that happens.
+  -- Size the scrollChild to its content so long wraps scroll instead of
+  -- clipping. Deferred one frame for wrap heights to settle; GetTop/GetBottom
+  -- can be nil before layout, which falls back to the 280px envelope.
   if C_Timer and C_Timer.After then
     C_Timer.After(0, function()
       if not detailPane or not detailPane.stats or not detailPane.stats.pipelineText then return end
@@ -1536,8 +1401,7 @@ function HistoryDetailMixin:RenderBreakdownChips(breakdown)
       end
       chip.label = chip:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
       chip.label:SetPoint("CENTER", chip, "CENTER", 0, 0)
-      -- The chip frame itself is the hover host. Nothing clickable sits
-      -- beneath it.
+      -- The chip frame itself is the hover host.
       chip:EnableMouse(true)
       chip:HookScript("OnEnter", Chrome.ChipOnEnter)
       chip:HookScript("OnLeave", Chrome.ChipOnLeave)
@@ -1608,11 +1472,8 @@ function HistoryDetailMixin:RefreshDetail()
       tonumber(entry.score) or 0, tonumber(entry.threshold) or 0)
   end
   detailPane.header.statusText:SetText(statusText)
-  -- BSP-052: name the user's own rule when one is what caught this message.
-  -- Read from the record rather than looked up live, so it still reads correctly
-  -- after the rule has been deleted. Shown on the meta line rather than as its
-  -- own row because the footer below is a fixed-height three-row layout, and the
-  -- breakdown already carries a "Custom" chip alongside this.
+  -- Names the user's rule from the record, so it survives the rule's deletion.
+  -- On the meta line because the footer is a fixed three-row layout.
   local keywordNote = ""
   if type(entry.customRule) == "table" then
     local rule = entry.customRule.raw or entry.customRule.cleansed
@@ -1670,9 +1531,7 @@ function HistoryListMixin:RefreshList()
         row:Show()
       elseif row then
         row.entry = nil
-        -- This is the only place that ever hides a classic row, so it is
-        -- also the only reachable place to clear its tooltip fields (the
-        -- modern resetter's clear, below, is unreachable here).
+        -- The only place a classic row is hidden, so clear its tooltip here.
         row.tipTitle, row.tipBody, row.tipBody2 = nil, nil, nil
         row:Hide()
       end
@@ -1689,22 +1548,14 @@ end
 
 function HistoryListMixin:SelectEntry(id)
   selectedEntryId = id
-  -- Classic backend: the rows on screen were drawn from a specific History
-  -- revision (see RefreshList). Usually a click is just a selection change
-  -- and the row data underneath hasn't moved, so only the highlight needs
-  -- repainting on the rows already there. But if a message landed, or a trim
-  -- ran, while the panel was open, those rows are stale -- the clicked row
-  -- may no longer even be the one the player sees at the history cap -- so
-  -- run the real redraw once instead of trusting them.
+  -- Classic backend: repaint highlights only while the History revision is
+  -- unchanged; if data moved since the draw, the rows are stale, so redraw.
   if listPane and listPane.listBackend == "classic" then
     local revision = NS.History and NS.History.GetRevision and NS.History.GetRevision()
     if revision ~= nil and revision ~= HistoryPanel._listRevision then
       if listPane then listPane:RefreshList() end
-      -- RefreshList paints its own row highlights against the id just
-      -- clicked, but the RefreshDetail it runs afterward can still move the
-      -- selection (the clicked row itself may be the one that trimmed away,
-      -- which falls back to the first visible entry). Repaint below, now
-      -- that selectedEntryId has settled, instead of trusting that pass.
+      -- RefreshDetail can move the selection after RefreshList painted, so
+      -- repaint once selectedEntryId has settled.
     else
       if detailPane then detailPane:RefreshDetail() end
     end
@@ -1719,10 +1570,8 @@ function HistoryListMixin:SelectEntry(id)
     return
   end
   if detailPane then detailPane:RefreshDetail() end
-  -- Modern backend: update the existing-selection visual on rendered rows
-  -- without rebuilding the data provider (which would reset scroll). Route
-  -- through the controller so the abstraction is respected and Destroy()
-  -- remains reachable.
+  -- Modern backend: repaint rendered rows without rebuilding the data provider,
+  -- which would reset scroll.
   if listPane and listPane.list then
     listPane.list:ForEachFrame(function(rowFrame, entryData)
       if rowFrame.selection then
@@ -1769,10 +1618,7 @@ function HistoryRowMixin.InitListRow(button)
 
   button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 
-  -- The whole row is the hover host -- no child frame -- so click routing
-  -- (RegisterForClicks above) is unaffected. The row is a Button,
-  -- mouse-enabled by the widget type itself, so no EnableMouse call is
-  -- needed here.
+  -- The row itself is the hover host, so click routing is unaffected.
   button:HookScript("OnEnter", HistoryRowMixin.RowOnEnter)
   button:HookScript("OnLeave", HistoryRowMixin.RowOnLeave)
 end
@@ -1815,10 +1661,7 @@ function HistoryListMixin:CreateListHeader()
   header.scoreLabel:SetJustifyH("RIGHT")
   header.scoreLabel:SetText(L["Score"])
 
-  -- A hover host per column, anchored TOP/BOTTOM to the header itself (not
-  -- SetAllPoints on the label) so the hit target runs the header's full
-  -- 18px height, not just the label's own line height. Titles reuse the
-  -- existing on-screen column labels.
+  -- A hover host per column, anchored to the header's full height.
   local function AddHeaderTip(label, title, body)
     local host = CreateFrame("Frame", nil, header)
     host:SetPoint("TOP", header, "TOP", 0, 0)
@@ -1836,13 +1679,8 @@ end
 function HistoryListMixin:CreateModernListPane()
   listPane:CreateListHeader()
 
-  -- BSP-066 / FND-006 Phase E: replace hand-wired ScrollBox composition with
-  -- Foundry.List:New(). F.List builds the five-object ScrollBox system
-  -- (WowScrollBoxList, MinimalScrollBar, LinearView, DataProvider, ScrollUtil
-  -- wiring) in one call and returns a controller. We expose the native
-  -- scrollBox via GetNativeHandles() so all existing RefreshList and
-  -- SelectEntry call sites (GetDataProvider, ForEachFrame) keep working
-  -- without modification.
+  -- Built with Foundry.List; RefreshList and SelectEntry use its native
+  -- scrollBox through GetNativeHandles().
   F:RequireModule("List", 1)
 
   local list = F.List:New({
@@ -1878,18 +1716,13 @@ function HistoryListMixin:CreateModernListPane()
       button:SetScript("OnClick", nil)
       button.selection:Hide()
       button._lastClick = nil
-      -- Defensive: the initializer above calls RenderRow on every reuse,
-      -- which overwrites these fields before a released frame can show
-      -- again, so this clear has no observable effect.
+      -- Defensive only: RenderRow overwrites these on every reuse.
       button.tipTitle, button.tipBody, button.tipBody2 = nil, nil, nil
     end,
   })
 
-  -- Re-anchor the native frames to the original HistoryPanel insets.
-  -- F.List:New() sets default fill anchors; clear and reassign to match
-  -- the pre-BSP-066 layout: scrollBox inset 18 px from top and 18 px from
-  -- bottom (legend strip), LAYOUT.SCROLLBAR_GUTTER wide on the right; scrollBar
-  -- flush against scrollBox right edge (0 offset, not F.List's default 4).
+  -- Replace F.List's default anchors: scrollBox inset 18px top and bottom
+  -- (legend strip) with the scrollbar gutter on the right; scrollBar flush.
   local handles = list:GetNativeHandles()
   local scrollBox = handles.scrollBox
   local scrollBar = handles.scrollBar
@@ -1903,11 +1736,8 @@ function HistoryListMixin:CreateModernListPane()
   scrollBar:SetPoint("BOTTOMLEFT", scrollBox, "BOTTOMRIGHT", 0, 0)
   scrollBar:SetHideIfUnscrollable(false)
 
-  -- BSP-066 / Option A: Flush/InsertTable via escape hatch preserves scroll
-  -- position on filter/sort/action refreshes (SetData rebuilds the provider
-  -- and resets to top — undesirable for in-panel filter/sort interactions).
-  -- listPane.list holds the controller so Destroy() is reachable and
-  -- ForEachFrame routes through the abstraction (not a raw frame pointer).
+  -- Refreshes use Flush/InsertTable on the native provider, not SetData, which
+  -- would reset the scroll to the top.
   listPane.list = list
   listPane.listBackend = "modern"
 end
@@ -2017,7 +1847,7 @@ function HistoryStatsMixin.BuildStatsArea(parent)
   parent.titleLabel:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, -6)
   parent.titleLabel:SetText(L["DETECTION STATS"])
 
-  -- BSP-036: this-character / account-wide scope toggle for the stat boxes.
+  -- This-character / account-wide scope toggle for the stat boxes.
   local function SetStatsScope(scope)
     statsScope = scope
     parent.scopeCharBtn:SetEnabled(scope ~= "char")
@@ -2062,7 +1892,7 @@ function HistoryStatsMixin.BuildStatsArea(parent)
     tile.labelText = tile:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     tile.labelText:SetPoint("BOTTOM", tile, "BOTTOM", 0, 4)
     tile.labelText:SetText(L[STATS_TILE_LABELS[key]])
-    -- BSP-009: tiles are layout-only Frames, need EnableMouse for tooltips.
+    -- Tiles are layout-only Frames and need EnableMouse for tooltips.
     local meta = STATS_TILE_TOOLTIPS[key]
     if meta then Chrome.AttachTooltip(tile, meta.title, meta.body) end
     parent.tiles[key] = tile
@@ -2210,8 +2040,7 @@ function HistoryDetailMixin:CreateDetailPane()
   footer.btn2:SetPoint("RIGHT", footer.btn1, "LEFT", -4, 0)
   footer.btn2:Hide()
 
-  -- BSP-009: shared OnEnter reads .tipTitle / .tipBody refreshed each time
-  -- RenderActions reshapes the button text. Hide path is unconditional.
+  -- Reads .tipTitle / .tipBody, which RenderActions refreshes.
   local function ActionOnEnter(self)
     if not GameTooltip or not self.tipTitle then return end
     GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
@@ -2233,13 +2062,8 @@ function HistoryDetailMixin:CreateDetailPane()
   detailPane.actions = { btn1 = footer.btn1, btn2 = footer.btn2 }
   detailPane.sections.footer = footer
 
-  -- BSP-055 fix #11: stats area now lives inside a ScrollFrame so content
-  -- that exceeds the viewport (BY SURFACE / BY CATEGORY / PIPELINE rows when
-  -- text wraps, plus the lifetime-stats tiles row) scrolls instead of
-  -- clipping into the panel's tab strip. The ScrollFrame fills the area
-  -- below the footer; the scrollChild has a fixed worst-case content height
-  -- and its width tracks the viewport so the by-* FontStrings re-wrap on
-  -- panel resize.
+  -- The stats area scrolls rather than clipping into the tab strip. The
+  -- scrollChild's width tracks the viewport so the text re-wraps.
   local statsScroll = CreateFrame("ScrollFrame", nil, detailPane, "UIPanelScrollFrameTemplate")
   statsScroll:SetPoint("TOPLEFT",     footer, "BOTTOMLEFT",  0, -6)
   statsScroll:SetPoint("TOPRIGHT",    footer, "BOTTOMRIGHT", -22, -6)
@@ -2262,12 +2086,8 @@ function HistoryDetailMixin:CreateDetailPane()
 
   detailPane.statsScroll = statsScroll
   detailPane.stats = stats
-  -- BSP-055 / Argus Gate 1 finding: ShowEmptyState iterates detailPane.sections
-  -- and toggles SetShown on each. Point the section at the ScrollFrame, not
-  -- the scrollChild — hiding the scrollChild alone leaves the scrollbar
-  -- widgets (track, up/down buttons, slider texture) parented to statsScroll
-  -- still drawing over the empty-state placeholder. Visibility cascades from
-  -- statsScroll → stats so toggling the parent hides both as a unit.
+  -- Must be the ScrollFrame, not the scrollChild: hiding only the child leaves
+  -- the scrollbar drawing over the empty state.
   detailPane.sections.stats = statsScroll
 
   -- Empty state placeholder (replaces header/body/footer when nothing selected)
@@ -2292,19 +2112,14 @@ local CHIP_LABELS = {
   RMT        = "Gold selling",
   Boosting   = "Boosting",
   Carrying   = "Carrying",
-  -- Named for the settings section the player manages these in, not for the
-  -- internal key the score breakdown uses.
+  -- Named for the settings section, not the internal breakdown key.
   Custom     = "My Keywords",
 }
 
 function HistoryFilterChipsMixin.PlaceCategoryChips(strip)
   if not strip or not strip.chips then return end
 
-  -- Size each chip to its own centered label plus button chrome, rather than
-  -- dividing the strip width among the chips. Width-division was invisible
-  -- with six categories but made the two post-SFT-080 chips enormous
-  -- (Gate 2 finding, 2026-07-28). LAYOUT.CHIP_MIN_WIDTH stays as the floor so a
-  -- short label still reads as a button.
+  -- Each chip is sized to its own label, with LAYOUT.CHIP_MIN_WIDTH as a floor.
   local x = 0
   for _, cat in ipairs(CATEGORIES) do
     local chip = strip.chips[cat]
@@ -2332,7 +2147,7 @@ function HistoryFilterChipsMixin.BuildCategoryChips(strip)
       strip:UpdateChipVisual(chip, cat)
       if listPane then listPane:RefreshList() end
     end)
-    -- BSP-009: state-aware tooltip — read current filter state on every hover.
+    -- Reads the current filter state on every hover.
     chip:HookScript("OnEnter", function(self)
       if not GameTooltip then return end
       local fullName = CHIP_FULL_NAMES[cat] or cat
@@ -2403,11 +2218,7 @@ function HistoryPanelMixin:CreateSenderFilterChip()
 end
 
 function HistoryPanelMixin:UpdateSenderFilterChip()
-  -- BSP-008 Commit 4: chip show/hide only — listPane anchors are owned by
-  -- CreatePanes + CreateSplitter (width is user-resizable and persisted), so
-  -- this no longer re-anchors listPane the way it did before the restructure.
-  -- Chip placement vs. the in-listPane filter strip will be reworked in a
-  -- later commit; for now the chip remains visible/hideable as before.
+  -- Chip show/hide only; listPane anchors belong to CreatePanes.
   if not frame or not frame.senderChip or not listPane then return end
   local chip = frame.senderChip
   if filterState and filterState.senderFilter then
@@ -2428,17 +2239,10 @@ function HistoryPanelMixin:SetTabHighlight()
   end
 end
 
--- SFT-089: sizes the embedded window to Config's content (width/floor from
--- ConfigPanel.GetEmbeddedWidth/GetMinimumHeight, height measured live via
--- GetEmbeddedContentBottom). Guarded on activeMode because ConfigPanel's own
--- `frame:IsShown()` stays true even while History is the visible tab --
--- popup and slash-command refreshes (Clear History/Blocked, Import) call
--- ShowSection, and therefore this registered callback, while History is on
--- screen. Also schedules one non-repeating remeasure (skipRemeasure=true on
--- that second call, so it never chains): content laid out at History's
--- 940px configHost width re-flows narrower once resized down to Config's
--- 700px, so a taller wrap can settle a frame late. The deferred call
--- re-checks activeMode itself, so switching back to History first cancels it.
+-- Sizes the embedded window to Config's content. Guarded on activeMode, not
+-- ConfigPanel's IsShown(), which stays true while History is the visible tab.
+-- Schedules one remeasure a frame later (skipRemeasure stops it chaining),
+-- because text re-wraps after the width shrinks.
 function HistoryPanelMixin:ResizeForConfig(skipRemeasure)
   if activeMode ~= "Config" or not frame then return end
   local contentBottom = NS.ConfigPanel and NS.ConfigPanel.GetEmbeddedContentBottom
@@ -2454,22 +2258,18 @@ function HistoryPanelMixin:ResizeForConfig(skipRemeasure)
   end
 end
 
--- SFT-089: exposed on the module table (like ShowConfigContent below) so an
--- offline test can drive the real History<->Config transition and its
--- resize/restore wiring without going through the RefreshList-heavy
--- HistoryPanel.Show().
+-- On the module table (like ShowConfigContent below) so tests can drive it.
 function HistoryPanel.ShowHistoryContent()
   local wasConfig = (activeMode == "Config")
   activeMode = "History"
   if configHost then configHost:Hide() end
   if listPane then listPane:Show() end
   if detailPane then detailPane:Show() end
-  -- BSP-055 fix #1: restore the list/detail splitter when leaving Config mode.
+  -- Restore the list/detail splitter when leaving Config mode.
   if frame and frame.splitter then frame.splitter:Show() end
   if frame and frame.filterStrip then frame.filterStrip:Show() end
   if frame and frame.filterChipsBand then frame.filterChipsBand:Show() end
-  -- SFT-089: only undo the Config-mode resize here -- an ordinary History
-  -- open/toggle that was never in Config must not touch the panel's anchor.
+  -- Only undo a Config-mode resize; an ordinary open must not touch the anchor.
   if wasConfig and frame then
     HistoryPanel.ResizeKeepingTopLeft(frame, LAYOUT.PANEL_WIDTH, LAYOUT.PANEL_HEIGHT)
   end
@@ -2485,9 +2285,7 @@ function HistoryPanel.ShowConfigContent(section)
   if frame and frame.senderChip then frame.senderChip:Hide() end
   if listPane then listPane:Hide() end
   if detailPane then detailPane:Hide() end
-  -- BSP-055 fix #1: the splitter is anchored to listPane and lives independently
-  -- in CreateSplitter; hiding listPane alone leaves the splitter drawing over
-  -- the empty list-pane area when Config takes over the host frame.
+  -- The splitter is not a child of listPane, so hide it explicitly.
   if frame and frame.splitter then frame.splitter:Hide() end
   if configHost then
     configHost:Show()
@@ -2592,24 +2390,14 @@ function HistoryPanelMixin:CreateHeaderFilters()
     "clearing History.")
   ddBand.refresh = refresh
 
-  -- Preserve legacy lookup keys. Show/Hide on frame.filterStrip is used by
-  -- ShowHistoryContent / ShowConfigContent; pointing at ddBand keeps that
-  -- working for the dropdowns row. Chips band is toggled alongside.
+  -- ShowHistoryContent / ShowConfigContent toggle filterStrip (the dropdowns
+  -- row); the chips band is toggled alongside.
   listPane.filterStrip = ddBand
   frame.filterStrip = ddBand
   frame.filterChipsBand = chipsBand
 end
 
--- BSP-055 Gate 2 followup-v2: ClampPanes removed. It existed to re-clamp the
--- list/detail proportion when the user resized the panel; with the panel
--- BSP-055 Gate 2 followup-v3: splitter is locked at LAYOUT.DEFAULT_LIST_PANE_WIDTH.
--- The drag, hover, tooltip, and OnUpdate scripts are gone; what remains is a
--- purely-decorative vertical line between listPane and detailPane. The fixed
--- panel size (940 x 560) only allowed ~20 px of useful splitter range, which
--- was effectively vestigial (Argus Lens 3 UX nit on followup-v2). Locking it
--- removes the SaveListPaneWidth path entirely; the SavedVariables key
--- listPaneWidth becomes inert (existing values are clamped to the new range
--- but no longer updated by user action).
+-- A decorative vertical line between listPane and detailPane; it does not drag.
 
 function HistoryPanelMixin.CreateSplitter(parent)
   local splitter = CreateFrame("Frame", nil, parent)
@@ -2632,7 +2420,7 @@ local PAUSE_PILL_LABELS = {
   ["bn-whisper"]    = "Bnet",
 }
 
--- BSP-008: Retail uses atlas icons; Classic-family clients use color textures
+-- Retail uses atlas icons; Classic-family clients use color textures
 -- because some Retail atlas names are absent and can leave stale glyphs behind.
 -- LevelUp-Dot-Green                  -> green dot
 -- CreditsScreen-Assets-Buttons-Pause -> media pause icon
@@ -2693,8 +2481,7 @@ function HistoryPanelMixin.CreatePauseRow(parent)
     pauseRow:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -32, -32)
   end
 
-  -- BSP-008: NineSlice border is at base+500, TitleContainer at base+510.
-  -- Pills must render above the NineSlice to avoid being drawn over.
+  -- Above the NineSlice border (base+500) and TitleContainer (base+510).
   pauseRow:SetFrameLevel((parent:GetFrameLevel() or 1) + 520)
 
   Mixin(pauseRow, HistoryPauseRowMixin)
@@ -2724,15 +2511,14 @@ function HistoryPanelMixin.CreatePauseRow(parent)
     pill.label:SetPoint("LEFT", pill.glyph, "RIGHT", 2, 0)
     pill.label:SetText(L[PAUSE_PILL_LABELS[surfaceKey]])
 
-    -- BSP-008 Commit 6: left-click cycles forward, right-click cycles backward.
+    -- Left-click cycles forward, right-click backward.
     pill:SetScript("OnClick", function(self, mouseButton)
       if not NS.PauseState then return end
       local direction = (mouseButton == "RightButton") and "backward" or "forward"
       NS.PauseState.CycleSurface(self.surfaceKey, direction)
     end)
 
-    -- BSP-009: state-aware tooltip. Body reads current PauseState every hover
-    -- so cycling the pill doesn't leave a stale tooltip behind.
+    -- Reads current PauseState on every hover so the tooltip never goes stale.
     pill:HookScript("OnEnter", function(self)
       if not GameTooltip then return end
       local fullName = SURFACE_LABELS[self.surfaceKey] or self.surfaceKey
@@ -2763,7 +2549,7 @@ function HistoryPanelMixin.CreatePauseRow(parent)
   return pauseRow
 end
 
--- Public API for the listener (wired in Commit 6).
+-- Called by the PauseState listener.
 function HistoryPanel.RefreshPauseRow()
   if not pausePills or not NS.PauseState then return end
   for surfaceKey, pill in pairs(pausePills) do
@@ -2778,21 +2564,15 @@ function Chrome.BuildFrame()
   frame = Chrome.CreateBackdropFrame(UIParent)
   Mixin(frame, HistoryPanelMixin)
   frame:SetMovable(true)
-  -- Drop the cached entries array and stats objects (and the revisions they
-  -- were fetched at) once the panel closes, however it closes -- the close
-  -- button, Toggle, Escape. Otherwise a message that was blocked or cleared
-  -- while the panel was open, including its stored text, stays reachable
-  -- through this cache for no reason once nothing on screen needs it.
+  -- Drop the cached entries and stats on any close, so no message text
+  -- outlives the panel in this cache.
   frame:HookScript("OnHide", function()
     HistoryPanel._entries, HistoryPanel._entriesRevision = nil, nil
     HistoryPanel._stats, HistoryPanel._statsRevision = nil, nil
     HistoryPanel._listRevision = nil
   end)
-  -- BSP-055 Gate 2 followup-v2: fixed-size panel. SetResizable / SetResizeBounds
-  -- removed; the resize handle is no longer constructed. The panel can still
-  -- be moved by dragging the title bar.
-
-  -- Title-bar drag — TitleContainer is the modern drag region.
+  -- Fixed size; the panel moves by dragging the title bar.
+  -- TitleContainer is the modern drag region.
   if frame.TitleContainer then
     frame.TitleContainer:EnableMouse(true)
     frame.TitleContainer:RegisterForDrag("LeftButton")
@@ -2818,14 +2598,8 @@ function Chrome.BuildFrame()
   frame:CreateTabStrip()
   if frame then frame:UpdateSenderFilterChip() end
 
-  -- BSP-055 Gate 2 followup-v2: no OnSizeChanged / OnHide-SaveSize wiring.
-  -- The panel is fixed-size after ApplyStoredGeometry (SFT-089's Config-tab
-  -- resize is the one runtime exception -- see ResizeForConfig -- and it is
-  -- never saved, so this wiring still doesn't need to exist); ClampPanes
-  -- (still called from the splitter drag handler) keeps the list/detail
-  -- proportion within LAYOUT.MIN_LIST_PANE_WIDTH..MIN_DETAIL_PANE_WIDTH bounds
-  -- derived from the fixed panel width.
-
+  -- No size saving: the panel is fixed-size, and the Config-tab resize is
+  -- never saved.
   frame:ApplyStoredGeometry()
   tinsert(UISpecialFrames, "SiftHistoryFrame")
 end
@@ -2870,21 +2644,18 @@ function HistoryPanel.Initialize()
   Chrome.RegisterStaticPopups()
   Chrome.RegisterMinimap()
 
-  -- SFT-089: a nav click inside Config changes section without ever calling
-  -- HistoryPanel.ShowConfig again, so ConfigPanel calls back here to re-run
-  -- the same resize ShowConfigContent runs on entry.
+  -- A Config nav click never calls ShowConfig, so ConfigPanel calls back here
+  -- to re-run the resize.
   if NS.ConfigPanel and NS.ConfigPanel.SetEmbeddedSectionCallback then
     NS.ConfigPanel.SetEmbeddedSectionCallback(function(skip) if frame then frame:ResizeForConfig(skip) end end)
   end
 
-  -- BSP-008 Commit 6: react to PauseState changes (header pills, ConfigPanel,
-  -- minimap submenu). RefreshPauseRow re-paints the header chrome; a
-  -- category-axis change additionally re-renders the BY CATEGORY detail row.
+  -- React to PauseState changes from any surface. A category change also
+  -- re-renders the BY CATEGORY row.
   if NS.PauseState and NS.PauseState.RegisterListener then
     NS.PauseState.RegisterListener(function(axis, key, state)
       if HistoryPanel.RefreshPauseRow then HistoryPanel.RefreshPauseRow() end
-      -- A hidden panel has nothing on screen to update, so this would only
-      -- pull History back into the entries/stats cache for no reader.
+      -- Skip when hidden, or this would refill the cache for no reader.
       if axis == "category" and detailPane and frame and frame:IsShown() then
         detailPane:RefreshDetail()
       end
@@ -2969,11 +2740,8 @@ function HistoryPanel.IsShown()
 end
 
 function HistoryPanel.ResetPosition()
-	-- BSP-055 Gate 2 followup-v2: panel is fixed-size. Reset clears the
-	-- stored position only and recenters; size is always LAYOUT.PANEL_WIDTH x
-	-- LAYOUT.PANEL_HEIGHT regardless of any older width/height in the store.
-	-- SFT-089: this forces the History size even if called while the Config
-	-- tab happens to be showing -- ResetPosition doesn't check activeMode.
+	-- Clears the saved position and recenters at the fixed History size, even
+	-- if the Config tab is showing (activeMode is not checked).
 	Data.ClearStoredGeometry()
 	if frame then
 		frame:SetSize(LAYOUT.PANEL_WIDTH, LAYOUT.PANEL_HEIGHT)
