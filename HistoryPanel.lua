@@ -1791,11 +1791,8 @@ function HistoryListMixin:CreateListHeader()
   header:SetPoint("TOPRIGHT", listPane, "TOPRIGHT", -LAYOUT.SCROLLBAR_GUTTER, 0)
   listPane.columnHeader = header
 
-  -- Time/Category/Score keep a fixed width so they line up with the row
-  -- content below; SetWordWrap(false) makes a translation that overflows
-  -- that width clip at the edge instead of wrapping the 18px-tall header
-  -- to two or three lines (same idiom as the detail pane's senderText).
-  -- The per-column hover tooltip below still shows the full title.
+  -- Fixed width for row alignment; word wrap off clips an overflowing
+  -- translation instead of wrapping the header to multiple lines.
   header.timeLabel = header:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   header.timeLabel:SetPoint("LEFT", header, "LEFT", 10, 0)
   header.timeLabel:SetWidth(36)
@@ -2592,15 +2589,8 @@ function HistoryPanelMixin:CreateHeaderFilters()
   local refresh = CreateFrame("Button", nil, ddBand, "UIPanelButtonTemplate")
   refresh:SetPoint("RIGHT", ddBand, "RIGHT", 0, 0)
   refresh:SetText(L["Refresh"])
-  -- Sized to its own label (there is ~400px of slack after the four
-  -- dropdowns before it) instead of a fixed 60px, so a longer translation
-  -- doesn't spill past the button. Never UIButtonFitToTextBehaviorMixin's
-  -- own SetTextToFit -- it grows the button with no upper bound. Past
-  -- REFRESH_MAX_WIDTH the button's own FontString is capped and word wrap
-  -- stays off, so it clips instead of growing further. Below the cap the
-  -- FontString is left unbound: its natural width is exactly what sized the
-  -- button, so constraining it to that same number would risk a sub-pixel
-  -- rounding difference clipping a character that was never meant to go.
+  -- Sizes to its own label instead of a fixed width. Never call
+  -- SetTextToFit here -- it grows the button with no upper bound.
   do
     local REFRESH_MIN_WIDTH, REFRESH_MAX_WIDTH, REFRESH_TEXT_PADDING = 60, 160, 24
     local refreshWidth = refresh:GetTextWidth() + REFRESH_TEXT_PADDING
@@ -2615,6 +2605,8 @@ function HistoryPanelMixin:CreateHeaderFilters()
     local refreshFontString = refresh:GetFontString()
     if refreshFontString then
       refreshFontString:SetWordWrap(false)
+      -- Only bound at the cap: below it the label already fits, and
+      -- binding it to its own measured width risks a rounding clip.
       if needsClip then
         refreshFontString:SetWidth(refreshWidth - REFRESH_TEXT_PADDING)
       end
@@ -2668,14 +2660,9 @@ local PAUSE_PILL_LABELS = {
   ["bn-whisper"]    = "Bnet",
 }
 
--- A pill sizes to its own label instead of a fixed 60px, so a translation
--- doesn't overlap the pill beside it. PILL_LABEL_PADDING is the content
--- width the label doesn't have to itself: 4px left margin + 14px glyph +
--- 2px gap + 6px right margin. Above PILL_MAX_WIDTH the label's own width is
--- capped and word wrap stays off, so it clips instead of growing further --
--- each pill narrows the category filter chips to its left, so the cap keeps
--- that side effect small; the pill's hover tooltip already shows the
--- untruncated surface name.
+-- Sizes each pill to its label. PILL_LABEL_PADDING is the glyph and margins
+-- the label doesn't get. Keep PILL_MAX_WIDTH modest -- it narrows the
+-- category chips to its left.
 local PILL_MIN_WIDTH = 60
 local PILL_MAX_WIDTH = 92
 local PILL_LABEL_PADDING = 26
@@ -2773,11 +2760,8 @@ function HistoryPanelMixin.CreatePauseRow(parent)
       pillWidth = PILL_MIN_WIDTH
     elseif pillWidth > PILL_MAX_WIDTH then
       pillWidth = PILL_MAX_WIDTH
-      -- Only bound the label when it's actually being clipped at the cap.
-      -- An unclamped label already fits inside pillWidth by construction --
-      -- pillWidth was measured from it -- so forcing its width to that same
-      -- number would risk a sub-pixel rounding difference clipping a
-      -- character it was never meant to lose.
+      -- Only bound at the cap: below it the label already fits, and
+      -- binding it to its own measured width risks a rounding clip.
       pill.label:SetWidth(pillWidth - PILL_LABEL_PADDING)
     end
     pill:SetSize(pillWidth, 18)

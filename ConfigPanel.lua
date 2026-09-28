@@ -1660,10 +1660,9 @@ local function AddAxisPauseRow(axis, key, displayLabel, y)
     ApplyPauseGlyph(pill.glyph, state)
     pill.text:SetText(L[state])
 
-    -- The state word changes with every click ("Active"/"Paused"/"Off"),
-    -- so the pill has to re-measure here, not just at creation.
-    -- GetUnboundedStringWidth ignores whatever width a previous call left
-    -- on pill.text, so a short word after a long one measures correctly.
+    -- Re-measures every click since the state word changes. Use
+    -- GetUnboundedStringWidth, not GetStringWidth -- it ignores a bound a
+    -- previous click may have left on pill.text.
     local width = pill.text:GetUnboundedStringWidth() + PILL_TEXT_PADDING
     local needsClip = false
     if width < PILL_MIN_WIDTH then
@@ -1674,17 +1673,12 @@ local function AddAxisPauseRow(axis, key, displayLabel, y)
     end
     pill:SetWidth(width)
     if needsClip then
-      -- Only bound the label when it's actually being clipped at the cap.
-      -- An unclamped label already fits inside `width` by construction, so
-      -- forcing its width to that same number would risk a sub-pixel
-      -- rounding difference clipping a character it was never meant to
-      -- lose.
+      -- Only bound at the cap: below it the label already fits, and
+      -- binding it to its own measured width risks a rounding clip.
       pill.text:SetWidth(width - PILL_TEXT_PADDING)
     else
-      -- A previous click may have left pill.text bounded from the clip
-      -- branch above; clear that constraint (the documented way to reset a
-      -- FontString's width) so this shorter word isn't measured or rendered
-      -- against a stale box on the next click.
+      -- Clears a bound a previous (capped) click may have left, so this
+      -- click isn't measured against a stale box.
       pill.text:SetWidth(0)
     end
   end
