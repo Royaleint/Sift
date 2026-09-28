@@ -16,7 +16,8 @@ local REPEAT_INTEREST = 3     -- occurrences at which a message counts as repeat
 -- or the top of the ranking flattens.
 local MAX_CHANCES     = 7
 
--- Mirrors History.lua's IGNORED_BREAKDOWN_KEYS; keep the two in step.
+-- Meta keys, never a category. Copies in ChatScanner, History, HistoryPanel, ShadowLog, Signals, ConfigPanel:
+-- keep all six in step.
 local IGNORED_BREAKDOWN_KEYS = {
   MixedScript = true,
   BlockedActor = true,
@@ -25,7 +26,7 @@ local IGNORED_BREAKDOWN_KEYS = {
   ManualBlock = true,
 }
 
--- Every entry records which lane captured it.
+-- Lane names. Saved in entries and read by the export; do not rename.
 local SOURCE_FN_CANDIDATE = "fn-candidate"
 local SOURCE_ALLOW_AUDIT  = "allow-audit"
 
