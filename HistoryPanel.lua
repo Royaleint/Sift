@@ -1241,7 +1241,7 @@ end
 -- describes this character: pass char-scope `stats` if already fetched,
 -- otherwise they are fetched here.
 function HistoryListMixin:RefreshLegend(stats)
-  local legend = listPane and listPane.legend
+  local legend = self and self.legend
   if not legend then return end
   stats = stats or Data.GetHistoryStats("char")
   -- floodBadgeCount, not floodCount: RenderRow badges Flood on any outcome, so
@@ -1253,7 +1253,7 @@ function HistoryListMixin:RefreshLegend(stats)
     if not RETIRED_CATEGORY_SET[cat] then
       index = index + 1
       local tipTitle, tipBody = HistoryPanel.LegendTipKeys(cat)
-      lx = listPane:ShowLegendItem(legend, index, lx, CATEGORY_COLORS[cat] or "888",
+      lx = self:ShowLegendItem(legend, index, lx, CATEGORY_COLORS[cat] or "888",
         L[CATEGORY_BADGE_LABELS[cat] or cat], tipTitle, tipBody)
     end
   end
@@ -1262,7 +1262,7 @@ function HistoryListMixin:RefreshLegend(stats)
   if floodBadgeCount > 0 then
     index = index + 1
     local tipTitle, tipBody = HistoryPanel.LegendTipKeys("Flood")
-    listPane:ShowLegendItem(legend, index, lx, "888", L["Spam wave"], tipTitle, tipBody)
+    self:ShowLegendItem(legend, index, lx, "888", L["Spam wave"], tipTitle, tipBody)
   end
   for i = index + 1, #legend.items do
     legend.items[i].host:Hide()
@@ -1506,7 +1506,7 @@ function HistoryDetailMixin:RefreshDetail()
 end
 
 function HistoryListMixin:RefreshList()
-  if not listPane or not listPane.listBackend then return end
+  if not self or not self.listBackend then return end
 
   local allEntries = Data.GetEntries() or {}
   -- The revision this draw reflects, so a later classic click can tell
@@ -1516,9 +1516,9 @@ function HistoryListMixin:RefreshList()
   Data.UpdateHistoryStatsText()
   local filtered = Data.ApplyFilterAndSort(allEntries)
 
-  if listPane.listBackend == "classic" then
-    local scroll = listPane.scroll
-    local visibleRows = listPane:VisibleRowCount(scroll)
+  if self.listBackend == "classic" then
+    local scroll = self.scroll
+    local visibleRows = self:VisibleRowCount(scroll)
     local scrollable = #filtered > visibleRows
     if not scrollable and scroll.SetVerticalScroll then
       scroll:SetVerticalScroll(0)
@@ -1528,7 +1528,7 @@ function HistoryListMixin:RefreshList()
     -- Hide only the scrollbar chrome when there is nothing to scroll.
     FauxScrollFrame_Update(scroll, #filtered, visibleRows, LAYOUT.LIST_ROW_HEIGHT,
       nil, nil, nil, nil, nil, nil, true)
-    local scrollBar = listPane:ClassicScrollBar(scroll)
+    local scrollBar = self:ClassicScrollBar(scroll)
     if scrollBar then
       scrollBar:SetShown(scrollable)
     end
@@ -1550,7 +1550,7 @@ function HistoryListMixin:RefreshList()
       end
     end
   else
-    local provider = listPane.list:GetNativeHandles().dataProvider
+    local provider = self.list:GetNativeHandles().dataProvider
     provider:Flush()
     provider:InsertTable(filtered)
   end
@@ -1563,16 +1563,16 @@ function HistoryListMixin:SelectEntry(id)
   selectedEntryId = id
   -- Classic backend: repaint highlights only while the History revision is
   -- unchanged; if data moved since the draw, the rows are stale, so redraw.
-  if listPane and listPane.listBackend == "classic" then
+  if self and self.listBackend == "classic" then
     local revision = NS.History and NS.History.GetRevision and NS.History.GetRevision()
     if revision ~= nil and revision ~= HistoryPanel._listRevision then
-      if listPane then listPane:RefreshList() end
+      if self then self:RefreshList() end
     else
       if detailPane then detailPane:RefreshDetail() end
     end
     -- Repaint highlights after either branch: RefreshDetail can move the
     -- selection after RefreshList painted.
-    local scroll = listPane.scroll
+    local scroll = self.scroll
     if scroll and scroll.rows then
       for _, row in ipairs(scroll.rows) do
         if row.entry then
@@ -1585,8 +1585,8 @@ function HistoryListMixin:SelectEntry(id)
   if detailPane then detailPane:RefreshDetail() end
   -- Modern backend: repaint rendered rows without rebuilding the data provider,
   -- which would reset scroll.
-  if listPane and listPane.list then
-    listPane.list:ForEachFrame(function(rowFrame, entryData)
+  if self and self.list then
+    self.list:ForEachFrame(function(rowFrame, entryData)
       if rowFrame.selection then
         rowFrame.selection:SetShown(selectedEntryId == entryData.id)
       end
@@ -1644,11 +1644,11 @@ function HistoryListMixin:CreateListHeader()
   -- Filter chips/dropdowns are anchored to the parent frame (see
   -- CreateHeaderFilters), not nested inside listPane. Column header sits at
   -- listPane's TOPLEFT; ScrollBox starts 18 px below it.
-  local header = CreateFrame("Frame", nil, listPane)
+  local header = CreateFrame("Frame", nil, self)
   header:SetHeight(18)
-  header:SetPoint("TOPLEFT",  listPane, "TOPLEFT",  0, 0)
-  header:SetPoint("TOPRIGHT", listPane, "TOPRIGHT", -LAYOUT.SCROLLBAR_GUTTER, 0)
-  listPane.columnHeader = header
+  header:SetPoint("TOPLEFT",  self, "TOPLEFT",  0, 0)
+  header:SetPoint("TOPRIGHT", self, "TOPRIGHT", -LAYOUT.SCROLLBAR_GUTTER, 0)
+  self.columnHeader = header
 
   -- Fixed width for row alignment; word wrap off clips an overflowing
   -- translation instead of wrapping the header to multiple lines.
@@ -1696,7 +1696,7 @@ function HistoryListMixin:CreateListHeader()
 end
 
 function HistoryListMixin:CreateModernListPane()
-  listPane:CreateListHeader()
+  self:CreateListHeader()
 
   -- Built with Foundry.List; RefreshList and SelectEntry use its native
   -- scrollBox through GetNativeHandles().
@@ -1704,7 +1704,7 @@ function HistoryListMixin:CreateModernListPane()
 
   local list = F.List:New({
     name        = "SiftHistoryList",
-    parent      = listPane,
+    parent      = self,
     elementType = "Button",
     extent      = LAYOUT.LIST_ROW_HEIGHT,
     spacing     = 0,
@@ -1727,7 +1727,7 @@ function HistoryListMixin:CreateModernListPane()
           end
         else
           rowButton._lastClick = now
-          listPane:SelectEntry(entry.id)
+          self:SelectEntry(entry.id)
         end
       end)
     end,
@@ -1747,8 +1747,8 @@ function HistoryListMixin:CreateModernListPane()
   local scrollBar = handles.scrollBar
 
   scrollBox:ClearAllPoints()
-  scrollBox:SetPoint("TOPLEFT",     listPane, "TOPLEFT",     0, -18)
-  scrollBox:SetPoint("BOTTOMRIGHT", listPane, "BOTTOMRIGHT", -LAYOUT.SCROLLBAR_GUTTER, 18)
+  scrollBox:SetPoint("TOPLEFT",     self, "TOPLEFT",     0, -18)
+  scrollBox:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -LAYOUT.SCROLLBAR_GUTTER, 18)
 
   scrollBar:ClearAllPoints()
   scrollBar:SetPoint("TOPLEFT",    scrollBox, "TOPRIGHT",    0, 0)
@@ -1757,18 +1757,18 @@ function HistoryListMixin:CreateModernListPane()
 
   -- Refreshes use Flush/InsertTable on the native provider, not SetData, which
   -- would reset the scroll to the top.
-  listPane.list = list
-  listPane.listBackend = "modern"
+  self.list = list
+  self.listBackend = "modern"
 end
 
 function HistoryListMixin:CreateClassicListPane()
-  listPane:CreateListHeader()
+  self:CreateListHeader()
 
-  local function refreshList() listPane:RefreshList() end
+  local function refreshList() self:RefreshList() end
 
-  local scroll = CreateFrame("ScrollFrame", "SiftHistoryListScroll", listPane, "FauxScrollFrameTemplate")
-  scroll:SetPoint("TOPLEFT",     listPane, "TOPLEFT",     0, -18)
-  scroll:SetPoint("BOTTOMRIGHT", listPane, "BOTTOMRIGHT", -LAYOUT.SCROLLBAR_GUTTER, 18)
+  local scroll = CreateFrame("ScrollFrame", "SiftHistoryListScroll", self, "FauxScrollFrameTemplate")
+  scroll:SetPoint("TOPLEFT",     self, "TOPLEFT",     0, -18)
+  scroll:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -LAYOUT.SCROLLBAR_GUTTER, 18)
   scroll:SetScript("OnVerticalScroll", function(scrollFrame, yOffset)
     FauxScrollFrame_OnVerticalScroll(scrollFrame, yOffset, LAYOUT.LIST_ROW_HEIGHT, refreshList)
   end)
@@ -1804,40 +1804,40 @@ function HistoryListMixin:CreateClassicListPane()
         end
       else
         rowButton._lastClick = now
-        listPane:SelectEntry(entry.id)
+        self:SelectEntry(entry.id)
       end
     end)
     row:Hide()
     scroll.rows[i] = row
   end
 
-  listPane.scroll = scroll
-  listPane.listBackend = "classic"
+  self.scroll = scroll
+  self.listBackend = "classic"
 end
 
 function HistoryListMixin:CreateUnavailableListPane()
-  local text = listPane:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-  text:SetPoint("CENTER", listPane, "CENTER", 0, 0)
+  local text = self:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  text:SetPoint("CENTER", self, "CENTER", 0, 0)
   text:SetText(L["History list is unavailable in this client."])
-  listPane.listBackend = "unavailable"
+  self.listBackend = "unavailable"
 end
 
 function HistoryListMixin:CreateListPane()
   if Chrome.UseModernHistoryList() then
-    listPane:CreateModernListPane()
+    self:CreateModernListPane()
   elseif NS.Compat and NS.Compat.hasClassicHistoryList then
-    listPane:CreateClassicListPane()
+    self:CreateClassicListPane()
   else
-    listPane:CreateUnavailableListPane()
+    self:CreateUnavailableListPane()
   end
 
-  local legend = CreateFrame("Frame", nil, listPane)
+  local legend = CreateFrame("Frame", nil, self)
   legend:SetHeight(18)
-  legend:SetPoint("BOTTOMLEFT",  listPane, "BOTTOMLEFT",  0, 0)
-  legend:SetPoint("BOTTOMRIGHT", listPane, "BOTTOMRIGHT", 0, 0)
+  legend:SetPoint("BOTTOMLEFT",  self, "BOTTOMLEFT",  0, 0)
+  legend:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", 0, 0)
   legend.items = {}
-  listPane.legend = legend
-  listPane:RefreshLegend()
+  self.legend = legend
+  self:RefreshLegend()
 end
 
 function HistoryStatsMixin.PlaceStatsTiles(stats)
