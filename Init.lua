@@ -1,3 +1,7 @@
+-- Sift/Init.lua
+-- Bootstrap: module initialization order, the login-time installers, and the
+-- /sift and /bdev slash commands.
+
 local ADDON_NAME, NS = ...
 
 -- Foundry-1.0 loads before this file (embedded, or standalone via OptionalDeps).
@@ -411,7 +415,7 @@ local function RunChooserPreview()
   end
 end
 
--- /bdev <subcommand>: dev-mode commands, gated once in BdevSlashHandler.
+-- /bdev <subcommand>: dev-mode commands, gated in BdevSlashHandler; handlers may re-check.
 local DEV_COMMANDS = {
 	test = RunSyntheticTest,
 	fpx  = ExportFP,
@@ -496,7 +500,8 @@ end
 -- Bootstrap via Foundry.Lifecycle. Subscription order is load-bearing:
 -- OnAddonLoaded (Initialize) must be registered before OnLogin, because the
 -- installers no-op until `initialized` is set and a late load replays both
--- hooks in registration order. No OnLogout: Sift has no logout teardown.
+-- hooks in registration order. No Lifecycle OnLogout; BubbleSuppressor registers
+-- its own logout restore.
 local controller = F:RequireModule("Lifecycle", 1):New(NS, ADDON_NAME)
 controller:OnAddonLoaded(function() Initialize() end)
 controller:OnLogin(function()
