@@ -1,3 +1,7 @@
+-- Sift/PlayerMenu.lua
+-- Adds a Block entry to player context menus (chat names, unit frames,
+-- nameplates, guild and community rosters), keyed by the player's GUID.
+
 local _, NS = ...
 local L = NS.L
 local PlayerMenu = {}
