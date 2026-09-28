@@ -242,7 +242,7 @@ L["Spam wave window (seconds)"] = "Spam wave window (seconds)"
 
 -- Config panel: per-surface / per-category pause rows (AddAxisPauseRow's
 -- displayLabel dedupes against the History-panel entries above; the Paused
--- body now reuses the History-panel key above verbatim)
+-- body reuses the History-panel key above verbatim)
 L["Active \194\183 detected spam on this surface is blocked from chat."] = "Active \194\183 detected spam on this surface is blocked from chat."
 L["Active \194\183 messages in this category are blocked."] = "Active \194\183 messages in this category are blocked."
 L["Off \194\183 this surface is not scanned at all."] = "Off \194\183 this surface is not scanned at all."
