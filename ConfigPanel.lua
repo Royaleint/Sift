@@ -394,17 +394,38 @@ local function AddSectionTitle(title, subtitle)
   return -48
 end
 
+-- SFT-128: the design width Config content is laid out at, not a live
+-- content:GetWidth() read. In embedded mode, Config can render at History's
+-- wider pre-ResizeForConfig host width (see HistoryPanelMixin:ResizeForConfig's
+-- "940px configHost" note) before the window actually shrinks down to
+-- GetEmbeddedWidth()'s target -- so a wrap measured against the live width
+-- would be measuring against a size the window is about to leave. Standalone
+-- reads frame:GetWidth() because ApplyStoredGeometry calls frame:SetSize
+-- synchronously before any section ever renders, so it's already correct.
+local function ContentWidth()
+  if embeddedMode then
+    -- configHost insets Config's outer frame 6px on each side
+    -- (HistoryPanel.lua's configHost:SetPoint calls), hence the 12.
+    return DEFAULT_WIDTH - 12 - (NAV_WIDTH + 8)
+  end
+  return frame:GetWidth() - (NAV_WIDTH + 16) - 12
+end
+
 local function AddStatus(y, message, good)
   if not message or message == "" then
     return y
   end
 
-  -- SFT-128: GameFontHighlight (not the Small variant) so the line is
-  -- actually noticeable; GetStringHeight() after SetText sizes the return
-  -- offset off the real (possibly wrapped) height instead of a fixed guess,
+  -- GameFontHighlight (not the Small variant) so the line is actually
+  -- noticeable. An explicit width makes GetStringHeight() measure at the
+  -- same width AddText would otherwise only reach via a TOPLEFT+RIGHT point
+  -- pair, which needs a layout pass to resolve -- GetStringHeight() runs
+  -- immediately after SetText, before that pass. The offset below is then
+  -- sized off the real (possibly wrapped) height instead of a fixed guess,
   -- since the bigger font wraps some of the longer messages to two lines.
   local text = good and "|cff5ad080" or "|cffffd100"
-  local fs = AddText(text .. message .. "|r", "GameFontHighlight", CONTENT_PAD, y)
+  local width = ContentWidth() - (2 * CONTENT_PAD)
+  local fs = AddText(text .. message .. "|r", "GameFontHighlight", CONTENT_PAD, y, width)
   return y - fs:GetStringHeight() - 8
 end
 
