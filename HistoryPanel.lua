@@ -96,8 +96,8 @@ local CHIP_FULL_NAMES = {
   Custom     = "My Keywords (phrases you added yourself)",
 }
 -- Keys that say why a message was caught, not what kind of spam it is; they
--- never win "dominant category" but still show as breakdown chips. Other
--- files keep copies of this set; keep them in step.
+-- never win "dominant category" but still show as breakdown chips. Copies in
+-- ChatScanner, History, HistoryPanel, ShadowLog, Signals, ConfigPanel: keep all six in step.
 local IGNORED_BREAKDOWN_KEYS = {
   MixedScript = true,
   BlockedActor = true,
@@ -320,7 +320,7 @@ function Data.ClearStoredGeometry()
 	if not store then return end
 	store.x = nil
 	store.y = nil
-	-- store.width / store.height are left alone on purpose; nothing reads them.
+	-- store.width / store.height are kept so the panel can return to resizable without a data migration.
 end
 
 -- Resizes `win` keeping its top-left corner fixed, anchored the same way as
@@ -798,15 +798,9 @@ function HistoryPanel.LegendTipKeys(cat)
   return CATEGORY_BADGE_LABELS[cat] or cat, nil
 end
 
--- Generic hover handlers, hooked once at frame creation (InitListRow /
--- RenderBreakdownChips / ShowLegendItem) and re-pointed on every render by
--- writing tipTitle/tipBody/tipBody2 (and, for chips and legend items,
--- tipValue) onto the frame -- the same state-aware idiom as ActionOnEnter,
--- below, reading self.tipTitle/self.tipBody.
---
--- Row: anchored ANCHOR_LEFT rather than ANCHOR_CURSOR so the tooltip sits off
--- the row and detail pane consistently instead of drifting with the mouse.
--- RowTipKeys returns only three values, so row.tipBody2 is always nil.
+-- Hover handlers, hooked once at frame creation; each render re-points them by
+-- writing tipTitle/tipBody/tipBody2 (and tipValue) onto the frame. Rows anchor
+-- ANCHOR_LEFT so the tooltip does not drift with the mouse.
 function HistoryRowMixin.RowOnEnter(self)
   if not GameTooltip then return end
   if not self.tipTitle then
