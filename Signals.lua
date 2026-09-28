@@ -29,9 +29,9 @@ local CONTACT_TOKENS = {
   "viber",
 }
 
--- Meta breakdown keys, none of which is a sell signal. Mirrors HistoryPanel's
--- IGNORED_BREAKDOWN_KEYS. This copy fails open: a new meta key missing here
--- reads as a sell signal, so add every new meta key here too.
+-- Meta breakdown keys, none of which is a sell signal. Copies in ChatScanner,
+-- History, HistoryPanel, ShadowLog, Signals, ConfigPanel: keep all six in step.
+-- This copy fails open: a meta key missing here reads as a sell signal.
 local IGNORED_BREAKDOWN_KEYS = {
   MixedScript = true,
   BlockedActor = true,
