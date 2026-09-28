@@ -269,7 +269,8 @@ local function FinishPanel(frame)
   end
 end
 
--- Fallback when PortraitFrameTemplate is missing or has no CloseButton; keep it even if unused.
+-- Fallback when PortraitFrameTemplate is missing or has no CloseButton; keep it
+-- even if unused.
 local function BuildPlainShell()
   local shell = CreateFrame("Frame", "SiftFirstRunFrame", UIParent, "BackdropTemplate")
   shell:SetSize(PANEL_WIDTH, BASE_HEIGHT)
