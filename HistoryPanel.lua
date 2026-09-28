@@ -1633,28 +1633,34 @@ function HistoryListMixin:CreateListHeader()
   header:SetPoint("TOPRIGHT", listPane, "TOPRIGHT", -LAYOUT.SCROLLBAR_GUTTER, 0)
   listPane.columnHeader = header
 
+  -- Fixed width for row alignment; word wrap off clips an overflowing
+  -- translation instead of wrapping the header to multiple lines.
   header.timeLabel = header:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   header.timeLabel:SetPoint("LEFT", header, "LEFT", 10, 0)
   header.timeLabel:SetWidth(36)
   header.timeLabel:SetJustifyH("LEFT")
+  header.timeLabel:SetWordWrap(false)
   header.timeLabel:SetText(L["Time"])
 
   header.senderLabel = header:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   header.senderLabel:SetPoint("LEFT",  header.timeLabel, "RIGHT",  4, 0)
   header.senderLabel:SetPoint("RIGHT", header,           "RIGHT", -130, 0)
   header.senderLabel:SetJustifyH("LEFT")
+  header.senderLabel:SetWordWrap(false)
   header.senderLabel:SetText(L["Sender"])
 
   header.badgeLabel = header:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   header.badgeLabel:SetPoint("RIGHT", header, "RIGHT", -69, 0)
   header.badgeLabel:SetWidth(54)
   header.badgeLabel:SetJustifyH("CENTER")
+  header.badgeLabel:SetWordWrap(false)
   header.badgeLabel:SetText(L["Category"])
 
   header.scoreLabel = header:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   header.scoreLabel:SetPoint("RIGHT", header, "RIGHT", -16, 0)
   header.scoreLabel:SetWidth(40)
   header.scoreLabel:SetJustifyH("RIGHT")
+  header.scoreLabel:SetWordWrap(false)
   header.scoreLabel:SetText(L["Score"])
 
   -- A hover host per column, anchored to the header's full height.
@@ -2375,9 +2381,31 @@ function HistoryPanelMixin:CreateHeaderFilters()
     "Newest first \194\183 by Score (highest first) \194\183 by Sender (groups repeat offenders).")
 
   local refresh = CreateFrame("Button", nil, ddBand, "UIPanelButtonTemplate")
-  refresh:SetSize(60, 22)
   refresh:SetPoint("RIGHT", ddBand, "RIGHT", 0, 0)
   refresh:SetText(L["Refresh"])
+  -- Sizes to its own label instead of a fixed width. Never call
+  -- SetTextToFit here -- it grows the button with no upper bound.
+  do
+    local REFRESH_MIN_WIDTH, REFRESH_MAX_WIDTH, REFRESH_TEXT_PADDING = 60, 160, 24
+    local refreshWidth = refresh:GetTextWidth() + REFRESH_TEXT_PADDING
+    local needsClip = false
+    if refreshWidth < REFRESH_MIN_WIDTH then
+      refreshWidth = REFRESH_MIN_WIDTH
+    elseif refreshWidth > REFRESH_MAX_WIDTH then
+      refreshWidth = REFRESH_MAX_WIDTH
+      needsClip = true
+    end
+    refresh:SetSize(refreshWidth, 22)
+    local refreshFontString = refresh:GetFontString()
+    if refreshFontString then
+      refreshFontString:SetWordWrap(false)
+      -- Only bound at the cap: below it the label already fits, and
+      -- binding it to its own measured width risks a rounding clip.
+      if needsClip then
+        refreshFontString:SetWidth(refreshWidth - REFRESH_TEXT_PADDING)
+      end
+    end
+  end
   refresh:SetScript("OnClick", function()
     if listPane then listPane:RefreshList() end
   end)
@@ -2415,6 +2443,13 @@ local PAUSE_PILL_LABELS = {
   whisper           = "Whisp",
   ["bn-whisper"]    = "Bnet",
 }
+
+-- Sizes each pill to its label. PILL_LABEL_PADDING is the glyph and margins
+-- the label doesn't get. Keep PILL_MAX_WIDTH modest -- it narrows the
+-- category chips to its left.
+local PILL_MIN_WIDTH = 60
+local PILL_MAX_WIDTH = 92
+local PILL_LABEL_PADDING = 26
 
 -- Retail uses atlas icons; Classic-family clients use color textures
 -- because some Retail atlas names are absent and can leave stale glyphs behind.
@@ -2470,7 +2505,6 @@ end
 function HistoryPanelMixin.CreatePauseRow(parent)
   pauseRow = CreateFrame("Frame", nil, parent)
   pauseRow:SetHeight(20)
-  pauseRow:SetWidth((#PAUSE_PILL_KEYS * 60) + math.max(#PAUSE_PILL_KEYS - 1, 0) * 4)
   if parent.TitleContainer then
     pauseRow:SetPoint("TOPRIGHT", parent.TitleContainer, "BOTTOMRIGHT", -28, -2)
   else
@@ -2483,15 +2517,10 @@ function HistoryPanelMixin.CreatePauseRow(parent)
   Mixin(pauseRow, HistoryPauseRowMixin)
   pausePills = {}
   local previousPill
+  local totalWidth = 0
   for i = #PAUSE_PILL_KEYS, 1, -1 do
     local surfaceKey = PAUSE_PILL_KEYS[i]
     local pill = CreateFrame("Button", nil, pauseRow)
-    pill:SetSize(60, 18)
-    if previousPill then
-      pill:SetPoint("RIGHT", previousPill, "LEFT", -4, 0)
-    else
-      pill:SetPoint("RIGHT", pauseRow, "RIGHT", 0, 0)
-    end
     pill:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     pill.surfaceKey = surfaceKey
 
@@ -2505,7 +2534,27 @@ function HistoryPanelMixin.CreatePauseRow(parent)
 
     pill.label = pill:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     pill.label:SetPoint("LEFT", pill.glyph, "RIGHT", 2, 0)
+    pill.label:SetJustifyH("LEFT")
+    pill.label:SetWordWrap(false)
     pill.label:SetText(L[PAUSE_PILL_LABELS[surfaceKey]])
+
+    local pillWidth = (pill.label:GetStringWidth() or 0) + PILL_LABEL_PADDING
+    if pillWidth < PILL_MIN_WIDTH then
+      pillWidth = PILL_MIN_WIDTH
+    elseif pillWidth > PILL_MAX_WIDTH then
+      pillWidth = PILL_MAX_WIDTH
+      -- Only bound at the cap: below it the label already fits, and
+      -- binding it to its own measured width risks a rounding clip.
+      pill.label:SetWidth(pillWidth - PILL_LABEL_PADDING)
+    end
+    pill:SetSize(pillWidth, 18)
+    if previousPill then
+      pill:SetPoint("RIGHT", previousPill, "LEFT", -4, 0)
+      totalWidth = totalWidth + 4
+    else
+      pill:SetPoint("RIGHT", pauseRow, "RIGHT", 0, 0)
+    end
+    totalWidth = totalWidth + pillWidth
 
     -- Left-click cycles forward, right-click backward.
     pill:SetScript("OnClick", function(self, mouseButton)
@@ -2541,6 +2590,7 @@ function HistoryPanelMixin.CreatePauseRow(parent)
     pausePills[surfaceKey] = pill
     previousPill = pill
   end
+  pauseRow:SetWidth(totalWidth)
 
   return pauseRow
 end
