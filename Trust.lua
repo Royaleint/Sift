@@ -236,7 +236,8 @@ function Trust.GetAllowlist()
   return copy
 end
 
--- The trust decision itself; IsTrusted delegates here. Returns the source that fired, or nil.
+-- The trust decision itself; IsTrusted delegates here. Returns the source that
+-- fired, or nil.
 function Trust.TrustReason(guid, _name, flag)
   if IsSecret(flag) then
     flag = nil
