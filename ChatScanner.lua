@@ -12,8 +12,7 @@ local CHAT_EVENTS = {
   "CHAT_MSG_AFK",
 }
 
--- BSP-008 Commit 2: surface taxonomy lookup, consumed by the pause gate
--- in Pipeline() below and used to stamp record.surface on history writes.
+-- Surface for each event, used by the pause gate and stamped on history records.
 local EVENT_TO_SURFACE = {
   CHAT_MSG_SAY        = "chat",
   CHAT_MSG_YELL       = "chat",
@@ -25,6 +24,7 @@ local EVENT_TO_SURFACE = {
   CHAT_MSG_BN_WHISPER = "bn-whisper",
 }
 
+-- One filter per event: a second add would stack a duplicate on the chat chain.
 local filterInstalled = {}
 local filterAdd = nil
 local BLOCKED_ACTOR_BOOST = 2
@@ -32,26 +32,20 @@ local IGNORED_BREAKDOWN_KEYS = {
   MixedScript = true,
   BlockedActor = true,
   Flood = true,
-  -- BSP-029: Throttle is a dedupe mechanism, not a spam category. SFT-082
-  -- removed the synthesized repeat record that used to inject it, but rows
-  -- persisted before that fix still carry the key, and SFT-084's stats
-  -- correction depends on it staying excluded here.
+  -- Not a category; older saved rows still carry it, so keep it excluded.
   Throttle = true,
-  -- BSP-037: same reasoning. A manual block is an identity decision, so it must
-  -- never be credited as a content category the sender never posted.
+  -- A manual block is an identity decision, never a content category.
   ManualBlock = true,
 }
 
--- BSP-037: bounded lineID -> GUID cache. Blizzard's chat-name context menu
--- hands addons a lineID but no GUID, while this filter sees both on every
--- message. Recording the pair here is what lets the right-click "Block" entry
--- key on the same GUID the scanner already uses, instead of matching on a name
--- that another player could be wearing. Ring buffer with in-place slot reuse:
--- allocation stops after the first pass, so the chat hot path stays garbage-free.
+-- Bounded lineID -> GUID ring for the chat-name menu, which gets a lineID but no
+-- GUID. Slots are reused in place so the hot path stays garbage-free.
 local SENDER_CACHE_SIZE = 128
 local senderCacheSlots = {}
 local senderCacheByLine = {}
 local senderCacheCursor = 0
+-- Per-line decision cache: the filter runs once per chat frame showing a line,
+-- and only the first call in a frame may run the pipeline (history, flood counts).
 local DECISION_CACHE_SIZE = 64
 local decisionCacheSlots = {}
 local decisionCacheByID = {}
@@ -75,10 +69,8 @@ local function IsUsableString(value)
   return type(value) == "string" and value ~= ""
 end
 
--- 0 is what several chat events pass when a line carries no ID at all. Storing
--- it would make every such message collide on one key, and a menu lookup could
--- then hand back an unrelated player's GUID -- a block aimed at the wrong
--- person. Rejected on write and on read.
+-- Several events pass 0 for "no line ID"; storing it would collide every such
+-- line on one key and misdirect a block. Rejected on write and on read.
 local function IsUsableLineID(lineID)
   if IsSecret(lineID) then
     return nil
@@ -265,17 +257,13 @@ local function GetSettings()
   return NS.DB and NS.DB.GetSettings and NS.DB.GetSettings() or {}
 end
 
--- Reused across calls: BuildScoringOptions runs once per scanned chat message,
--- has one call site (Pipeline), and Scoring.Score only reads these fields --
--- it never retains the table -- so a fresh one per message is garbage the
--- scanner need not make.
+-- Reused per message; safe because Scoring.Score never retains the table.
 local scoringOptions = {}
 
 local function BuildScoringOptions(settings, categories)
   scoringOptions.threshold = settings.threshold
-  -- Not settings.enabledCategories directly: retired categories are no longer
-  -- persisted, so the stored table alone would gate their rules off. A
-  -- fallback to it would restore that bug quietly, so there is none.
+  -- Never fall back to settings.enabledCategories: retired categories are not
+  -- persisted there, so their rules would silently stop counting.
   scoringOptions.enabledCategories = categories or NS.PauseState.GetEffectiveCategoryStates()
   scoringOptions.mixedScriptWeight = settings.mixedScriptEnabled == false and 0 or settings.mixedScriptWeight
   scoringOptions.antiSignalCap = settings.antiSignalCap
@@ -302,8 +290,7 @@ local function BuildHistoryRecord(event, message, sender, channelName, guid, ana
     reason = reason,
   }
 
-  -- BSP-052: copied by value, not referenced, so the History detail pane still
-  -- names the rule after the user deletes it. The record is the source of truth.
+  -- Copied by value so History still names the rule after the user deletes it.
   if customRule then
     record.customRule = { raw = customRule.raw, cleansed = customRule.cleansed }
   end
@@ -350,12 +337,9 @@ local function ApplyBlockedActorBoost(score, guid)
   score.blocked = score.score >= score.threshold
 end
 
--- BSP-027: pre-score flood boost. Repetition is a spam signal independent of
--- content — the same cleansed line seen >= TRIGGER times within the window
--- (ANY sender) accrues an escalating "Flood" weight so a flood blocks even at
--- content-score 0. Mirrors ApplyBlockedActorBoost: mutate-in-place, bail if
--- already blocked, recompute blocked against the carried threshold. Flood is a
--- meta key (in IGNORED_BREAKDOWN_KEYS) so it never becomes a content category.
+-- Adds an escalating Flood weight for a line repeated by any sender within the
+-- window, so a flood blocks even at content score 0. Flood is a meta key, never
+-- a content category.
 local function ApplyFloodBoost(score, cleansed)
   if not score or score.blocked or not NS.Frequency or not NS.Frequency.RecordAndCount then
     return
@@ -372,24 +356,11 @@ local function ApplyFloodBoost(score, cleansed)
   score.blocked = score.score >= score.threshold
 end
 
--- suppressReport is set for manual blocks (BSP-037). Blocking someone by hand is
--- a personal-preference call, not an accusation of spam, so it must never queue
--- a Blizzard spam report. Users who do want to report get the deliberate path in
--- SFT-083.
--- BSP-052: the user's own keyword rules, applied only where the corpus has not
--- already decided -- the corpus path stays sovereign, so turning Custom off can
--- never suppress a real corpus block. Mirrors the two boosts above: mutate in
--- place, bail if already blocked. Returns the rule that fired, which the caller
--- needs both to gate on and to record.
---
--- Custom's own state is read before matching. That is correctness first -- a
--- list switched off must not match at all -- and it also skips up to 200
--- substring searches on every scanned line for as long as it stays off.
---
--- Unlike those boosts this one forces `blocked` rather than recomputing it
--- against the threshold. The weight is still added so the breakdown sums to the
--- recorded score, but a rule the user typed themselves has to block even when
--- negative anti-signal weight would otherwise hold the total under threshold.
+-- The user's keyword block rules, applied only when the corpus has not already
+-- blocked, so turning Custom off can never suppress a corpus block. Returns the
+-- rule that fired. A list switched off must not match at all. Forces `blocked`
+-- rather than comparing to the threshold: a user rule blocks even when
+-- anti-signal weight holds the total down.
 local function ApplyCustomBlock(score, cleansed)
   if not score or score.blocked or not NS.UserRules or not NS.UserRules.Match then
     return nil
@@ -417,10 +388,7 @@ end
 local function AppendBlockedHistory(record, counter, suppressReport)
   local entryID = NS.History and NS.History.Append and NS.History.Append(record)
   if record and record.outcome == "blocked" and NS.DB and NS.DB.RecordBlockedActor then
-    -- BSP-052: a user rule owns the attribution when it is what blocked. The
-    -- dominant corpus weight can be the larger number without having blocked
-    -- anything, and crediting it would file the actor under a category the user
-    -- never involved.
+    -- A user rule that blocked owns the attribution, whatever the largest weight.
     local category = record.customRule and "Custom" or DominantCategory(record.breakdown)
     NS.DB.RecordBlockedActor(record, category)
   end
@@ -463,31 +431,13 @@ local function Pipeline(
   end
   local blockSuppressed = (surfaceState == "paused")
 
-  -- BSP-037: a manual block suppresses on identity alone -- no content score,
-  -- no category gate.
-  --
-  -- PRECEDENCE (studio-canonical, do not reorder without owner sign-off):
+  -- PRECEDENCE (do not reorder):
   --   1 manual block > 2 Trust.IsTrusted > 3 user keyword-allow
   --   > 4 corpus block > 5 user keyword-block > pass
   --
-  -- Anchors for the links this branch does not own (BSP-052/058):
-  --   link 1 is THIS branch, and stays directly above the link-2 Trust
-  --     short-circuit immediately below.
-  --   link 3 (keyword-allow) sits BELOW that Trust short-circuit -- never
-  --     between link 1 and link 2, or a keyword allow would quietly outrank an
-  --     explicit manual block. BSP-058 placed it just after the score rather
-  --     than just before it, as this comment first anticipated: the precedence
-  --     is identical either way, because an allow match returns whatever the
-  --     corpus decided, but running it on the would-block path only keeps it off
-  --     the hot path and lets the shadow log record what the override beat.
-  --   link 5 (keyword-block) goes after the Score call, before the category
-  --     state gate. When it fires, that gate reads Custom's state rather than
-  --     the dominant corpus category -- see the gate itself.
-  --
-  -- Manual block deliberately outranks Trust: a user who right-clicked Block on
-  -- a guildmate meant it, and letting the trust rule win would make the menu
-  -- entry a silent no-op for exactly the people they took the trouble to name.
-  -- The check is a table lookup, so this ordering costs the hot path nothing.
+  -- A manual block suppresses on identity alone (no score, no category gate) and
+  -- deliberately outranks Trust. The keyword-allow check must stay below the
+  -- Trust short-circuit, never between it and this branch.
   if manualBlocked == nil then
     manualBlocked = IsUsableString(guid) and NS.DB and NS.DB.IsManuallyBlocked and NS.DB.IsManuallyBlocked(guid)
   end
@@ -500,13 +450,8 @@ local function Pipeline(
     local manualAnalysis = (NS.Cleanse and NS.Cleanse.Analyze and NS.Cleanse.Analyze(message))
       or { signals = {}, normalized = message }
 
-    -- Route through the same dedupe every other block uses, so a chatty blocked
-    -- player counts toward the throttled tally instead of looking like a fresh
-    -- decision on every line. The reason stays "manual-block" either way: it is
-    -- still why the message went, and nothing in History condenses on the
-    -- "throttle" label, so relabelling would only cost the honest row render
-    -- (score/threshold here are 0/0, which HistoryPanel replaces with "blocked
-    -- by you" -- it would show a meaningless 0 / 0 under any other reason).
+    -- Counted by the same repeat dedupe as other blocks, but the reason stays
+    -- "manual-block": HistoryPanel renders its 0/0 score as "blocked by you".
     local throttled = NS.Frequency and NS.Frequency.CheckRepeat
       and NS.Frequency.CheckRepeat(event, manualAnalysis.normalized, guid) or false
 
@@ -544,9 +489,7 @@ local function Pipeline(
     trusted = NS.Trust and NS.Trust.IsTrusted and NS.Trust.IsTrusted(guid, sender, flags)
   end
   if trusted then
-    -- BSP-047 devmode diagnostic: name which trust source skipped this sender so
-    -- a trust-bypass false-negative (gold-seller short-circuiting the filter) is
-    -- visible live in chat. Diagnostic only — no change to filtering behavior.
+    -- Dev diagnostic: name the trust source that skipped this sender.
     if NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode() then
       local reason = (NS.Trust.TrustReason and NS.Trust.TrustReason(guid, sender, flags)) or "?"
       DevLog("Trust skip [" .. reason .. "]: " .. tostring(sender))
@@ -565,32 +508,22 @@ local function Pipeline(
   ApplyFloodBoost(score, analysis.normalized)
   local customRule = ApplyCustomBlock(score, analysis.normalized)
   if not score or not score.blocked then
-    -- BSP-032: shadow capture of the misses. Placed in the not-blocked branch so
-    -- it sees everything the filter lets through, score-0 included -- the set no
-    -- threshold setting can surface -- while blocked messages stay recorded in
-    -- History alone. Capture gates itself on devMode and returns immediately
-    -- when it is off; that check is deliberately not duplicated here, so every
-    -- lane into the store obeys it whether or not its caller remembered to.
+    -- Shadow capture of everything let through, score 0 included. Capture gates
+    -- itself on devMode, so the check is deliberately not repeated here.
     if NS.ShadowLog then
       NS.ShadowLog.Capture(message, analysis, surface, score)
     end
     return false
   end
 
-  -- BSP-058, precedence link 3: an allow keyword overrides everything below
-  -- Trust, a corpus block included. That is deliberate, and it is a bypass
-  -- surface -- anyone who learns the user's allow phrase can put it in a message
-  -- and walk through, which is why the override is audited rather than silent.
+  -- Precedence 3: an allow keyword overrides a corpus block. It is a bypass
+  -- surface, so the override is captured to the shadow log rather than silent.
   local allowRule = NS.UserRules and NS.UserRules.Match
     and NS.UserRules.Match(NS.UserRules.ALLOW, analysis.normalized)
   if allowRule then
-    -- BSP-032's second lane, and the reason it exists: these are messages an
-    -- allow rule let through, tagged apart from ordinary misses so the user can
-    -- audit what their own allowlist is costing them. Same self-gating on
-    -- devMode as Capture above, so no check is duplicated here.
+    -- Self-gated on devMode like Capture above.
     if NS.ShadowLog then
-      -- The phrase goes in as the player typed it, not its cleaned-up form:
-      -- the export shows it back to them, and they recognise what they wrote.
+      -- The phrase as the player typed it, not its cleansed form.
       NS.ShadowLog.CaptureAllowThrough(message, analysis, surface, score, allowRule.raw)
     end
     return false
@@ -598,13 +531,8 @@ local function Pipeline(
 
   -- Category state gate: off short-circuits; paused flips outcome to pass-thru.
   --
-  -- BSP-052: when a user keyword rule is what blocked this message, ITS state
-  -- governs, not the dominant corpus category. A corpus weight can be the larger
-  -- number without having blocked anything -- negative anti-signal weight can
-  -- hold the total under threshold -- and letting that category decide would hand
-  -- control of the user's own rule to a category they never involved. It also
-  -- means a category sitting at the shipped "paused" default could silently
-  -- downgrade an explicit user block to pass-thru.
+  -- When a user keyword rule blocked, Custom's state governs, not the dominant
+  -- corpus category; otherwise a paused category could downgrade a user block.
   local breakdown = score.breakdown
   local gateCategory = customRule and "Custom" or DominantCategory(breakdown)
   if gateCategory then
@@ -617,10 +545,8 @@ local function Pipeline(
     end
   end
 
-  -- The repeat lane runs ONLY on confirmed-spam (post-Score + post-category-gate). BSP-010
-  -- reorder folded into BSP-008 Commit 2: previously ran before Score and could over-fire on
-  -- legitimate duplicates. BSP-029 moved it into Frequency; the call site stays here so the
-  -- category gate above still reads a breakdown with no repeat key in it.
+  -- The repeat lane runs only on confirmed spam, after the category gate, so it
+  -- never fires on legitimate duplicates and the gate never sees a repeat key.
   if NS.Frequency and NS.Frequency.CheckRepeat
      and NS.Frequency.CheckRepeat(event, analysis.normalized, guid) then
     local throttleOutcome = blockSuppressed and "pass-thru" or "blocked"
@@ -687,15 +613,12 @@ local function ErrorHandler(err)
   return err
 end
 
--- Named file-scope function so Filter's protected call has no per-call
--- closure to build: no upvalue objects allocated over its 13 parameters,
--- every delivery, to every chat frame showing the line.
+-- File-scope on purpose: an inline closure in Filter would allocate on every
+-- delivery to every chat frame.
 local function FilterBody(event, message, sender, language, channelString, target, flags, unknown, channelNumber, channelName, unknown2, counter, guid)
-  -- Cache the sender before Pipeline runs: Pipeline returns early for trusted
-  -- senders, and those are exactly the players a user is most likely to want
-  -- to block by hand. Inside the protected call so a surprise here degrades to
-  -- "no right-click entry" instead of killing the filter for every addon on
-  -- the chain (BSP-037).
+  -- Before Pipeline, which returns early for trusted senders (the players most
+  -- likely to be blocked by hand). Inside the protected call so a failure only
+  -- loses the menu entry.
   RememberSender(counter, guid)
 
   local settings = GetSettings()
@@ -781,10 +704,8 @@ function ChatScanner.Filter(
   local ok, result = pcall(FilterBody, event, message, sender, language, channelString, target, flags, unknown,
     channelNumber, channelName, unknown2, counter, guid)
   if not ok then
-    -- ErrorHandler's own body can raise too (a corrupt IsDevMode, a __tostring
-    -- that throws): pcall it rather than calling it bare, so a failure while
-    -- reporting the first error still degrades to "message not blocked"
-    -- instead of escaping into Blizzard's filter loop.
+    -- ErrorHandler can raise too; pcall it so nothing escapes into Blizzard's
+    -- filter loop.
     pcall(ErrorHandler, result)
     return false
   end
