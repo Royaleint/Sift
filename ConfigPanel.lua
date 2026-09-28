@@ -399,9 +399,13 @@ local function AddStatus(y, message, good)
     return y
   end
 
+  -- SFT-128: GameFontHighlight (not the Small variant) so the line is
+  -- actually noticeable; GetStringHeight() after SetText sizes the return
+  -- offset off the real (possibly wrapped) height instead of a fixed guess,
+  -- since the bigger font wraps some of the longer messages to two lines.
   local text = good and "|cff5ad080" or "|cffffd100"
-  AddText(text .. message .. "|r", "GameFontHighlightSmall", CONTENT_PAD, y)
-  return y - 22
+  local fs = AddText(text .. message .. "|r", "GameFontHighlight", CONTENT_PAD, y)
+  return y - fs:GetStringHeight() - 8
 end
 
 local function AddNativeButton(label, x, y, width, onClick, tooltipBody)
@@ -1819,11 +1823,14 @@ RenderAllowlist = function()
     "Add from History",
     "Enter as Name-Realm. The sender must already appear in your History. You can't " ..
     "allowlist arbitrary names, only ones Sift has actually seen.")
-  AddNativeButton("Add", CONTENT_PAD + 300, y + 6, 72, function()
+  local function CommitAdd()
     listState.allowlistAddText = addBox:GetText() or ""
     AddAllowlistFromText(listState.allowlistAddText)
     ConfigPanel.ShowSection("Allowlist")
-  end, "Add the Name-Realm in the box to the allowlist.")
+  end
+  addBox:SetScript("OnEnterPressed", CommitAdd)
+  AddNativeButton("Add", CONTENT_PAD + 300, y + 6, 72, CommitAdd,
+    "Add the Name-Realm in the box to the allowlist.")
   y = y - 34
 
   if removedAllowlistEntry then
