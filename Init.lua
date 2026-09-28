@@ -415,7 +415,8 @@ local function RunChooserPreview()
   end
 end
 
--- /bdev <subcommand>: dev-mode commands, gated in BdevSlashHandler; handlers may re-check.
+-- /bdev <subcommand>: dev-mode commands, gated in BdevSlashHandler; handlers
+-- may re-check.
 local DEV_COMMANDS = {
 	test = RunSyntheticTest,
 	fpx  = ExportFP,
