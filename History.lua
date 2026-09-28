@@ -7,8 +7,8 @@ local History = {}
 
 local DEFAULT_RECENT_LIMIT = 10
 local MAX_PRINT_LIMIT = 25
--- Meta keys, never a category. Copies in ChatScanner, History, HistoryPanel, ShadowLog, Signals, ConfigPanel:
--- keep all six in step.
+-- Meta keys, never a category. Copies in ChatScanner, History, HistoryPanel,
+-- ShadowLog, Signals, ConfigPanel: keep all six in step.
 local IGNORED_BREAKDOWN_KEYS = {
   MixedScript = true,
   BlockedActor = true,
@@ -354,7 +354,8 @@ function History.Clear()
     return 0
   end
 
-  -- historyCursor is not reset: ids stay unique, so report targets keyed by id never land on a new row.
+  -- historyCursor is not reset: ids stay unique, so report targets keyed by id
+  -- never land on a new row.
   local history = char.history or {}
   local count = #history
   if type(wipe) == "function" then
