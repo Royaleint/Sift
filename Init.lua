@@ -1,18 +1,14 @@
 local ADDON_NAME, NS = ...
 
--- Foundry-1.0 is a hard dependency (## Dependencies: Foundry-1.0), so it is loaded
--- before Sift and _G.Foundry_1_0 is bound. Guard at file load (mirrors
--- Homestead's Lifecycle bind): a nil F means Foundry failed to set its global, so
--- the bootstrap below (which now hard-needs F.Lifecycle) fails loud with a clear
--- message rather than an opaque nil-index at the :New call. The hard dependency
--- makes this unreachable in a healthy install; it is the broken-Foundry guard.
+-- Foundry-1.0 loads before this file (embedded, or standalone via OptionalDeps).
+-- A nil F means Foundry failed to load; fail loud here rather than with an
+-- opaque nil-index at the Lifecycle bootstrap below.
 local F = _G.Foundry_1_0
 if not F then
   error("Sift requires Foundry-1.0. Please install or enable it.")
 end
 
--- Only the /bdev pseudolocale messages below key through L[] today; every
--- other Print() in this file is unlocalized -- a separate follow-up.
+-- Only the /bdev pseudolocale messages below are localized.
 local L = NS.L
 
 local initialized = false
@@ -35,20 +31,13 @@ local function Initialize()
     return
   end
 
-  -- BSP-050 (extends BSP-049): enforce history caps on every load across all
-  -- characters, not just the current one. Append trims per-append and the
-  -- config sliders trim on apply, but neither reaches alts the player isn't
-  -- logged into. TrimAllCharacters walks db.sv.char and enforces both the
-  -- per-char cap and the new account-wide cap; bloated alts that predate the
-  -- upgrade are trimmed on first post-upgrade login (the v3 migration also
-  -- runs it once and announces the trim; this is the persistent safety net).
+  -- Enforces the per-character and account-wide history caps across every
+  -- character on each load; per-append trimming never reaches other alts.
   if NS.History and NS.History.TrimAllCharacters then
     NS.History.TrimAllCharacters()
   end
 
-  -- BSP-032: the same safety net for the shadow log. Capture enforces the cap
-  -- one entry at a time, which never catches up with a store carried over from
-  -- a build that allowed a larger one, so converge it once at load.
+  -- The same for the shadow log: Capture only evicts one entry at a time.
   if NS.ShadowLog and NS.ShadowLog.TrimToCap then
     NS.ShadowLog.TrimToCap()
   end
@@ -56,8 +45,7 @@ local function Initialize()
   -- Repeat counting is always on; settings.throttle.enabled is intentionally
   -- not read.
   local settings = NS.DB.GetSettings()
-  -- BSP-039: the flood window is a persisted setting, pushed into Frequency
-  -- so the first chat event uses it rather than the module constant.
+  -- Pushed before the first chat event, which would otherwise use the default.
   if settings and NS.Frequency and NS.Frequency.SetFloodWindow then
     NS.Frequency.SetFloodWindow(settings.floodWindow)
   end
@@ -96,9 +84,8 @@ local function InstallScanner()
   NS.ChatScanner.Install()
 end
 
--- BSP-037: registered at login rather than in Initialize(). Initialize runs on
--- the addon-loaded hook, and the Menu system belongs to a separate Blizzard
--- addon that is not guaranteed to have loaded by then.
+-- Registered at login, not in Initialize(): the Blizzard Menu addon is not
+-- guaranteed to be loaded at the addon-loaded hook.
 local function InstallPlayerMenu()
   if not initialized or not NS.PlayerMenu or not NS.PlayerMenu.Initialize then
     return
@@ -107,9 +94,7 @@ local function InstallPlayerMenu()
   NS.PlayerMenu.Initialize()
 end
 
--- SFT-099: registered at login, same gating convention as InstallPlayerMenu
--- above -- Init's `initialized` flag, checked here rather than inside
--- FirstRunChooser itself, so every login-hook installer follows one pattern.
+-- Registered at login, gated on `initialized` like InstallPlayerMenu above.
 local function InstallFirstRunChooser()
   if not initialized or not NS.FirstRunChooser or not NS.FirstRunChooser.OnLogin then
     return
@@ -257,11 +242,8 @@ local function RebuildStats()
 	Print("byCategory rebuilt from retained history: " .. tostring(total) .. " entries categorized. Reload or reopen History panel to refresh stats display.")
 end
 
--- BSP-018: /bdev fpx — invoke FP-export dialog. Numeric arg limits to last N
--- restored History entries. devMode gate handled by BdevSlashHandler below.
--- BSP-018 polish (post-Argus): extract first whitespace-delimited token via
--- string.match so "/bdev fpx 20 garbage" honors the 20 instead of silently
--- dropping the limit (tonumber on the full rest string would return nil).
+-- /bdev fpx [N]: false-positive export dialog, limited to the last N restored
+-- entries. Reads the first token only, so "/bdev fpx 20 extra" still honors 20.
 local function ExportFP(rest)
   local firstToken = string.match(rest or "", "^(%S+)")
   local limit = firstToken and tonumber(firstToken) or nil
@@ -272,12 +254,8 @@ local function ExportFP(rest)
   end
 end
 
--- BSP-049: /bdev hx [N] — copyable corpus export of ALL History `original`
--- strings, deduped by exact text and sorted by occurrence count. Lets Rawb
--- preserve dogfood records as corpus candidates before a history-cap trim.
--- Read-only: never mutates char.history. Optional N caps to the top-N unique
--- originals (first whitespace token, like ExportFP). devMode gate handled by
--- BdevSlashHandler below — no second check.
+-- /bdev hx [N]: export of every History original, deduped and sorted by count,
+-- optionally capped to the top N. Read-only.
 local function ExportHistory(rest)
   local firstToken = string.match(rest or "", "^(%S+)")
   local limit = firstToken and tonumber(firstToken) or nil
@@ -288,11 +266,8 @@ local function ExportHistory(rest)
   end
 end
 
--- BSP-032: /bdev fnx [N|clear] — export the shadow log of messages the filter
--- let through, as corpus candidates for hand triage. Optional N caps to the
--- top-N (first whitespace token, like ExportFP); `clear` empties the store,
--- which is what makes repeated mining cycles usable once candidates have been
--- promoted. devMode gate handled by BdevSlashHandler below.
+-- /bdev fnx [N|clear]: export the shadow log of messages the filter let
+-- through, optionally capped to the top N; `clear` empties it.
 local function ExportFN(rest)
   local firstToken = string.match(rest or "", "^(%S+)")
   if firstToken and string.lower(firstToken) == "clear" then
@@ -308,15 +283,9 @@ local function ExportFN(rest)
   end
 end
 
--- BSP-048: /bdev perf [label] — one-shot performance snapshot for the
--- perf-optimization pass. Prints two lines: memory (pre-GC / retained / churn)
--- and CPU (recent/peak/session avg ms + spike counts). devMode gate handled by
--- BdevSlashHandler below. Pure diagnostic — no filtering/behavior change.
--- The optional <label> (the rest arg, e.g. "/bdev perf trade") tags the four
--- sample moments Rawb captures during a profiling run.
--- NOTE: collectgarbage("collect") forces a full GC, which costs a one-frame
--- hitch. That's acceptable for a manual dev read — it's how we separate retained
--- memory from churn (transient garbage reclaimed by the collection).
+-- /bdev perf [label]: one-shot memory, CPU and history-size snapshot, tagged
+-- with the optional label. The forced full GC costs a one-frame hitch; it is
+-- how retained memory is separated from churn.
 local function RunPerf(rest)
   local label = string.match(rest or "", "^(%S+)") or ""
 
@@ -333,8 +302,7 @@ local function RunPerf(rest)
     label, preGC, retained, churn
   ))
 
-  -- CPU: C_AddOnProfiler is newer client API — guard its existence (and the
-  -- Enum table) so older/edge clients print a notice instead of erroring.
+  -- C_AddOnProfiler is missing on older clients; print a notice instead.
   if C_AddOnProfiler and C_AddOnProfiler.GetAddOnMetric
     and Enum and Enum.AddOnProfilerMetric then
     local M = Enum.AddOnProfilerMetric
@@ -352,12 +320,8 @@ local function RunPerf(rest)
     Print("perf: C_AddOnProfiler unavailable on this client")
   end
 
-  -- BSP-050: surface the cross-char history footprint alongside memory/CPU so
-  -- Gate 2 can sanity-check that the trim-all path is holding both caps. Reads
-  -- the current char's count via DB.GetChar(), and sums #history across every
-  -- char bucket in db.sv.char for the global total. Caps come from settings
-  -- (already clamped by RepairSettings on Initialize). Defensive against
-  -- missing db.sv / non-table char data — prints "?" rather than erroring.
+  -- History size for this character and across all characters, against the
+  -- caps. Prints "?" for anything missing rather than erroring.
   local current, global, perCharCap, globalCap = "?", "?", "?", "?"
   local settings = NS.DB and NS.DB.GetSettings and NS.DB.GetSettings()
   if settings then
@@ -385,8 +349,7 @@ local function RunPerf(rest)
   ))
 end
 
--- /bdev pseudolocale -- dev-only i18n smoke check (PseudoLocale.Apply pads
--- NS.L in place; devMode-gated there too, matching ShadowLog's own-gate convention).
+-- /bdev pseudolocale: dev-only i18n smoke check (see PseudoLocale.lua).
 local function RunPseudoLocale()
   if not (NS.PseudoLocale and NS.PseudoLocale.Apply) then
     Print(L["pseudo-locale tool is unavailable (locale table not loaded)."])
@@ -415,10 +378,7 @@ local COMMANDS = {
 	clearhistory = ConfirmClearHistory,
 	clearblocked = ConfirmClearBlocked,
 	rebuildstats = RebuildStats,
-	-- BSP-018 polish (post-Argus): transitional discoverability hint after
-	-- /sift test → /bdev test migration. Remove this entry in a future
-	-- cleanup once muscle memory has migrated; for now it's a one-line aid
-	-- so a stale habit doesn't fall through to a generic usage line.
+	-- Transitional hint for the old /sift test command.
 	test = function()
 		Print("/sift test moved to /bdev test (requires devMode).")
 	end,
@@ -441,11 +401,8 @@ local function SlashHandler(msg)
 	end
 end
 
--- SFT-099: /bdev chooser -- preview the first-run filter chooser on demand.
--- Ignores the seen set for display (every row shows its shipped default),
--- but Apply/Keep still run the real write paths. This is the only way to see
--- the panel while Chooser.LIVE stays false, keeping it out of sight until
--- BSP-040 gives it something worth showing.
+-- /bdev chooser: preview the first-run chooser. Display ignores the seen set,
+-- but Apply/Keep still run the real write paths.
 local function RunChooserPreview()
   if NS.FirstRunChooser and NS.FirstRunChooser.Show then
     NS.FirstRunChooser.Show(true)
@@ -454,9 +411,7 @@ local function RunChooserPreview()
   end
 end
 
--- BSP-018: /bdev <subcommand> — namespace for devMode-gated commands.
--- Universal gate at the dispatcher level; individual handlers may still
--- defense-in-depth check IsDevMode() (e.g. RunSyntheticTest does).
+-- /bdev <subcommand>: dev-mode commands, gated once in BdevSlashHandler.
 local DEV_COMMANDS = {
 	test = RunSyntheticTest,
 	fpx  = ExportFP,
@@ -493,20 +448,13 @@ local function BdevSlashHandler(msg)
 	end
 end
 
--- Bring back BawrSpam data once, before the scanner installs. Runs only the
--- follow-up refresh below when the import actually ran this login (returned
--- a summary) -- once the flag is set, every later login's import call is a
--- no-op, so these steps never run again and never have a chance to fail on
--- every subsequent login.
+-- Refresh after a BawrSpam data import; runs only on the login the import ran.
 local function RefreshAfterLegacyImport(settings)
   if NS.Trust and NS.Trust.RefreshAllowlistFromDB then
     NS.Trust.RefreshAllowlistFromDB()
   end
   if settings then
-    -- Repeat counting is always on; settings.throttle.enabled is
-    -- intentionally not read (matches Initialize()'s own repeat-toggle
-    -- removal -- a legacy player's old throttle.enabled=false must not
-    -- re-disable it here either).
+    -- settings.throttle.enabled is intentionally not read, as in Initialize().
     if NS.Frequency and NS.Frequency.SetFloodWindow then
       NS.Frequency.SetFloodWindow(settings.floodWindow)
     end
@@ -519,20 +467,10 @@ local function RefreshAfterLegacyImport(settings)
   end
 end
 
--- The import and its refresh share one local pcall, separate from
--- Lifecycle's own pcall around the whole OnLogin closure below. Without
--- this, a raise anywhere in here would skip InstallScanner, InstallPlayerMenu
--- and InstallFirstRunChooser for this login too, with no visible failure
--- beyond Lifecycle's generic dev-error line.
---
--- On failure, the wording is chosen from whether the data was actually
--- committed (global.legacyImport is set), not from whether this call
--- returned normally: the merge sets that flag as part of its own commit,
--- inside DB.ImportLegacyData, before that function returns -- so a raise
--- anywhere after the commit (inside ImportLegacyData itself, or in the
--- refresh sequence below) still means the data came back, and the message
--- must not tell the player it will retry when the flag already means it
--- will not.
+-- Own pcall, so a failure here cannot skip the installers that follow it in
+-- OnLogin. The failure message keys on global.legacyImport (set when the merge
+-- commits), not on whether the call returned: a raise after the commit still
+-- means the data came back and will not be retried.
 local function ImportLegacyDataOnLogin()
   local ok, err = pcall(function()
     local summary = NS.DB and NS.DB.ImportLegacyData and NS.DB.ImportLegacyData()
@@ -555,29 +493,10 @@ local function ImportLegacyDataOnLogin()
   end
 end
 
--- Bootstrap via Foundry.Lifecycle (FND-004 Phase E). Adopts NS onto a Lifecycle
--- controller, replacing the hand-rolled driver frame + ADDON_LOADED/PLAYER_LOGIN
--- demux + the C_Timer retry. F:RequireModule fails loud with a clear diagnostic if a
--- too-old Foundry without the Lifecycle module is loaded (the version-skew window
--- before Foundry's Lifecycle release lands) instead of an opaque nil-index.
---
--- The C_Timer.After(1, InstallScanner) retry is DROPPED as vestigial: InstallScanner
--- no-ops while `initialized == false`, and `initialized` only flips true at the end of
--- Initialize() (which runs on the addon-loaded hook, before the login hook), so the
--- +1s retry could only ever fire after the synchronous login-hook call had already
--- installed the scanner. No behavior change.
---
--- Subscription ORDER is load-bearing: OnAddonLoaded (Initialize) must precede OnLogin
--- (InstallScanner) -- if Sift were ever loaded on demand after login, both hooks
--- catch up synchronously in registration order, and InstallScanner guards on
--- `initialized`, so Initialize must run first.
---
--- §7.5 deliberate-exclusion set (Lifecycle adopts WHEN these run, not their contents):
---   * NS.DB.Initialize() hard-gate (in Initialize) -- DB-readiness, not a phase; stays.
---   * idempotency flag `initialized` -- kept (cheap consumer-owned guard).
---   * slash commands (/sift, /bdev below) -- Foundry.Commands territory; not adopted.
---   * Initialize() module chain + InstallScanner's ChatScanner.Install -- consumer-owned.
---   * OnLogout -- Lifecycle ships it, but Sift has no logout teardown; deliberately unused.
+-- Bootstrap via Foundry.Lifecycle. Subscription order is load-bearing:
+-- OnAddonLoaded (Initialize) must be registered before OnLogin, because the
+-- installers no-op until `initialized` is set and a late load replays both
+-- hooks in registration order. No OnLogout: Sift has no logout teardown.
 local controller = F:RequireModule("Lifecycle", 1):New(NS, ADDON_NAME)
 controller:OnAddonLoaded(function() Initialize() end)
 controller:OnLogin(function()
@@ -591,8 +510,6 @@ SLASH_SIFT1 = "/sift"
 SlashCmdList.SIFT = SlashHandler
 
 SLASH_BDEV1 = "/bdev"
--- BSP-018 polish (post-Argus): defensive fallback alias against silent
--- collision if another addon registers /bdev — last-loader-wins in
--- SlashCmdList. /siftdev is verbose enough to be effectively unique.
+-- Fallback alias in case another addon also claims /bdev.
 SLASH_BDEV2 = "/siftdev"
 SlashCmdList.BDEV = BdevSlashHandler
