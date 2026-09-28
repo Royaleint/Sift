@@ -1960,7 +1960,7 @@ RenderBlocked = function()
 
     local meta = TrackNative(row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"))
     meta:SetPoint("LEFT", row, "LEFT", 8, -8)
-    -- Every row says who put the player here, even one with no recorded blocks.
+    -- A manual block can have zero recorded blocks; say who added it.
     local origin = isManualBlock and "blocked by you - " or "blocked by Sift - "
     meta:SetText(origin .. "blocks " .. tostring(BlockedEntryCount(rowData.entry))
       .. " - last " .. RelativeTime(BlockedEntryLastSeen(rowData.entry)))
