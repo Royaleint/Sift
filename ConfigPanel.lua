@@ -1633,8 +1633,10 @@ local function AddAxisPauseRow(axis, key, displayLabel, y)
   label:SetText(L[displayLabel])
   label:Show()
 
+  local PILL_MIN_WIDTH, PILL_MAX_WIDTH, PILL_TEXT_PADDING = 80, 120, 30
+
   local pill = TrackNative(CreateFrame("Button", nil, row))
-  pill:SetSize(80, 20)
+  pill:SetSize(PILL_MIN_WIDTH, 20)
   pill:SetPoint("RIGHT", row, "RIGHT", -8, 0)
   pill:RegisterForClicks("LeftButtonUp", "RightButtonUp")
   pill.bg = pill:CreateTexture(nil, "BACKGROUND")
@@ -1645,6 +1647,8 @@ local function AddAxisPauseRow(axis, key, displayLabel, y)
   pill.glyph:SetPoint("LEFT", pill, "LEFT", 6, 0)
   pill.text = pill:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   pill.text:SetPoint("LEFT", pill.glyph, "RIGHT", 4, 0)
+  pill.text:SetJustifyH("LEFT")
+  pill.text:SetWordWrap(false)
 
   local function Refresh()
     local state
@@ -1655,6 +1659,19 @@ local function AddAxisPauseRow(axis, key, displayLabel, y)
     end
     ApplyPauseGlyph(pill.glyph, state)
     pill.text:SetText(L[state])
+
+    -- The state word changes with every click ("Active"/"Paused"/"Off"),
+    -- so the pill has to re-measure here, not just at creation.
+    -- GetUnboundedStringWidth ignores whatever width a previous call left
+    -- on pill.text, so a short word after a long one measures correctly.
+    local width = pill.text:GetUnboundedStringWidth() + PILL_TEXT_PADDING
+    if width < PILL_MIN_WIDTH then width = PILL_MIN_WIDTH end
+    if width > PILL_MAX_WIDTH then width = PILL_MAX_WIDTH end
+    pill:SetWidth(width)
+    -- Bounds the label to the pill's own content width, so a word that hit
+    -- the cap above clips (word wrap is already off) instead of drawing
+    -- past the pill.
+    pill.text:SetWidth(width - PILL_TEXT_PADDING)
   end
 
   pill:SetScript("OnClick", function(self, mouseButton)
