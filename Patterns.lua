@@ -21,8 +21,8 @@ local function _decode(encoded, entryIndex, seedLow, seedHigh)
   local bytes = {}
   for j = 1, #encoded do
     local b = string.byte(encoded, j)
-    -- NOTE: this mask formula MUST match build_patterns.lua's encoder exactly.
-    -- A drift here would silently decode all patterns to garbage with no error.
+    -- Must match the pattern encoder exactly; any drift silently decodes every
+    -- pattern to garbage with no error.
     local mask = (seedLow + j + seedHigh * (entryIndex + 1)) % 256
     bytes[j] = string.char(_bxor(b, mask))
   end

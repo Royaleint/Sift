@@ -1,35 +1,23 @@
+-- Sift/DB.lua
+-- SavedVariables: defaults, shape repair, migrations, settings setters, the
+-- blocked-actor store, and the one-time import of legacy BawrSpam data.
+
 local ADDON_NAME, NS = ...
 local DB = {}
 
--- SavedVariables global names, derived per build (SFT-077).
---
--- CROSS-LANGUAGE CONTRACT with the DevBuild TOC generator.
--- That generator writes the DevBuild's TOC and appends its SV_SUFFIX to every
--- declared global ("SiftDB" -> "SiftDB_DevBuild"). The names derived here MUST
--- equal what it emits, or this build declares one global in its TOC and stores
--- its data in another -- an empty store, and writes landing in the OTHER build's
--- global. Nothing in Lua can enforce the agreement, so both sides carry this
--- comment and both sides carry a contract check:
---   Lua  -- a test against this file's derived names
---   Node -- a matching check against the TOC generator's output
--- Change the suffix on one side and the matching check goes red.
---
--- The suffix is taken from the FOLDER name relative to the live addon name, not
--- built from the folder name directly: the generator suffixes the GLOBAL, so
--- "Sift_DevBuild" must yield "SiftDB_DevBuild", NOT "Sift_DevBuildDB".
+-- SavedVariables global names, derived per build. They must equal the globals
+-- the DevBuild's TOC declares ("SiftDB" -> "SiftDB_DevBuild"), or the build
+-- stores its data in a global it never saves, or in the other build's.
+-- "Sift_DevBuild" must yield "SiftDB_DevBuild", not "Sift_DevBuildDB".
+-- The suffix also lives where the dev build's TOC is generated; nothing in Lua
+-- enforces the match, so change both together.
 local LIVE_ADDON_NAME = "Sift"
 local BASE_SV_NAME = "SiftDB"
 local LEGACY_SV_NAME = "BawrSpamDB"
 
--- Exposed for the contract test. Pure: no upvalues beyond the constants above.
---
--- Returns (svName, legacySvName) for a recognised folder, or (nil, reason) for
--- anything else. It does NOT fall back to the live names. An earlier draft did,
--- and that was wrong: a folder we do not recognise, silently pointed at the LIVE
--- store, is a build writing into data it does not own -- the same shape of
--- failure BSP-070's C1 test proved destroys SavedVariables. There is no safe
--- guess here, so it refuses instead. The caller raises; this stays pure so the
--- contract test can exercise it outside the client.
+-- Returns (svName, legacySvName) for a recognised folder, or (nil, reason).
+-- Must never fall back to the live names: an unrecognised build pointed at the
+-- live store would write into data it does not own. Pure, for tests.
 function DB.DeriveSVNames(addonName)
   local name = tostring(addonName or "")
   local suffix = name:match("^" .. LIVE_ADDON_NAME .. "(.*)$")
@@ -40,11 +28,13 @@ function DB.DeriveSVNames(addonName)
   return BASE_SV_NAME .. suffix, LEGACY_SV_NAME .. suffix
 end
 
--- Resolved at file scope but NOT raised here: an error() during file load aborts
--- the rest of this file with no useful context for the player. Initialize raises.
+-- Resolved at file scope but raised in Initialize: an error() during file load
+-- would abort the rest of this file with no useful context.
 local SV_NAME, SV_LEGACY_NAME = DB.DeriveSVNames(ADDON_NAME)
 local SV_NAME_ERROR = (not SV_NAME) and SV_LEGACY_NAME or nil
 
+-- Bump only with a matching migrations[N]: ApplyMigrations stamps the version
+-- even when that entry is missing.
 local CURRENT_SCHEMA_VERSION = 4
 local ADDON_VERSION = "1.4.0"
 local BLOCKED_ACTOR_CAP = 5000
@@ -62,34 +52,25 @@ local defaults = {
   global = {
     allowlist = {},
     blockedActors = {},
-    -- BSP-052 / BSP-058: user-authored keyword rules. Arrays so display order is
-    -- stable; contents managed entirely by UserRules.lua.
+    -- Keyword rules: arrays so display order is stable; managed by UserRules.lua.
     customBlocks = {},
     allowKeywords = {},
-    -- BSP-032: dev-only false-negative capture store. A sibling of `settings`,
-    -- not a member of it -- ResetSettings replaces the whole settings subtree,
-    -- and the captured corpus candidates must survive a settings reset.
-    -- Additive, so no schema bump: absent on existing profiles, backfilled here.
+    -- Dev-only shadow log. Outside `settings` so it survives ResetSettings.
     shadowLog = {},
-    -- SFT-099: which first-run chooser rows this player has already decided
-    -- (Apply or Keep current settings), keyed by the row's registry key. Only
-    -- a value of `true` counts as seen; never a key with any other value, and
-    -- never seeded with a key here -- Foundry's applyDefaults backfills a
-    -- fresh SavedVariables table by copying this default in wholesale, so a
-    -- pre-populated key here would mark that row seen on a fresh install that
-    -- never showed the panel.
+    -- First-run chooser rows already decided, keyed by registry key; only `true`
+    -- counts. Never seed a key here: defaults are copied into a fresh install,
+    -- which would mark the row seen without ever showing it.
     chooserSeen = {},
     settings = {
       threshold = 4,
-      -- SFT-080: only the user-facing categories are persisted. The retired
-      -- ones keep scoring at frozen states declared in PauseState.lua.
+      -- Only user-facing categories are persisted; retired ones score at the
+      -- frozen states in PauseState.lua.
       enabledCategories = {
         RMT        = "active",
         Boosting   = "active",
         Carrying   = "active",
-        -- BSP-052: the user's own keyword block list, sharing the
-        -- active/paused/off axis. It must be here or SetCategoryState rejects
-        -- the toggle -- that setter gate-checks against this table.
+        -- The user's keyword block list. Must be listed here: SetCategoryState
+        -- rejects any category missing from this table.
         Custom     = "active",
       },
       surfaces = {
@@ -100,18 +81,14 @@ local defaults = {
       mixedScriptEnabled = true,
       mixedScriptWeight = 1,
       antiSignalCap = -5,
-      -- BSP-039: flood window in seconds. The band is owned by Frequency.lua
-      -- and read through GetFloodWindowBounds; this is only the seed value.
+      -- Seconds. Only the seed value; the band is owned by Frequency.lua.
       floodWindow = 180,
       filterBubbles = false,
       showMinimapButton = true,
       historyMaxEntries = 300,
       historyGlobalMaxEntries = 1000,
       devMode = false,
-      -- BSP-010: confirmed-spam-repeat dedupe. Additive — Foundry.DB backfills
-      -- nil slots from defaults on first section access. The module-level
-      -- default in Frequency.lua mirrors this value. BSP-029 retired
-      -- bufferSize as a setting; the default now lives only in Frequency.
+      -- Repeat dedupe. `enabled` is kept in the saved shape but not read.
       throttle = {
         enabled = true,
       },
@@ -137,21 +114,15 @@ local defaults = {
 
 local VALID_AXIS_STATES = { active = true, paused = true, off = true }
 
--- BSP-061: the premade-group scanning feature was removed. These are the
--- on-disk SavedVariables keys it left behind in existing players' profiles.
--- They must stay byte-identical to the keys originally written or the prune
--- below silently misses them; the prefix is split only so source scans for the
--- removed feature's token stay clean. DefunctSurfaceKeys are pruned from the
--- settings.surfaces subtree; DefunctSettingKeys from settings itself.
+-- Saved keys left behind by a removed feature, pruned on load. They must stay
+-- byte-identical to the keys originally written, or the prune silently misses
+-- them. The prefix is split on purpose so source scans for the token stay clean.
 local DEFUNCT_KEY_PREFIX = "lf" .. "g"
 local DEFUNCT_SURFACE_KEYS = { DEFUNCT_KEY_PREFIX .. "-search", DEFUNCT_KEY_PREFIX .. "-applicant" }
 local DEFUNCT_SETTING_KEYS = { DEFUNCT_KEY_PREFIX .. "ScanEnabled" }
 
--- SFT-080: these categories lost their Config buttons. Their rules still score,
--- at states frozen in PauseState.lua, so nothing about detection changes -- but
--- there is no longer a toggle to reach the stored value, which makes it dead
--- weight in every existing profile. Pruned from settings.enabledCategories the
--- same way BSP-061's surface keys are pruned below.
+-- Retired categories: their rules still score at the frozen states in
+-- PauseState.lua, so their stored states are pruned as dead weight.
 local DEFUNCT_CATEGORY_KEYS = { "Casino", "Phishing", "Commercial", "Anti" }
 
 local migrations = {}
@@ -201,8 +172,7 @@ local function DevLog(message)
 end
 
 migrations[3] = function(db)
-  -- BSP-050: account-wide cap introduced. Existing data may be over it; trim once
-  -- and announce. Subsequent enforcement is silent (Init.lua login-trim, commit 4).
+  -- Account-wide history cap: trim once and announce. Later trims are silent.
   if NS.History and NS.History.TrimAllCharacters then
     local perCharRemoved, globalRemoved = NS.History.TrimAllCharacters()
     local total = perCharRemoved + globalRemoved
@@ -217,13 +187,9 @@ migrations[3] = function(db)
   end
 end
 
--- Carrying (paid raid, Mythic+ and dungeon-run sales) is split out of
--- Boosting, which used to cover both. Every existing profile inherits its
--- current Boosting state as Carrying's starting state, so nobody's filtering
--- changes on upgrade. The RepairShape pass that already ran before this
--- migration has validated Boosting into a real state and backfilled Carrying
--- to the shipped default, so this simply overwrites that default with
--- Boosting's validated value.
+-- Carrying splits out of Boosting and inherits Boosting's state, so nobody's
+-- filtering changes on upgrade. Relies on RepairShape having already run and
+-- validated Boosting (see DB.Initialize).
 migrations[4] = function(db)
   local settings = (db.global and db.global.settings) or {}
   local categories = settings.enabledCategories
@@ -244,9 +210,7 @@ local function CopyDefaults(source)
   return copy
 end
 
--- CopyDefaults is a plain recursive table copy; the legacy-data merge below
--- reuses it under a name that reads correctly for copying arbitrary data,
--- not only the defaults table.
+-- Alias; CopyDefaults is a general deep copy.
 local DeepCopy = CopyDefaults
 
 local function ClampNumber(value, minValue, maxValue, fallback)
@@ -256,11 +220,8 @@ local function ClampNumber(value, minValue, maxValue, fallback)
   return value
 end
 
--- BSP-039: Frequency owns the flood-window band, so read it from there rather
--- than repeating the numbers here. Frequency loads before this ever runs (TOC
--- order, and every caller is post-init). If it somehow has not, return the
--- default rather than an unclamped number — without the bounds there is no way
--- to tell whether a supplied value is inside the band.
+-- The band comes from Frequency. Without it, return the default rather than
+-- an unclamped value.
 local function ClampFloodWindow(value)
   if NS.Frequency and NS.Frequency.GetFloodWindowBounds then
     local minWindow, maxWindow = NS.Frequency.GetFloodWindowBounds()
@@ -288,10 +249,8 @@ local function CountTable(tbl)
   return count
 end
 
--- BSP-037: entries the user blocked by hand are exempt from eviction. Dropping
--- one would silently undo an explicit choice the user has no way to notice.
--- Returns whether anything was removed, so a caller trimming to the cap can
--- stop once only manual entries remain rather than looping forever.
+-- Manual blocks are never evicted. Returns whether anything was removed, so a
+-- trim loop stops once only manual entries remain.
 local function EvictOldestBlockedActor(blockedActors)
   local oldestKey
   local oldestSeen
@@ -322,8 +281,7 @@ local function RepairSettings(settings)
   settings.mixedScriptEnabled = settings.mixedScriptEnabled ~= false
   settings.filterBubbles = settings.filterBubbles == true
   settings.showMinimapButton = settings.showMinimapButton ~= false
-  -- BSP-061: premade-group scanning removed. Prune the now-defunct setting
-  -- keys it left behind in existing SavedVariables (see DEFUNCT_SETTING_KEYS).
+  -- Prune defunct setting keys (see DEFUNCT_SETTING_KEYS).
   for _, key in ipairs(DEFUNCT_SETTING_KEYS) do
     settings[key] = nil
   end
@@ -337,7 +295,7 @@ local function RepairSettings(settings)
       settings.enabledCategories[category] = defaultState
     end
   end
-  -- SFT-080: drop the states of categories that no longer have a button.
+  -- Drop the states of retired categories.
   for _, key in ipairs(DEFUNCT_CATEGORY_KEYS) do
     settings.enabledCategories[key] = nil
   end
@@ -349,18 +307,14 @@ local function RepairSettings(settings)
       settings.surfaces[surface] = defaultState
     end
   end
-  -- BSP-061: prune stale premade-group surface states left in existing
-  -- SavedVariables (see DEFUNCT_SURFACE_KEYS).
+  -- Prune defunct surface keys (see DEFUNCT_SURFACE_KEYS).
   for _, key in ipairs(DEFUNCT_SURFACE_KEYS) do
     settings.surfaces[key] = nil
   end
-  -- BSP-010: repair the throttle subtree. Junk values clamp back to safe
-  -- defaults; missing fields backfill.
+  -- Repair the throttle subtree; junk values fall back to defaults.
   settings.throttle = type(settings.throttle) == "table" and settings.throttle or {}
   settings.throttle.enabled = settings.throttle.enabled ~= false
-  -- BSP-029: the buffer size is no longer user-configurable (the flood window
-  -- is the single timing knob). Prune the key existing SavedVariables still
-  -- carry — the matching default is gone, so nothing backfills it again.
+  -- bufferSize is no longer a setting; prune it from existing saves.
   settings.throttle.bufferSize = nil
 end
 
@@ -368,9 +322,7 @@ local function RepairShape(global, char)
   global.schemaVersion = tonumber(global.schemaVersion) or CURRENT_SCHEMA_VERSION
   global.allowlist = global.allowlist or {}
   global.blockedActors = global.blockedActors or {}
-  -- BSP-052 / BSP-058: keyword rule stores. A malformed entry here would be
-  -- matched against every scanned line, so drop anything without a usable
-  -- cleansed form rather than carrying it.
+  -- Keyword rules are matched against every scanned line, so drop malformed ones.
   global.customBlocks = type(global.customBlocks) == "table" and global.customBlocks or {}
   global.allowKeywords = type(global.allowKeywords) == "table" and global.allowKeywords or {}
   if NS.UserRules and NS.UserRules.RepairStore then
@@ -381,9 +333,7 @@ local function RepairShape(global, char)
     end
   end
   global.shadowLog = global.shadowLog or {}
-  -- SFT-099: type-checked, not just presence-checked, like customBlocks above
-  -- -- a second line of defense lives in DB.GetChooserSeen too, but this is
-  -- what actually fixes a junk value in the saved store.
+  -- Type-checked, not just presence-checked, so a junk saved value is repaired.
   global.chooserSeen = type(global.chooserSeen) == "table" and global.chooserSeen or {}
   global.settings = global.settings or {}
   char.history = char.history or {}
@@ -419,11 +369,8 @@ local function ApplyMigrations(db)
 end
 
 function DB.Initialize()
-  -- Unrecognised folder name: refuse loudly rather than guess a store. Guessing
-  -- means writing into SavedVariables this build does not own, and BSP-070's C1
-  -- test showed that loss is unrecoverable. Raised here, not at file scope, so
-  -- the message reaches the player instead of aborting the file's remaining
-  -- definitions.
+  -- Unrecognised folder name: refuse loudly rather than guess a store, since a
+  -- wrong guess writes into SavedVariables this build does not own.
   if SV_NAME_ERROR then
     error("Sift: " .. SV_NAME_ERROR
       .. ". Refusing to load saved data rather than risk writing into another build's store."
@@ -438,9 +385,9 @@ function DB.Initialize()
     return false
   end
 
-  -- Both identity arguments derive from the TOC vararg (SFT-077): `name` so a
-  -- renamed folder still passes Foundry's IsAddOnLoaded gate, `sv` so the store
-  -- matches the global this build's TOC actually declares.
+  -- Both from the TOC vararg: `name` so a renamed folder passes Foundry's
+  -- IsAddOnLoaded check, `sv` so the store matches this build's declared global.
+  -- RepairShape runs before and after the migrations; both passes are needed.
   DB.db = F.DB:New({ name = ADDON_NAME, sv = SV_NAME, defaults = defaults, defaultProfile = true })
   RepairShape(DB.db.global, DB.db.char)
   ApplyMigrations(DB.db)
@@ -620,13 +567,9 @@ function DB.RecordBlockedActor(record, category)
   return true
 end
 
--- BSP-037: block an actor by explicit user action rather than by detection.
--- Shares the blockedActors key space with the scanner so both surfaces resolve
--- to one entry and one undo path (Config > Blocked). `count` is left alone
--- here: it counts messages actually suppressed, and blocking someone has not
--- suppressed one yet. Every message the block goes on to catch increments it
--- through RecordBlockedActor, exactly like a scanner block. Returns false when
--- the actor is already manually blocked, so a repeat click is a no-op.
+-- Blocks an actor by user action. Shares blockedActors with the scanner, so
+-- both resolve to one entry and one undo path. `count` is left alone: it counts
+-- suppressed messages. Returns false when already manually blocked.
 function DB.BlockActorManually(guid, name, realm)
   local global = DB.GetGlobal()
   if not global or not UsableString(guid) then
@@ -713,17 +656,12 @@ function DB.ResetSettings()
 
   global.settings = CopyDefaults(defaults.global.settings)
   RepairSettings(global.settings)
-  -- BSP-050 (extends BSP-049): reset can lower both historyMaxEntries and the
-  -- new historyGlobalMaxEntries back to defaults, and the records live in
-  -- char.history for every character, not just the current one. Trim across
-  -- all chars immediately so the caps the user just reset to are authoritative
-  -- account-wide, not enforced piecemeal as each alt next logs in.
+  -- A reset can lower the history caps; trim every character now rather than
+  -- as each alt next logs in.
   if NS.History and NS.History.TrimAllCharacters then
     NS.History.TrimAllCharacters()
   end
-  -- BSP-039: same reasoning as the trim above — a reset value is authoritative
-  -- immediately, not at next login. Without this the slider snaps back to 180
-  -- while the runtime keeps scanning on whatever window was set before.
+  -- Likewise push the reset flood window now, not at next login.
   if NS.Frequency and NS.Frequency.SetFloodWindow then
     NS.Frequency.SetFloodWindow(global.settings.floodWindow)
   end
@@ -735,9 +673,7 @@ function DB.IsDevMode()
   return settings and settings.devMode == true
 end
 
--- SFT-099: second line of defense alongside RepairShape's chooserSeen backfill
--- -- returns the live table when it's already well-shaped, or a disposable
--- {} otherwise rather than handing a caller a non-table to index into.
+-- Returns the live table, or a disposable {} if the saved value is malformed.
 function DB.GetChooserSeen()
   local global = DB.GetGlobal()
   local seen = global and global.chooserSeen
@@ -762,13 +698,6 @@ function DB.DevLog(message)
   DevLog(message)
 end
 
--- Merges the legacy BawrSpam store into an already-populated Sift store,
--- once. Pure: no NS and no WoW API, so it is exercised outside the client. It
--- never mutates legacySV. Two phases: Build reads both stores (siftSV only to
--- detect collisions) and deep-copies whatever it needs into fresh working
--- tables; Commit is then plain assignment with nothing left that can raise.
--- A raise during Build therefore leaves siftSV untouched -- a failed import
--- assigns nothing.
 local function CoerceBlockedActor(guid, raw)
   local entry = {
     guid = guid,
@@ -823,11 +752,8 @@ local function MergeBlockedActorCollision(guid, sift, legacy)
     merged.surfaces = MergeCountMap(sift.surfaces, legacy.surfaces, false)
     merged.categories = MergeCountMap(sift.categories, legacy.categories, false)
   end
-  -- The most recently active side names the entry; a tie keeps Sift's own
-  -- name/realm, matching every other tie in this merge favouring Sift. If
-  -- that side's own name or realm is unusable, the other side's value is
-  -- used instead of losing it -- the same "or entry.name" fallback
-  -- DB.RecordBlockedActor uses when only one side has a real value.
+  -- Newer side names the entry (a tie keeps Sift's); an unusable name/realm
+  -- falls back to the other side.
   local newer, older = sift, legacy
   if legacy.lastBlockedAt > sift.lastBlockedAt then
     newer, older = legacy, sift
@@ -892,6 +818,13 @@ local function IsEmptyCharSlot(char)
   return detections == 0 and blocked == 0
 end
 
+-- Merges the legacy BawrSpam store into an already-populated Sift store,
+-- once. Pure: no NS and no WoW API, so it is exercised outside the client. It
+-- never mutates legacySV. Two phases: Build reads both stores (siftSV only to
+-- detect collisions) and deep-copies whatever it needs into fresh working
+-- tables; Commit is then plain assignment with nothing left that can raise.
+-- A raise during Build therefore leaves siftSV untouched -- a failed import
+-- assigns nothing.
 function DB.MergeLegacyStore(siftSV, legacySV, now)
   if type(siftSV) ~= "table" or type(siftSV.global) ~= "table" then
     return nil, "no Sift store"

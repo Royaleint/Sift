@@ -1,20 +1,13 @@
 -- Sift/PseudoLocale.lua
--- Dev-only in-session i18n smoke check, run via /bdev pseudolocale.
--- Pads every stored Locales/enUS.lua value in place so a player-visible
--- string that reaches the screen still in plain English is easy to spot,
--- and a text box too narrow for a longer string overflows visibly instead
--- of clipping silently. Latin-1 Supplement accents only -- FRIZQT renders
--- these on an enUS client; Latin Extended glyphs would not.
+-- Dev-only i18n smoke check (/bdev pseudolocale). Pads every enUS locale value
+-- in place so unlocalized strings and too-narrow text boxes stand out.
+-- Latin-1 Supplement accents only: FRIZQT renders these on an enUS client;
+-- Latin Extended glyphs would not.
 --
--- Session-only: no SavedVariables, no global. Mutates the live NS.L table
--- in place; a panel already built keeps its old text (most of it is built
--- once and never redrawn), so seeing the padding everywhere needs /reload,
--- run this, then open a Sift panel for the first time. /reload also fully
--- restores English.
---
--- devMode-gated the way ShadowLog.Record is: BdevSlashHandler already gates
--- every /bdev subcommand on it, but the check lives here too so nothing
--- else that might call in later can forget it.
+-- Session-only: mutates the live NS.L table, no SavedVariables. Panels already
+-- built keep their old text, so /reload, run this, then open a panel. /reload
+-- restores English. The devMode check here is on purpose even though the
+-- /bdev dispatcher also gates it.
 
 local _, NS = ...
 local PseudoLocale = {}
@@ -45,11 +38,8 @@ local function GlyphCount(value)
   return n
 end
 
--- Exposed (not local) so an offline test can exercise the padding rule
--- directly. Targets ~35% growth in visible glyphs, not bytes -- an accent
--- is one glyph but two UTF-8 bytes, so sizing by byte length would
--- under-pad. Each edge gets at least 2 accent glyphs, so a short string
--- like "Reset" still visibly changes.
+-- Exposed for tests. Targets ~35% growth in visible glyphs, not bytes (sizing
+-- by bytes would under-pad), with at least 2 accents on each edge.
 function PseudoLocale.Pad(value)
   if type(value) ~= "string" or value == "" then
     return value
@@ -61,10 +51,7 @@ function PseudoLocale.Pad(value)
   return "[" .. edge .. " " .. value .. " " .. edge .. "]"
 end
 
--- Latched once padding runs; /reload is the only way back to English, and
--- there's no other in-session event that would make padding an
--- already-padded table sensible, so a second call is a no-op rather than a
--- second, deeper pad.
+-- Latched once padding runs, so a second call cannot pad the table twice.
 local applied = false
 
 -- Returns true on success, or false plus a reason ("devMode" | "already-
@@ -86,8 +73,7 @@ function PseudoLocale.Apply()
   return true
 end
 
--- Test-only: lets the offline suite exercise Apply() more than once per
--- process without a real /reload. Mirrors ShadowLog.Clear's inspection role.
+-- Test-only: lets tests run Apply() more than once without a /reload.
 function PseudoLocale._ResetForTests()
   applied = false
 end

@@ -1,16 +1,14 @@
+-- Sift/PlayerMenu.lua
+-- Adds a Block entry to player context menus (chat names, unit frames, guild
+-- and community rosters), keyed by the player's GUID.
+
 local _, NS = ...
 local L = NS.L
 local PlayerMenu = {}
 
--- Blizzard tags every unit context menu "MENU_UNIT_"..which, where which is
--- the UnitPopup menu name (UnitPopupShared.lua). FRIEND / FRIEND_OFFLINE are
--- what a chat-name link opens; the rest are the unit frame, nameplate,
--- target and roster menus. SELF is deliberately absent,
--- and so are the BN_ menus: a Battle.net account is not a character GUID,
--- so an entry there would key to nothing. COMMUNITIES_GUILD_MEMBER and
--- COMMUNITIES_WOW_MEMBER cover the guild and character-community rosters;
--- COMMUNITIES_MEMBER (Battle.net clubs) is left out for the same reason as
--- the BN_ menus.
+-- UnitPopup menu names, tagged "MENU_UNIT_"..which by Blizzard. FRIEND and
+-- FRIEND_OFFLINE are the chat-name menus. SELF, the BN_ menus and
+-- COMMUNITIES_MEMBER are left out on purpose: none keys to a character GUID.
 local MENU_WHICH = {
   "FRIEND",
   "FRIEND_OFFLINE",
@@ -109,10 +107,8 @@ local function DevLog(message)
   end
 end
 
--- Chat-name menus are the interesting case: Blizzard builds their contextData
--- without a GUID, but it carries the chat lineID, and ChatScanner has already
--- seen that line arrive with its sender GUID. Joining on lineID keys the block
--- to the real sender rather than to a display name someone else could wear.
+-- Chat-name menus carry no GUID, only the chat lineID; ChatScanner recorded the
+-- sender GUID for that line, so the block keys to the real sender, not a name.
 local function ResolveGUID(contextData)
   if IsUsableString(contextData.guid) then
     return contextData.guid
@@ -149,9 +145,7 @@ local function ResolveTarget(contextData)
   local name = IsUsableName(contextData.name) and contextData.name or nil
   local realm = IsUsableName(contextData.server) and contextData.server or nil
 
-  -- Blizzard normally fills name/server for us, from UnitNameUnmodified on unit
-  -- menus. Fall back to the unit itself so a blocked actor can never render as
-  -- a bare GUID in Config > Blocked.
+  -- Fall back to the unit so a blocked actor never shows as a bare GUID.
   if not name and IsUsableString(contextData.unit) and type(UnitName) == "function" then
     local ok, unitName, unitRealm = pcall(UnitName, contextData.unit)
     if ok and IsUsableName(unitName) then
@@ -162,11 +156,9 @@ local function ResolveTarget(contextData)
 
   name, realm = NormalizeTarget(name, realm)
 
-  -- A chat link can reopen the FRIEND menu with the display name but without
-  -- the original lineID. Reuse only a same-session name/realm -> GUID mapping
-  -- established from the first menu, and only while that GUID is still
-  -- manually blocked; once the block is gone the entry has no job, and using
-  -- it would hand a name-only menu a one-click Block.
+  -- A reopened chat link can lack its lineID. Reuse the same-session name ->
+  -- GUID mapping only while that GUID is still manually blocked; otherwise a
+  -- name-only menu would get a one-click Block.
   if not guid then
     local remembered = RememberedTarget(name, realm)
     if remembered and NS.DB and NS.DB.IsManuallyBlocked and NS.DB.IsManuallyBlocked(remembered.guid) then
@@ -174,9 +166,8 @@ local function ResolveTarget(contextData)
     end
   end
 
-  -- A roster row can hand back a Kstring instead of a name. Resolve the real
-  -- name from the GUID Blizzard already gave us, so the token is never
-  -- stored or remembered.
+  -- A roster row can hand back a Kstring; resolve the real name from the GUID
+  -- so the token is never stored.
   if not name and guid and string.find(guid, "^Player%-") and type(GetPlayerInfoByGUID) == "function" then
     local ok, _, _, _, _, _, infoName, infoRealm = pcall(GetPlayerInfoByGUID, guid)
     if ok and IsUsableName(infoName) then
@@ -225,8 +216,7 @@ end
 local CONFIRM_DIALOG = "SIFT_CONFIRM_BLOCK_PLAYER"
 local confirmRegistered = false
 
--- Registered once at login, following ConfigPanel's RegisterStaticPopups
--- pattern. Roster rows only: chat and unit menus stay one click.
+-- Registered once at login. Roster rows only: chat and unit menus stay one click.
 local function RegisterConfirmDialog()
   if confirmRegistered then
     return true
@@ -265,18 +255,16 @@ local function AddBlockEntry(_owner, rootDescription, contextData, confirm)
   end
 
   if not guid then
-    -- A chat-name menu always names a real player, so failing to key one means
-    -- the message arrived on chat Sift does not read (guild, party, raid), or
-    -- that line has already been pushed out of the ring by newer messages.
-    -- Say the entry is unavailable rather than letting it silently vanish.
+    -- A chat line Sift did not read, or one already pushed out of the ring:
+    -- say the entry is unavailable rather than letting it vanish.
     if contextData.lineID ~= nil then
       AddDisabledButton(rootDescription, UNAVAILABLE_LABEL)
     end
     return
   end
 
-  -- Already blocked: show the state instead of hiding the entry, so the menu
-  -- answers "did that work?". Removing a block stays in Config > Blocked.
+  -- Already blocked: show the state rather than hiding the entry. Unblocking
+  -- stays in Config > Blocked.
   if NS.DB and NS.DB.IsManuallyBlocked and NS.DB.IsManuallyBlocked(guid) then
     AddDisabledButton(rootDescription, BLOCKED_LABEL)
     return
@@ -291,9 +279,8 @@ local function AddBlockEntry(_owner, rootDescription, contextData, confirm)
   end)
 end
 
--- Two named closures fix the confirm flag at registration, so an extra
--- argument from a future client can never flip it: chat and unit menus stay
--- one click, and roster rows always confirm.
+-- Separate closures fix the confirm flag at registration, so an extra argument
+-- from a future client can never flip it.
 local function AddOneClickEntry(owner, rootDescription, contextData)
   AddBlockEntry(owner, rootDescription, contextData, false)
 end
@@ -307,9 +294,8 @@ function PlayerMenu.Initialize()
     return false
   end
 
-  -- Feature-detected rather than gated on retail: Blizzard_Menu also ships
-  -- Classic/Cata/Vanilla builds that define ModifyMenu but tag their unit menus
-  -- differently, and there our callback simply never fires.
+  -- Feature-detected, not gated on retail: clients that tag unit menus
+  -- differently simply never fire the callback.
   if type(Menu) ~= "table" or type(Menu.ModifyMenu) ~= "function" then
     DevLog("PlayerMenu: Menu.ModifyMenu unavailable; right-click block is off.")
     return false
@@ -318,8 +304,7 @@ function PlayerMenu.Initialize()
   local count = 0
   local function RegisterTags(tags, callback)
     for _, which in ipairs(tags) do
-      -- Tag registration is the surface most likely to churn across patches, so a
-      -- failure stays a devMode diagnostic (design spec: patch-churn is silent).
+      -- Patch churn is silent: a failed tag registration is a devMode diagnostic only.
       if pcall(Menu.ModifyMenu, "MENU_UNIT_" .. which, callback) then
         count = count + 1
       else

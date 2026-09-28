@@ -1,24 +1,18 @@
 -- Sift/Frequency.lua
--- BSP-027: chat flood / repetition detection. Pure Lua, dual-mode (addon TOC +
--- test runner dofile). Zero WoW API references — the clock is passed in by the
--- caller (ChatScanner passes ServerTime()), so this runs identically standalone.
+-- Chat flood and repetition detection. Pure Lua, dual-mode (TOC load and
+-- dofile), with no WoW API references: the caller passes in the clock.
 --
--- BSP-029: absorbed the former Throttle.lua so message recency has ONE owner.
--- The two lanes stay distinct because they answer different questions at
--- different points in the scan, and neither key can be substituted for the
--- other:
+-- Two lanes with different keys; neither can stand in for the other:
 --
---   Flood  (pre-score)  — keyed on cleansed text, ANY sender, TIME window.
+--   Flood  (pre-score):  keyed on cleansed text, ANY sender, TIME window.
 --                         Returns a count that ChatScanner turns into a score
 --                         boost, so a flood blocks even at content score 0.
---   Repeat (post-score) — keyed on (event, cleansed text, sender GUID), COUNT
+--   Repeat (post-score): keyed on (event, cleansed text, sender GUID), COUNT
 --                         buffer, no time component. Returns a boolean and only
 --                         ever sees messages already confirmed as spam.
 --
--- Spam is also defined by BEHAVIOR (repetitive flooding), not just content. A
--- min-length guard keeps common short chatter ("ty", "gg", "lf tank") from ever
--- accumulating under the any-sender flood key. The repeat lane needs no such
--- guard: it runs after the block decision, so legitimate chat never reaches it.
+-- The flood lane's min-length guard keeps short chatter out of the any-sender
+-- key; the repeat lane runs after the block decision and needs none.
 
 local Frequency = {}
 
@@ -48,10 +42,7 @@ local MAX_BUFFER_SIZE     = 50
 local repeatEnabled = true
 local repeatBufferSize = DEFAULT_BUFFER_SIZE
 
--- Pre-seeded for the historical 4 events. Other events (BN_WHISPER, EMOTE,
--- DND, AFK) auto-create lazily on first CheckRepeat. Seeding is a no-op for
--- behavior; kept so a refactor that drops auto-create still works for the
--- common path.
+-- Pre-seeded for the common events; others are created on first CheckRepeat.
 local buffers = {
   CHAT_MSG_CHANNEL = { lines = {}, players = {} },
   CHAT_MSG_WHISPER = { lines = {}, players = {} },
@@ -59,8 +50,7 @@ local buffers = {
   CHAT_MSG_SAY     = { lines = {}, players = {} },
 }
 
--- Exact match today. Isolated so a fuzzy / near-duplicate comparator can replace
--- this one function later without touching the rest of the module.
+-- Exact match. Isolated so a different comparator can replace just this function.
 function Frequency._Key(cleansed)
   return cleansed
 end
@@ -139,8 +129,7 @@ function Frequency.IsFloodEnabled()
   return floodEnabled
 end
 
--- Capped at 240 as a false-positive guard (see BSP-039's tracker entry for the
--- band rationale).
+-- Capped at 240 to limit false positives.
 function Frequency.SetFloodWindow(value)
   value = tonumber(value) or DEFAULT_WINDOW
   if value < MIN_WINDOW then value = MIN_WINDOW end
@@ -157,9 +146,8 @@ function Frequency.GetFloodWindow()
   return window
 end
 
--- The band is defined once, here. DB and ConfigPanel read it through this
--- accessor instead of repeating the numbers, so the clamp, the SavedVariables
--- repair, and the slider bounds cannot drift apart.
+-- The band is defined once, here; DB repair and the Config slider read it
+-- through this accessor so the bounds cannot drift apart.
 function Frequency.GetFloodWindowBounds()
   return MIN_WINDOW, MAX_WINDOW, DEFAULT_WINDOW
 end
@@ -187,15 +175,10 @@ function Frequency.IsRepeatEnabled()
   return repeatEnabled
 end
 
--- BSP-029: the buffer size lost its Config slider (the flood window is now the
--- single user-facing timing knob), so nothing in the addon calls this. It stays
--- as the seam the harness uses to make buffer trimming observable without
--- inserting 21 distinct messages.
+-- Test seam: nothing in the addon calls this.
 function Frequency.SetRepeatBufferSize(value)
   repeatBufferSize = ClampBufferSize(value)
-  -- Existing buffers may now hold more entries than the new cap; trim on next
-  -- CheckRepeat rather than walking every buffer here. The cap is enforced as
-  -- new entries arrive.
+  -- Existing buffers are trimmed to the new cap on their next CheckRepeat.
   return repeatBufferSize
 end
 
@@ -208,9 +191,7 @@ function Frequency.CheckRepeat(event, cleansed, guid)
     return false
   end
 
-  -- BSP-010 polish (post-Argus): validate event before the buffers[event]
-  -- lookup. ChatScanner always passes a string constant today, but a future
-  -- caller passing nil would hit `buffers[nil]` → "table index is nil".
+  -- Validated before the buffers[event] lookup, which errors on a nil key.
   if type(event) ~= "string" or event == "" then
     return false
   end
@@ -219,9 +200,8 @@ function Frequency.CheckRepeat(event, cleansed, guid)
     return false
   end
 
-  -- BSP-010: auto-create unknown buffers so BN_WHISPER / EMOTE / DND / AFK
-  -- (and any future ChatScanner event registration) participate in dedupe
-  -- without a code change here.
+  -- Auto-create, so any event ChatScanner registers participates without a
+  -- change here.
   local buffer = buffers[event]
   if not buffer then
     buffer = { lines = {}, players = {} }
@@ -260,7 +240,7 @@ function Frequency.Reset()
 end
 
 
--- Inspection accessor (tests / future config). Not used by the addon at runtime.
+-- Inspection accessor for tests. Not used by the addon at runtime.
 function Frequency._Params()
   return {
     window = window, trigger = TRIGGER, minLen = MIN_LEN,
@@ -268,8 +248,7 @@ function Frequency._Params()
   }
 end
 
--- Dual-mode export. MUST be the final statement so a standalone dofile gets the
--- table as the chunk return AND the TOC load attaches it to NS.Frequency.
+-- Dual-mode export: must stay the final statement (dofile return + NS attach).
 local _, NS = ...
 if NS then NS.Frequency = Frequency end
 return Frequency

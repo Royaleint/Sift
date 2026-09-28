@@ -1,14 +1,13 @@
+-- Sift/ConfigPanel.lua
+-- The Config panel: detection settings, pause rows, allowlist, blocked senders,
+-- keyword lists, history caps, and the import/export and dev dialogs.
+
 local _, NS = ...
 local L = NS.L
 local ConfigPanel = {}
 
--- BSP-009: GameTooltip helper for widget hover help. Mirrors HistoryPanel's
--- AttachTooltip; duplicated locally because the two files are independent
--- modules and sharing one copy isn't worth adding a cross-file dependency
--- for. `widget.frame or widget` is a historical AceGUI compatibility
--- fallback retained so any future widget wrapper that exposes `.frame` still
--- works without a refactor. EnableMouse is asserted because BackdropTemplate
--- hosts default mouse-disabled.
+-- GameTooltip hover help. A local copy of HistoryPanel's AttachTooltip.
+-- EnableMouse is set because BackdropTemplate hosts default to mouse-disabled.
 local function AttachTooltip(widget, title, body, hint)
   if not widget then return end
   local host = widget.frame or widget
@@ -42,9 +41,7 @@ local SECTIONS = {
   "Surfaces",
   "Allowlist",
   "Blocked",
-  -- BSP-052 / BSP-058: the user's own keyword rules. Two sections rather than
-  -- one, because each is a full paginated list and the panel is not tall enough
-  -- to show both at once.
+  -- The user's keyword rules: two sections, each a full paginated list.
   "My Keywords",
   "Never Block",
   "History",
@@ -52,13 +49,11 @@ local SECTIONS = {
   "Dev",
 }
 
--- PauseState is the single declaration of both lists and loads ahead of this
--- file in the TOC, so these accessors are available at file scope.
+-- PauseState loads ahead of this file, so its lists are available at file scope.
 local CATEGORY_KEYS = NS.PauseState.GetCategoryKeys()
 local CATEGORY_LABELS = {
   RMT = "Gold selling",
-  -- BSP-052: "Custom" is the internal name the score breakdown uses. On the
-  -- toggle row it is named after the section the user manages it in.
+  -- "Custom" is the internal breakdown name; the row uses the section's name.
   Custom = "My Keywords",
 }
 
@@ -79,9 +74,8 @@ local DEFAULT_SETTINGS = {
   mixedScriptEnabled = true,
   mixedScriptWeight = 1,
   antiSignalCap = -5,
-  -- Mirrors Frequency's DEFAULT_WINDOW. Not read from GetFloodWindowBounds
-  -- because this table is built at file scope, before NS.Frequency is
-  -- guaranteed present; the live slider bounds do come from the accessor.
+  -- Mirrors Frequency's DEFAULT_WINDOW; a literal because this table is built
+  -- at file scope. The live slider bounds come from GetFloodWindowBounds.
   floodWindow = 180,
   filterBubbles = false,
   historyMaxEntries = 300,
@@ -96,15 +90,11 @@ local navButtons = {}
 local activeSection = "Detection"
 local sizeDirty
 local embeddedMode
--- SFT-089: HistoryPanel registers this so an embedded nav click (a section
--- change that never goes through Attach again) still re-sizes the host
--- window to the new section's content. Nil in standalone mode.
+-- Set by HistoryPanel so an embedded nav click, which never goes through
+-- Attach, still resizes the host window. Nil in standalone mode.
 local embeddedSectionCallback
 local initialized
 local popupsRegistered
--- BSP-022: aceWidgets ringbuffer removed in Commit 3 (Slider/CheckBox went
--- native then). MultiLineEditBox dialog went native in Commit 4. ConfigPanel
--- no longer touches AceGUI at all; embed removal lands in Commit 5.
 local nativeChildren = {}
 local sectionStatus = {}
 local removedAllowlistEntry
@@ -188,11 +178,7 @@ local function GetHistoryStats()
   }
 end
 
--- BSP-063: account-wide record count, summed across every character's
--- retained history. This is the same cross-char loop the "Account total"
--- slider's OnValueChanged callback uses to validate the cap against the
--- current total; factored out here so RenderHistory can display it on
--- panel open too, not only after the slider is dragged.
+-- Account-wide record count, summed across every character's retained history.
 local function GetAccountHistoryTotal()
   local total = 0
   if NS.DB and NS.DB.db and NS.DB.db.sv and type(NS.DB.db.sv.char) == "table" then
@@ -426,10 +412,8 @@ local function AddEditBox(x, y, width, initialText, tooltipTitle, tooltipBody)
   return editBox
 end
 
--- SFT-104: tooltipTitle/tooltipBody are optional -- most disabled rows are a
--- plain label/value pair with nothing to add. When given, they attach the
--- same AttachTooltip hover the rest of the panel uses, on the row frame
--- itself (a disabled row has no other mouse-enabled child to hang it on).
+-- tooltipTitle/tooltipBody are optional; when given, the hover attaches to the
+-- row frame itself, the only mouse-enabled frame on a disabled row.
 local function AddDisabledRow(label, value, y, tooltipTitle, tooltipBody)
   local row = TrackNative(CreateFrame("Frame", nil, content, "BackdropTemplate"))
   row:SetHeight(30)
@@ -460,24 +444,15 @@ local function AddDisabledRow(label, value, y, tooltipTitle, tooltipBody)
   return y - 36
 end
 
--- BSP-022 Commit 2: native sliders, dual-path.
--- Retail uses MinimalSliderWithSteppersTemplate (MWS) — the modern Settings-UI
--- slider with stepper buttons on each end, matching the look of Edit Mode and
--- Retail's Settings panels. Classic-family falls back to OptionsSliderTemplate
--- (MCP-confirmed present in DeprecatedTemplates.xml on all 3 flavors, used by
--- Classic's own Interface Options screens today). Both paths return a slider
--- object exposing the same AceGUI-compatible facade so the call sites are
--- identical regardless of flavor:
+-- Native sliders, two paths: MinimalSliderWithSteppersTemplate (MWS) where the
+-- client has it, otherwise OptionsSliderTemplate. Both expose the same facade:
 --   SetLabel(text), SetSliderValues(min, max, step),
 --   SetValue(value), SetCallback("OnValueChanged", fn).
 --
--- MWS-specific API reference (verified in Blizzard_SharedXML\Shared\Slider\
--- MinimalSlider.lua): Init(value, minValue, maxValue, steps, formatters) takes
--- `steps` as a count, not a step size — we compute steps = (max-min)/step.
--- The formatter table is keyed by MinimalSliderWithSteppersMixin.Label.{Top,
--- Min, Max} enum values; we use Top for "Label: value", Min/Max for range
--- bounds. The OnValueChanged event is registered through CallbackRegistryMixin
--- (RegisterCallback), not the native OnValueChanged script.
+-- MWS notes: Init(value, min, max, steps, formatters) takes `steps` as a count,
+-- not a step size. Formatters are keyed by MinimalSliderWithSteppersMixin.Label
+-- (Top for "Label: value", Min/Max for bounds). OnValueChanged is registered
+-- through RegisterCallback, not the native script.
 local nextSliderId = 0
 
 local function MakeMWSSlider(x, y, width, label, minValue, maxValue, step)
@@ -522,8 +497,7 @@ local function MakeMWSSlider(x, y, width, label, minValue, maxValue, step)
     if v > maxV then v = maxV end
     reInit(v, minV, maxV, stepV)
   end
-  -- mws:SetValue already exists from MinimalSliderWithSteppersMixin (line 169
-  -- of MinimalSlider.lua) — proxies to self.Slider:SetValue.
+  -- mws:SetValue comes from MinimalSliderWithSteppersMixin.
   function mws:SetCallback(event, fn)
     if event ~= "OnValueChanged" then return end
     if valueCb then
@@ -562,8 +536,7 @@ local function MakeOptionsSlider(x, y, width, label, minValue, maxValue, step)
   if lowFS then lowFS:SetText(tostring(minValue)) end
   if highFS then highFS:SetText(tostring(maxValue)) end
 
-  -- Current-value readout below the slider; preserves the AceGUI visual
-  -- where the current value sat near the slider.
+  -- Current-value readout below the slider.
   local valueFS = slider:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   valueFS:SetPoint("TOP", slider, "BOTTOM", 0, -2)
 
@@ -602,11 +575,8 @@ local function MakeOptionsSlider(x, y, width, label, minValue, maxValue, step)
 end
 
 local function MakeNativeSlider(x, y, width, label, minValue, maxValue, step)
-  -- BSP-041: gate on the MWS mixin's own presence, not isClassicFamily.
-  -- TRI-048 confirmed the native ScrollBox/options primitive set passes on
-  -- Classic Era and TBC Anniversary; OptionsSliderTemplate remains the
-  -- fallback only where MinimalSliderWithSteppersMixin is genuinely absent.
-  -- Translated once here rather than in each flavor constructor below.
+  -- Gate on the MWS mixin's presence, not isClassicFamily. The label is
+  -- translated once here rather than in each constructor below.
   label = L[label or ""]
   if type(MinimalSliderWithSteppersMixin) ~= "table" then
     return MakeOptionsSlider(x, y, width, label, minValue, maxValue, step)
@@ -628,10 +598,8 @@ local function AddSlider(label, key, minValue, maxValue, step, y, tooltipBody)
   return y - 48
 end
 
--- BSP-022 Commit 3: native checkboxes via UICheckButtonTemplate.
--- Universal template (works on all 3 flavors), so no flavor branch.
--- The label is a FontString anchored to the right of the checkbox.
--- The onChange callback receives a boolean (the new checked state).
+-- Native checkbox (UICheckButtonTemplate, on every client), with the label to
+-- its right. onChange receives the new checked state.
 local function MakeNativeCheckbox(x, y, label, initialChecked, onChange, tooltipBody)
   local cb = TrackNative(CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate"))
   cb:SetSize(24, 24)
@@ -775,12 +743,8 @@ local function BlockedEntryLastSeen(entry)
   return nil
 end
 
--- listState.blockedCache holds the last sorted result; it stays valid as
--- long as the search text is unchanged and DB.GetBlockedActorsRevision()
--- (bumped by every write to the store) still matches the value recorded
--- when the cache was built. ConfigPanel's OnHide handler frees the cache
--- outright, and RemoveBlocked's and Clear All's no-DB fallbacks below
--- clear it directly.
+-- Cached sort, valid while the search text and DB.GetBlockedActorsRevision()
+-- are unchanged. Any write that bypasses DB must clear the cache itself.
 local function SortedBlockedActors()
   local search = Lower(listState.blockedSearch)
   local revision = NS.DB and NS.DB.GetBlockedActorsRevision and NS.DB.GetBlockedActorsRevision()
@@ -1135,8 +1099,7 @@ local function ApplyImport(entries, overwrite)
   local current = NS.Trust.GetAllowlist and NS.Trust.GetAllowlist() or {}
   local added = 0
   local skipped = 0
-  -- BSP-037: an import can silently lift manual blocks, since allowing someone
-  -- supersedes having blocked them by hand. Count them so the summary says so.
+  -- Allowing lifts a manual block; count those so the summary says so.
   local lifted = 0
   for _, entry in ipairs(entries) do
     if current[entry.guid] and overwrite and NS.Trust.RemoveAllowlist then
@@ -1238,13 +1201,8 @@ local function EnsureDialog()
   return dialogFrame
 end
 
--- BSP-022 Commit 4: native multiline edit for import/export/FP-fixture
--- dialogs. Replaces AceGUI:Create("MultiLineEditBox") with a plain EditBox
--- (SetMultiLine=true) hosted in a UIPanelScrollFrameTemplate ScrollFrame —
--- the universal pattern present on all 3 flavors (verified in Classic Era
--- via Blizzard_FrameXML\Classic\ClassTrainerFrameTemplates.xml:81).
--- ScrollingEditBoxTemplate / InputScrollFrameTemplate are Retail-only and
--- offer no real upside here over the universal composite.
+-- Multiline edit for the import/export dialogs: a plain EditBox in a
+-- UIPanelScrollFrameTemplate ScrollFrame, which every client has.
 local function CreateNativeMultilineEdit(parent, leftInset, topInset, rightInset, bottomInset)
   local scroll = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
   scroll:SetPoint("TOPLEFT", parent, "TOPLEFT", leftInset, topInset)
@@ -1387,9 +1345,7 @@ local function RegisterStaticPopups()
     hideOnEscape = true,
   }
 
-  -- BSP-052 / BSP-058: clearing a keyword list throws away typed-in user data
-  -- with no undo, so both ask first. The count comes in as the StaticPopup_Show
-  -- argument and fills the %d.
+  -- Clearing a keyword list has no undo, so it asks first. The count fills %d.
   StaticPopupDialogs["SIFT_REMOVE_ALL_KEYWORDS"] = {
     text = "Remove every phrase from your keyword block list (%d in total)? This cannot be undone.",
     button1 = "Remove All",
@@ -1539,19 +1495,10 @@ local function RegisterInterfaceOptions()
   button:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -18)
   button:SetText(L["Open Sift Config..."])
   button:SetScript("OnClick", function()
-    -- BSP-055 Gate 2 followup: don't try to dismiss the Settings panel
-    -- from addon code. The previous pcall(SettingsPanel.Close, ...) +
-    -- pcall(InterfaceOptionsFrameCancel.Click, ...) approach triggered
-    -- ADDON_ACTION_FORBIDDEN — SettingsPanel:Close routes through
-    -- ExitWithCommit → TransitionBackOpeningPanel → ToggleGameMenu →
-    -- SpellStopCasting (a protected function). pcall catches Lua errors
-    -- but not taint warnings, so BugGrabber surfaces the warning to the
-    -- player. Leaving Settings open also matches how most modern addons
-    -- handle their Settings launcher — Esc dismisses Settings, our panel
-    -- comes up on top via the C_Timer defer below.
-    --
-    -- C_Timer.After(0) is preserved from the prior commit so any residual
-    -- secure-context taint unwinds before our frame creation runs.
+    -- Never close the Settings panel from addon code: SettingsPanel:Close
+    -- reaches a protected function and raises ADDON_ACTION_FORBIDDEN, which
+    -- pcall does not catch. The C_Timer defer lets secure context unwind
+    -- before our frame is created.
     if C_Timer and C_Timer.After then
       C_Timer.After(0, ConfigPanel.Open)
     else
@@ -1559,13 +1506,8 @@ local function RegisterInterfaceOptions()
     end
   end)
 
-  -- FND-009 Phase E: adopt Foundry.Settings for panel registration.
-  -- Replaces the hand-rolled dual-path pcall block. Foundry handles modern
-  -- Settings.RegisterCanvasLayoutCategory + RegisterAddOnCategory and the
-  -- legacy InterfaceOptions_AddCategory fallback, with fail-loud semantics.
-  -- Duplicate-refusal is handled by Foundry's live-registry (replaces the
-  -- interfaceRegistered upvalue guard). This function is called at most once
-  -- via ConfigPanel.Initialize's `initialized` guard.
+  -- Registered through Foundry.Settings, which covers the modern and legacy
+  -- options APIs. Called at most once, via Initialize's `initialized` guard.
   local F = _G.Foundry_1_0
   if not (F and F.Settings) then return end
   ConfigPanel.settingsController = F.Settings:New({
@@ -1574,7 +1516,7 @@ local function RegisterInterfaceOptions()
   })
 end
 
--- BSP-008 Commit 6: shared 3-state pause-pill row for Categories and Surfaces.
+-- Shared 3-state pause-pill row for Categories and Surfaces.
 -- Retail uses atlas icons; Classic-family clients use color textures because
 -- some Retail atlas names are absent and can leave stale glyphs behind.
 -- LevelUp-Dot-Green                  -> green dot
@@ -1668,9 +1610,7 @@ local function AddAxisPauseRow(axis, key, displayLabel, y)
     Refresh()
   end)
 
-  -- BSP-009: state-aware tooltip on each pause pill. Body reads live state
-  -- from PauseState every hover, so cycling the pill never leaves a stale
-  -- tooltip behind.
+  -- Reads live state on every hover so the tooltip never goes stale.
   pill:HookScript("OnEnter", function(self)
     if not GameTooltip then return end
     local state
@@ -1715,9 +1655,8 @@ local RenderHistory
 local RenderUI
 local RenderDev
 
--- Gate 2 request (Rawb, 2026-07-28): every Detection setting gets its own
--- reset-to-default button. Re-rendering the section is what syncs the control
--- back to the default value — the widgets have no per-widget refresh path.
+-- Per-setting reset button for Detection sliders. It re-renders the section,
+-- since the widgets have no per-widget refresh.
 local function AddDetectionReset(rowY, defaultValue, applyDefault)
   AddNativeButton("Reset", CONTENT_PAD + 344, rowY, 52, function()
     applyDefault()
@@ -1750,14 +1689,12 @@ RenderDetection = function()
   AddDetectionReset(rowY - 10, DEFAULT_SETTINGS.mixedScriptWeight, function()
     SetSetting("mixedScriptWeight", DEFAULT_SETTINGS.mixedScriptWeight)
   end)
-  -- Checkboxes carry no reset button (Rawb, Gate 2 re-check 2026-07-28):
-  -- a two-state control IS its own reset; the buttons are for sliders.
+  -- Checkboxes get no reset button; a two-state control is its own reset.
   y = AddCheckbox("Use mixed-script detection", "mixedScriptEnabled", y, nil,
     "Watch for words that mix alphabets, such as Latin letters swapped for look-alike " ..
     "Cyrillic ones. When this is off, Mixed-script weight has no effect.")
 
-  -- BSP-039: bounds come from Frequency so the slider cannot drift away from
-  -- the clamp that actually enforces them.
+  -- Bounds come from Frequency so the slider matches the clamp.
   local minWindow, maxWindow, defaultWindow = NS.Frequency.GetFloodWindowBounds()
   rowY = y
   AddSlider("Spam wave window (seconds)", "floodWindow", minWindow, maxWindow, 30, y,
@@ -1956,8 +1893,7 @@ RenderBlocked = function()
 
     local meta = TrackNative(row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"))
     meta:SetPoint("LEFT", row, "LEFT", 8, -8)
-    -- BSP-037: a hand-blocked actor can sit here with zero recorded blocks,
-    -- which on its own reads like a stray row. Say who put it there.
+    -- A manual block can have zero recorded blocks; say who added it.
     local origin = (type(rowData.entry) == "table" and rowData.entry.manual == true)
       and "blocked by you - " or ""
     meta:SetText(origin .. "blocks " .. tostring(BlockedEntryCount(rowData.entry))
@@ -1994,9 +1930,7 @@ RenderBlocked = function()
   end, "Show the next page of the Blocked list.")
 end
 
--- BSP-052 / BSP-058: both keyword lists render through one function. They differ
--- only in wording and in what a match does to a message, so a second copy of the
--- search / add / paginate / remove scaffolding would be pure duplication.
+-- Both keyword lists render through one function; they differ only in wording.
 local KEYWORD_SECTIONS = {
   ["My Keywords"] = {
     kind = NS.UserRules and NS.UserRules.BLOCK or "block",
@@ -2166,10 +2100,8 @@ local function RenderKeywordSection(section)
     remove:SetPoint("RIGHT", row, "RIGHT", -6, 0)
     remove:SetText("Remove")
     remove:SetScript("OnClick", function()
-      -- Removal goes by phrase, not by row number: `entries` is the filtered
-      -- list, so under an active search its numbering does not match the store's.
-      -- A failure has to say so -- a Remove button that silently does nothing is
-      -- how the numeric-phrase bug stayed invisible.
+      -- Remove by phrase, not row number: under a search, `entries` is filtered
+      -- and its numbering does not match the store's. A failure must say so.
       if rules.Remove(kind, entry.raw) then
         sectionStatus[section] = "Removed \"" .. entry.raw .. "\"."
       else
@@ -2228,11 +2160,8 @@ RenderHistory = function()
   slider:SetCallback("OnValueChanged", function(_, _, value)
     value = ClampNumber(value, 100, 5000, DEFAULT_SETTINGS.historyMaxEntries)
     value = math.floor((value + 50) / 100) * 100
-    -- BSP-050 Argus nit: the per-char cap applies to every character on commit
-    -- (via TrimAllCharacters), so the popup must fire when *any* char would be
-    -- trimmed, not just the current one. Mirror the global slider's cross-char
-    -- iteration at lines below, but track the *max* single-char length rather
-    -- than the sum.
+    -- The cap applies to every character, so warn when any one would be
+    -- trimmed: track the longest single-character history.
     local maxLen = 0
     if NS.DB and NS.DB.db and NS.DB.db.sv and type(NS.DB.db.sv.char) == "table" then
       for _, charData in pairs(NS.DB.db.sv.char) do
@@ -2255,9 +2184,7 @@ RenderHistory = function()
     "first, and lifetime totals are not affected.")
   y = y - 52
 
-  -- BSP-063: show the current account-wide count on render, not only after
-  -- the slider below is dragged (GetAccountHistoryTotal fires here on every
-  -- panel open/section-show, same as RenderHistory's other stats rows).
+  -- Shown on every render, not only after the slider below is dragged.
   AddText("Account-wide records: " .. tostring(GetAccountHistoryTotal()),
     "GameFontNormalSmall", CONTENT_PAD, y)
   y = y - 20
@@ -2328,10 +2255,7 @@ RenderDev = function()
     "list, My Keywords, and Never Block are kept, but if you had raised Maximum history " ..
     "entries or Account total, History entries over the default limit are removed right " ..
     "away, oldest first.")
-  -- BSP-018: FP-export tool. Same gating semantics as /bdev fpx — the
-  -- OpenFPExportDialog function checks devMode and prints a status message
-  -- if off, so the button is visible always (discoverability) but only
-  -- functional when devMode is enabled.
+  -- Always visible; OpenFPExportDialog itself checks devMode.
   AddNativeButton("Export FP fixtures", CONTENT_PAD + 130, y, 150, function()
     ConfigPanel.OpenFPExportDialog(nil)
   end, "Save the false-positive entries in History to a copy-paste window. " ..
@@ -2363,13 +2287,9 @@ local RENDERERS = {
   Dev = RenderDev,
 }
 
--- BSP-022 Commit 1: dual-path chrome. PortraitFrameTemplate and
--- ButtonFrameTemplateNoPortrait are Retail-only (MCP-confirmed: not in
--- Classic Era 1.15 or Pandaria Classic 5.5), so Classic-family falls back to
--- a manual BackdropTemplate shell. Embed mode (parent != nil) always uses a
--- plain Frame regardless of flavor so it nests inside HistoryPanel's Config
--- tab without portrait/border collision. Mirrors HistoryPanel's BSP-008
--- pattern (CreatePlainHistoryFrame / CreateHistoryFrame / CreateBackdropFrame).
+-- Chrome: PortraitFrameTemplate where available, otherwise a BackdropTemplate
+-- shell. Embed mode (parent ~= nil) always uses a plain Frame so it nests
+-- inside HistoryPanel's Config tab.
 local function HidePortraitChrome(f)
   if not f then return end
   local frameName = f.GetName and f:GetName() or nil
@@ -2441,19 +2361,12 @@ local function CreatePortraitConfigFrame(parent)
   if ok and f then
     return f
   end
-  -- BSP-041: now reached on any client where the pcall probe fails, not just
-  -- a hypothetical future Retail removal (Classic-family clients now route
-  -- through this same probe). The bare, untemplated fallback that used to
-  -- live here had no title bar or close button, so it failed "cleanly" only
-  -- in the no-Lua-error sense, not functionally. Route to the fully-chromed
-  -- Plain frame instead.
+  -- Probe failed: use the fully chromed Plain frame, which has a title and X.
   return CreatePlainConfigFrame(parent)
 end
 
--- BSP-041: capability-based, not isRetail/isClassic. Always attempt the
--- native Portrait frame first; CreatePortraitConfigFrame's own pcall is the
--- capability probe for PortraitFrameTemplate and falls back to the Plain
--- chrome path if the template errors on this client.
+-- Capability-based, not flavor-based: CreatePortraitConfigFrame's pcall is the
+-- probe, falling back to the Plain chrome if the template errors.
 local function CreateConfigFrame(parent)
   return CreatePortraitConfigFrame(parent)
 end
@@ -2507,7 +2420,7 @@ local function CreateResizeHandle(parent)
     "Minimum size: 600 \195\151 400.")
 end
 
--- BSP-009: per-section hover help for the left nav.
+-- Per-section hover help for the left nav.
 local NAV_TOOLTIPS = {
   Detection  = "How strict Sift is when deciding what counts as spam. Also covers look-alike letters, wording that lowers a message's score, and repeated messages.",
   Categories = "Toggle each spam category between Active (block), Paused (log only), and Off (ignore).",
@@ -2546,12 +2459,9 @@ local function CreateNav(parent)
   end
 end
 
--- BSP-022 / Argus N2: ConfigPanel.Open routes through HistoryPanel.ShowConfig
--- when HistoryPanel is loaded (the normal case), which always calls Attach()
--- and hits the embed-mode branch below. The standalone-no-parent branch is a
--- defensive fallback for the case where HistoryPanel.ShowConfig is missing.
--- New ConfigPanel callers should still pass through ConfigPanel.Open and let
--- this routing layer pick the right mode.
+-- Normally reached embedded, via ConfigPanel.Open -> HistoryPanel.ShowConfig;
+-- the standalone branch is a fallback. New callers should go through
+-- ConfigPanel.Open.
 local function BuildFrame(parent)
   local embedded = parent ~= nil
   if frame then
@@ -2571,14 +2481,9 @@ local function BuildFrame(parent)
     frame:SetAllPoints(parent)
     embeddedMode = true
   else
-    -- Standalone: CreateConfigFrame (BSP-041) always attempts the native
-    -- PortraitFrameTemplate first, on every client, and falls back to the
-    -- Plain BackdropTemplate shell only if that pcall probe fails.
-    -- ApplyConfigChrome's calls are all individually method-existence-guarded
-    -- (SetBorder / SetPortraitShown / SetTitle), so it safely no-ops on
-    -- Plain and safely skips any portrait sub-method a given client's
-    -- PortraitFrameTemplate mixin happens not to expose (e.g. Pandaria's
-    -- SetPortraitShown gap) without needing pcall protection of its own.
+    -- Standalone. ApplyConfigChrome guards each method it calls, so it no-ops
+    -- on Plain and skips portrait methods a client lacks (e.g. Mists Classic's
+    -- SetPortraitShown).
     frame = CreateConfigFrame(UIParent)
     ApplyConfigChrome(frame)
     frame:SetMovable(true)
@@ -2600,19 +2505,14 @@ local function BuildFrame(parent)
   end
 
   if not embedded then
-    -- BSP-053: embed mode's frame:SetAllPoints(parent) means GetWidth/GetHeight
-    -- track HistoryPanel's host frame, not ConfigPanel's own geometry. Wiring
-    -- these standalone-only avoids SaveSize() writing HistoryPanel's
-    -- dimensions into ConfigPanel's per-character geometry store.
+    -- Standalone only: embedded, the size is HistoryPanel's, and SaveSize()
+    -- would write it into ConfigPanel's saved geometry.
     frame:SetScript("OnSizeChanged", function()
       sizeDirty = true
     end)
     ApplyStoredGeometry()
   end
-  -- Wired for both modes (a hidden parent still fires a shown child's
-  -- OnHide) so the Blocked list cache never outlives the panel, whether it
-  -- closed standalone or the embedded History window switched back to its
-  -- History tab.
+  -- Both modes, so the Blocked list cache never outlives the panel.
   frame:SetScript("OnHide", function()
     if not embedded and sizeDirty then
       SaveSize()
@@ -2717,25 +2617,15 @@ function ConfigPanel.ShowSection(section)
     renderer(section)
   end
 
-  -- SFT-089: a nav click inside an already-open Config tab lands here without
-  -- ever calling Attach again, so the embedded host's resize has to be
-  -- re-run from this side too, or switching from a short section (Detection)
-  -- to a long one (Blocked with entries) leaves the window sized for the
-  -- section it left.
+  -- An embedded nav click never calls Attach, so re-run the host resize here.
   if embeddedMode and embeddedSectionCallback then
     embeddedSectionCallback()
   end
 end
 
--- BSP-018: escape a string as a Lua double-quoted literal payload.
--- Order matters: backslash MUST come first, otherwise the subsequent escape
--- replacements would re-double their own leading backslashes. UTF-8 multibyte
--- sequences pass through verbatim — Lua's string parser treats those bytes
--- as literal. Low-ASCII control bytes (\0 + 0x01-0x08 + \v + \f + 0x0E-0x1F)
--- emit as decimal `\NNN` escapes — they're vanishingly rare in chat input but
--- the paste-into-fixtures.lua use case demands a clean source file.
--- BSP-018 polish (post-Argus): added \t escape and the low-ASCII catch-all
--- so a stray tab character in a chat line doesn't break fixtures.lua indent.
+-- Escapes a string as a Lua double-quoted literal. Backslash must be escaped
+-- first, or later replacements would double their own backslashes. UTF-8 passes
+-- through; control bytes become decimal \NNN escapes.
 local function EscapeLuaString(value)
   value = tostring(value or "")
   value = string.gsub(value, "\\", "\\\\")
@@ -2749,14 +2639,10 @@ local function EscapeLuaString(value)
   return value
 end
 
--- BSP-018: build a paste-ready Lua negatives block from History entries
--- where outcome == "restored". Newest-first per History.GetAll convention.
--- Optional `limit` clamps to the first N restored entries (also newest-first
--- since the source is already sorted that way).
+-- Builds a paste-ready Lua block of restored History entries, newest first,
+-- optionally limited to the first N.
 local function BuildFPExportText(limit)
-  -- BSP-018 polish (post-Argus): clamp non-positive limit to nil so the
-  -- "no-limit" path is reached explicitly rather than via the > 0 side
-  -- effect. Matches AC #6's "N is a positive integer" intent.
+  -- A non-positive limit means no limit.
   if limit and limit <= 0 then limit = nil end
 
   local entries = NS.History and NS.History.GetAll and NS.History.GetAll() or {}
@@ -2808,8 +2694,7 @@ function ConfigPanel.OpenFPExportDialog(limit)
     Print("These commands need dev mode. Turn it on in Config \194\187 Dev.")
     return
   end
-  -- BSP-018 polish (post-Argus): match BuildFPExportText's clamp so the
-  -- title count is consistent with the body content.
+  -- Same clamp as BuildFPExportText, so the title matches the body.
   if limit and limit <= 0 then limit = nil end
   local count = 0
   local entries = NS.History and NS.History.GetAll and NS.History.GetAll() or {}
@@ -2823,31 +2708,19 @@ function ConfigPanel.OpenFPExportDialog(limit)
     "Close", nil)
 end
 
--- BSP-049: meta breakdown keys that are never a content category. Mirrors
--- History.lua's IGNORED_BREAKDOWN_KEYS (the canonical set the spec points to)
--- so the dominant category here matches History/HistoryPanel stats logic.
+-- Meta breakdown keys, never a content category. Copies in ChatScanner,
+-- History, HistoryPanel, ShadowLog, Signals, ConfigPanel: keep all six in step.
 local HISTORY_EXPORT_IGNORED_KEYS = {
   MixedScript = true,
   BlockedActor = true,
   Flood = true,
-  -- BSP-029: without this, every repeat-dedupe record exported as a "Throttle"
-  -- corpus candidate — a mechanism, not a category anyone can hand-triage.
   Throttle = true,
-  -- BSP-037: likewise a hand-blocked message is not corpus evidence. The user
-  -- blocked the person and said nothing about the text.
   ManualBlock = true,
 }
 
--- BSP-049: build a raw (NOT Lua-escaped) corpus-candidate export from ALL
--- History entries, deduped by exact `original` string. For each unique
--- original we accumulate: occurrence count, dominant content category (max
--- weight across occurrences), max score, and the set of outcomes seen. Sorted
--- by count descending so the most-repeated spam (highest-value corpus
--- candidates) lead. Optional `limit` caps to the top-N unique originals.
---
--- Read-only: History.GetAll returns live record refs; we iterate without
--- mutating and build our own dedup table. Output is plain text for hand
--- triage into spam_master.txt — not a fixtures block, so no Lua escaping.
+-- Plain-text export of every History entry, deduped by exact original, with
+-- count, dominant category, max score and outcomes; sorted by count, optionally
+-- capped to the top N. Read-only: History.GetAll returns live records.
 local function BuildHistoryExportText(limit)
   if limit and limit <= 0 then limit = nil end
 
@@ -2986,15 +2859,9 @@ function ConfigPanel.OpenHistoryExportDialog(limit)
     "Close", nil)
 end
 
--- BSP-032: build a raw (NOT Lua-escaped) corpus-candidate export from the
--- ShadowLog store -- the messages the filter let through. Same posture as the
--- BSP-049 history export: plain text for hand triage into spam_master.txt, never
--- an automatic corpus edit. Ordered by ShadowLog.Rank so the near-misses lead
--- and the unremarkable chatter sinks. Optional `limit` caps the number of
--- entries shown.
---
--- Read-only: ShadowLog.GetAll returns live record refs, so the sort runs over a
--- local copy of the array.
+-- Plain-text export of the shadow log, ordered by ShadowLog.Rank, optionally
+-- capped to N entries. ShadowLog.GetAll returns live records, so the sort runs
+-- over a local copy.
 local function BuildFNExportText(limit)
   if limit and limit <= 0 then limit = nil end
 
@@ -3005,10 +2872,8 @@ local function BuildFNExportText(limit)
   end
   local totalEntries = #order
 
-  -- Ordered by the same Rank the store uses to decide what to keep, so what
-  -- reads as most interesting here is what survives longest there. Score and
-  -- then repeat count break ties within a rank; capture order breaks the rest,
-  -- so the sort is deterministic.
+  -- Rank, then score, then repeat count, then capture order, so the sort is
+  -- deterministic.
   local captureIndex = {}
   for i = 1, #order do
     captureIndex[order[i]] = i
@@ -3039,8 +2904,7 @@ local function BuildFNExportText(limit)
   local params = NS.ShadowLog and NS.ShadowLog._Params and NS.ShadowLog._Params() or {}
   local ordinarySource = params.sourceFnCandidate
 
-  -- SFT-081: the near-miss band is the point of the export, so say up front how
-  -- much of the list carries a capture signal. They sort to the top by rank.
+  -- How many entries carry a capture signal, for the header.
   local candidates = 0
   for i = 1, #order do
     local tags = order[i].tags
@@ -3068,23 +2932,19 @@ local function BuildFNExportText(limit)
   for i = 1, #order do
     local entry = order[i]
     local originals = type(entry.originals) == "table" and entry.originals or {}
-    -- SFT-079 capture tags, if any. They are why an otherwise unremarkable line
-    -- is worth a second look, so they belong in the line a human reads.
+    -- Capture tags, if any.
     local tagLabel = ""
     if type(entry.tags) == "table" and #entry.tags > 0 then
       tagLabel = " [" .. table.concat(entry.tags, ",") .. "]"
     end
-    -- Provenance is worth saying only when it is not just the ordinary lane, so
-    -- a record the allowlist also let through cannot read as a plain miss. The
-    -- lane names come from ShadowLog, not a copy of the string here.
+    -- Provenance, shown only when it is not just the ordinary lane.
     local sources = type(entry.sources) == "table" and entry.sources or {}
     for s = 1, #sources do
       if sources[s] ~= ordinarySource then
         tagLabel = tagLabel .. " {" .. tostring(sources[s]) .. "}"
       end
     end
-    -- The allow phrase that let an audited line through -- the one datum that
-    -- makes an allowlist bypass actionable (you prune the phrase, not the line).
+    -- The allow phrases that let this line through.
     if type(entry.allowPhrases) == "table" and #entry.allowPhrases > 0 then
       tagLabel = tagLabel .. " {allowed by: " .. table.concat(entry.allowPhrases, ", ") .. "}"
     end
@@ -3161,23 +3021,14 @@ function ConfigPanel.ConfirmClearBlocked()
   end
 end
 
--- SFT-089: HistoryPanel's embedded auto-resize registers here so a section
--- change (a nav click, handled entirely inside ShowSection) still triggers a
--- resize without HistoryPanel having to hook every nav button itself.
+-- HistoryPanel's embedded auto-resize registers here to hear section changes.
 function ConfigPanel.SetEmbeddedSectionCallback(callback)
   embeddedSectionCallback = callback
 end
 
--- SFT-089: read-only measurement for HistoryPanel's embedded auto-resize.
--- Walks the nav column (present for every section) and the current
--- section's rendered content (nativeChildren, cleared and rebuilt by
--- ShowSection) for the lowest visible screen edge. Including the nav column
--- is what keeps a resize from ever clipping it -- the nav's own bottom
--- button is part of the measurement, not a separate guessed floor. Returns
--- nil when Config isn't embedded or hasn't been built yet; the caller falls
--- back to the fixed History size. This never reads or writes the
--- per-character geometry store (BSP-053) -- it only calls GetBottom on
--- frames ConfigPanel already owns.
+-- Read-only measurement for the embedded auto-resize: the lowest visible edge
+-- of the nav column and the current section's content. Returns nil when not
+-- embedded or not built yet. Never touches the saved geometry.
 function ConfigPanel.GetEmbeddedContentBottom()
   if not embeddedMode or not frame then
     return nil
@@ -3198,19 +3049,13 @@ function ConfigPanel.GetEmbeddedContentBottom()
   return bottom
 end
 
--- SFT-089: the embedded window's width. DEFAULT_WIDTH, not MIN_WIDTH -- the
--- section renderers are designed and tested at DEFAULT_WIDTH (700) in
--- standalone mode; MIN_WIDTH (600) is the resize floor a user can drag down
--- to, not the width content was laid out for (see the "past the right edge
--- of the content region at MIN_WIDTH" note on the Dev section's button row).
+-- The embedded window's width: DEFAULT_WIDTH, the width sections are laid out
+-- for. MIN_WIDTH is only the drag floor.
 function ConfigPanel.GetEmbeddedWidth()
   return DEFAULT_WIDTH
 end
 
--- SFT-089: defensive floor only. GetEmbeddedContentBottom already measures
--- down to the nav column's last button, so this backstop is for the case a
--- measurement comes back nil (Config not yet built) rather than a value
--- meant to bind in normal use.
+-- Fallback floor for when GetEmbeddedContentBottom returns nil.
 function ConfigPanel.GetMinimumHeight()
   return MIN_HEIGHT
 end

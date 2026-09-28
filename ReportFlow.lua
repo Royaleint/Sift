@@ -1,19 +1,19 @@
+-- Sift/ReportFlow.lua
+-- Remembers the chat line behind each blocked History entry so the player can
+-- open Blizzard's spam report for it later.
+
 local _, NS = ...
 local ReportFlow = {}
 
 local targetsByEntryID = {}
 
--- History entry IDs are a per-character monotonic cursor, so once an ID
--- falls this far behind the newest queued one it can no longer be in
--- History (whose per-character cap tops out at this value either way).
+-- History entry IDs are monotonic per character, and History never holds more
+-- than this many entries, so an older ID can no longer be in History.
 local MAX_TRACKED_TARGETS = 5000
 
--- Low-water mark: every id below this is already known absent from
--- targetsByEntryID. Not every appended row queues a target (a manual block
--- or a missing chat line id skips it), so the ids reaching QueueTarget are
--- not contiguous; the sweep below only has to make sure that, after each
--- call, nothing at or below the current id minus the tracked width is left
--- behind, and it never revisits an id it already cleared.
+-- Low-water mark: every id below this is already absent from targetsByEntryID.
+-- Queued ids are not contiguous (some rows queue no target), so each call clears
+-- the whole range up to the limit and never revisits an id already cleared.
 local pruneBelow
 
 local function PruneTargetsBelow(limit)

@@ -1,8 +1,6 @@
 <Ui xmlns="http://www.blizzard.com/wow/ui/">
-  <!-- Foundry-1.0 vendored bundle, consolidated to v1.0.106:
-       every file below byte-compares clean against v1.0.106. Standalone
-       Foundry-1.0 wins when present (OptionalDeps ordering loads it first);
-       this embed stands down silently via the bootstrap gate in Foundry.lua. -->
+  <!-- Foundry-1.0 v1.0.106, unmodified. A standalone Foundry-1.0 loads first
+       (OptionalDeps) and wins; this embed then stands down silently. -->
   <Script file="Libs/Foundry-1.0/Foundry.lua"/>
   <Script file="Libs/Foundry-1.0/Modules/Commands.lua"/>
   <Script file="Libs/Foundry-1.0/Modules/Events.lua"/>
@@ -15,11 +13,6 @@
   <Script file="Libs/Foundry-1.0/Modules/Window.lua"/>
   <Script file="Libs/LibStub/LibStub.lua"/>
   <Include file="Libs/CallbackHandler-1.0/CallbackHandler-1.0.xml"/>
-  <!-- AceGUI removed at BSP-022 (ConfigPanel native conversion). All widgets
-       it used to provide (Slider, CheckBox, MultiLineEditBox) are now built
-       on Blizzard-native templates: MinimalSliderWithSteppersTemplate (Retail)
-       / OptionsSliderTemplate (Classic), UICheckButtonTemplate, and a plain
-       multiLine EditBox in a UIPanelScrollFrameTemplate ScrollFrame. -->
   <Script file="Libs/LibDataBroker-1.1/LibDataBroker-1.1.lua"/>
   <Include file="Libs/LibDBIcon-1.0/lib.xml"/>
 </Ui>
