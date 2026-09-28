@@ -1,14 +1,6 @@
--- BSP-013: base locale table.
---
--- enUS is the base locale: it creates the shared L table on the addon
--- namespace and defines an identity entry ("English text" -> "English text")
--- for every player-visible string that reaches an L[] lookup in the codebase
--- today -- whether the L[] call holds the literal directly, or reaches it
--- through a table lookup (e.g. CATEGORY_BADGE_LABELS) or a parameter threaded
--- through a shared helper (e.g. AttachTooltip's title/body/hint). A key that
--- isn't listed below still reads back unchanged -- the metatable returns
--- whatever key it's asked for -- so this file only needs updating when a new
--- player-visible string is added, not for every call site.
+-- Base locale. Creates the shared L table and an identity entry for every
+-- player-visible string that reaches an L[] lookup, directly or through a table
+-- or helper parameter. An unlisted key still reads back unchanged.
 --
 -- A future translation file loads after this one and overrides individual
 -- values without touching any call site, e.g. Locales/deDE.lua:
@@ -20,13 +12,8 @@
 
 local _, NS = ...
 
--- Pass-through only -- never stores into L. A stored fallback would leak
--- player-supplied text (sender names, custom keywords) into the shared
--- table for any string built by concatenating it in before the L[] lookup;
--- an unrecognized key with nothing to translate is also not an error case
--- worth remembering. Reading a nil key here is safe (Lua 5.1 only throws on
--- table index nil for a write); every current call site already guards
--- against it regardless.
+-- Pass-through only; never stores into L, or player-supplied text (sender
+-- names, keywords) concatenated into a key would accumulate in the table.
 local L = setmetatable({}, {
   __index = function(_, k) return k end,
 })
@@ -346,8 +333,7 @@ L["Resize panel"] = "Resize panel"
 L["Drag to resize the Config panel."] = "Drag to resize the Config panel."
 L["Minimum size: 600 \195\151 400."] = "Minimum size: 600 \195\151 400."
 
--- FirstRunChooser panel (SFT-099). LIVE = false today (FirstRunChooser.lua),
--- so reached only through /bdev chooser -- see that module for the invariant.
+-- FirstRunChooser panel
 L["Sift: choose what to hide"] = "Sift: choose what to hide"
 L["Pick what Sift hides. You can change these any time with /sift config."] = "Pick what Sift hides. You can change these any time with /sift config."
 L["Keep current settings"] = "Keep current settings"
