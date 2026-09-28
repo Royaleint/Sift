@@ -911,29 +911,29 @@ function Data.FormatSender(entry)
 end
 
 function HistoryDetailMixin:ShowEmptyState(show)
-  if not detailPane or not detailPane.sections then return end
-  if detailPane.empty then
-    detailPane.empty:SetShown(show)
-    if show and detailPane.empty.stats then
+  if not self or not self.sections then return end
+  if self.empty then
+    self.empty:SetShown(show)
+    if show and self.empty.stats then
       local stats = Data.GetHistoryStats()
       local retained = stats and stats.retained and stats.retained.detections or 0
       local detected = stats and stats.lifetime and stats.lifetime.detections or retained
       if retained > 0 then
-        detailPane.empty.stats:SetText(L["%s entries filtered out."]:format(tostring(retained)))
+        self.empty.stats:SetText(L["%s entries filtered out."]:format(tostring(retained)))
       elseif detected > 0 then
-        detailPane.empty.stats:SetText(L["%s lifetime detections; retained history is empty."]:format(tostring(detected)))
+        self.empty.stats:SetText(L["%s lifetime detections; retained history is empty."]:format(tostring(detected)))
       else
-        detailPane.empty.stats:SetText(L["0 detections recorded."])
+        self.empty.stats:SetText(L["0 detections recorded."])
       end
     end
   end
-  for _, section in pairs(detailPane.sections) do
+  for _, section in pairs(self.sections) do
     section:SetShown(not show)
   end
 end
 
 function HistoryDetailMixin:RenderSenderHistory(entry, entries)
-  if not detailPane or not detailPane.footer or not detailPane.footer.senderHistory then
+  if not self or not self.footer or not self.footer.senderHistory then
     return
   end
   entries = entries or Data.CurrentEntries()
@@ -952,7 +952,7 @@ function HistoryDetailMixin:RenderSenderHistory(entry, entries)
     end
   end
 
-  detailPane.footer.senderHistory:SetText(L["In History: %d   ·   First seen: %s   ·   Last seen: %s"]:format(
+  self.footer.senderHistory:SetText(L["In History: %d   ·   First seen: %s   ·   Last seen: %s"]:format(
     count,
     firstSeen and RelativeTime(firstSeen) or "-",
     lastSeen  and RelativeTime(lastSeen)  or "-"))
@@ -1088,7 +1088,7 @@ function Actions.OpenRowContextMenu(anchor, entry)
 end
 
 function HistoryDetailMixin:RenderActions(entry)
-  local actions = detailPane and detailPane.actions
+  local actions = self and self.actions
   if not actions or not actions.btn1 or not actions.btn2 then return end
 
   actions.btn1:Hide()
@@ -1367,8 +1367,8 @@ function HistoryStatsMixin:RefreshStatsArea()
 end
 
 function HistoryDetailMixin:RenderBodyFlex(entry)
-  if not detailPane or not detailPane.body then return end
-  local body = detailPane.body
+  if not self or not self.body then return end
+  local body = self.body
   local original = entry and entry.original or ""
   if #original > LAYOUT.MAX_ORIGINAL_CHARS then
     original = original:sub(1, LAYOUT.MAX_ORIGINAL_CHARS) .. " \226\128\166" .. L["(truncated)"]
@@ -1382,8 +1382,8 @@ function HistoryDetailMixin:RenderBodyFlex(entry)
 end
 
 function HistoryDetailMixin:RenderBreakdownChips(breakdown)
-  if not detailPane or not detailPane.footer or not detailPane.footer.breakdownRow then return end
-  local row = detailPane.footer.breakdownRow
+  if not self or not self.footer or not self.footer.breakdownRow then return end
+  local row = self.footer.breakdownRow
   row.chips = row.chips or {}
 
   for _, chip in ipairs(row.chips) do chip:Hide() end
@@ -1439,15 +1439,15 @@ function HistoryDetailMixin:RenderBreakdownChips(breakdown)
 end
 
 function HistoryDetailMixin:RefreshDetail()
-  if not detailPane or not detailPane.sections then return end
+  if not self or not self.sections then return end
 
   local entries = Data.CurrentEntries()
   if #entries == 0 then
-    detailPane:ShowEmptyState(true)
-    if detailPane.stats then detailPane.stats:RefreshStatsArea() end
+    self:ShowEmptyState(true)
+    if self.stats then self.stats:RefreshStatsArea() end
     return
   end
-  detailPane:ShowEmptyState(false)
+  self:ShowEmptyState(false)
 
   local entry = Data.FindEntryById(selectedEntryId, entries)
   if not entry then
@@ -1455,13 +1455,13 @@ function HistoryDetailMixin:RefreshDetail()
     entry = sorted[1]
     if entry then selectedEntryId = entry.id end
   end
-  if not entry then if detailPane.stats then detailPane.stats:RefreshStatsArea() end return end
+  if not entry then if self.stats then self.stats:RefreshStatsArea() end return end
 
   -- Header
   local channel      = Data.FormatChannel(entry)
   local linkSuffix   = entry.containsItemLinks and ("   " .. L["contains item link"]) or ""
   local surfaceLabel = (entry.surface and SURFACE_LABELS[entry.surface]) or entry.surface or "?"
-  detailPane.header.senderText:SetText(Data.FormatSender(entry))
+  self.header.senderText:SetText(Data.FormatSender(entry))
 
   local outcome = entry.outcome or "blocked"
   local statusText
@@ -1484,7 +1484,7 @@ function HistoryDetailMixin:RefreshDetail()
     statusText = statusText .. string.format("   %d / %d",
       tonumber(entry.score) or 0, tonumber(entry.threshold) or 0)
   end
-  detailPane.header.statusText:SetText(statusText)
+  self.header.statusText:SetText(statusText)
   -- Names the user's rule from the record, so it survives the rule's deletion.
   -- On the meta line because the footer is a fixed three-row layout.
   local keywordNote = ""
@@ -1495,14 +1495,14 @@ function HistoryDetailMixin:RefreshDetail()
     end
   end
 
-  detailPane.header.metaText:SetText(string.format("%s   %s%s%s%s",
+  self.header.metaText:SetText(string.format("%s   %s%s%s%s",
     L[surfaceLabel], channel, linkSuffix, pauseReason, keywordNote))
 
-  detailPane:RenderBodyFlex(entry)
-  detailPane:RenderBreakdownChips(entry.breakdown)
-  detailPane:RenderSenderHistory(entry, entries)
-  detailPane:RenderActions(entry)
-  if detailPane.stats then detailPane.stats:RefreshStatsArea() end
+  self:RenderBodyFlex(entry)
+  self:RenderBreakdownChips(entry.breakdown)
+  self:RenderSenderHistory(entry, entries)
+  self:RenderActions(entry)
+  if self.stats then self.stats:RefreshStatsArea() end
 end
 
 function HistoryListMixin:RefreshList()
@@ -1981,13 +1981,13 @@ function HistoryDetailMixin.BuildEmptyState(parent)
 end
 
 function HistoryDetailMixin:CreateDetailPane()
-  detailPane.sections = {}
+  self.sections = {}
 
   -- Status header (~50px tall, anchored TOP)
-  local hdr = CreateFrame("Frame", nil, detailPane, "BackdropTemplate")
+  local hdr = CreateFrame("Frame", nil, self, "BackdropTemplate")
   hdr:SetHeight(50)
-  hdr:SetPoint("TOPLEFT",  detailPane, "TOPLEFT",  0, 0)
-  hdr:SetPoint("TOPRIGHT", detailPane, "TOPRIGHT", 0, 0)
+  hdr:SetPoint("TOPLEFT",  self, "TOPLEFT",  0, 0)
+  hdr:SetPoint("TOPRIGHT", self, "TOPRIGHT", 0, 0)
   if hdr.SetBackdrop then
     hdr:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
     hdr:SetBackdropColor(0.16, 0.16, 0.20, 1)
@@ -2007,11 +2007,11 @@ function HistoryDetailMixin:CreateDetailPane()
   hdr.metaText:SetPoint("BOTTOMRIGHT", hdr, "BOTTOMRIGHT", -10, 6)
   hdr.metaText:SetJustifyH("LEFT")
 
-  detailPane.header = hdr
-  detailPane.sections.header = hdr
+  self.header = hdr
+  self.sections.header = hdr
 
   -- Message body (auto-size, min 80px)
-  local body = CreateFrame("Frame", nil, detailPane)
+  local body = CreateFrame("Frame", nil, self)
   body:SetPoint("TOPLEFT",  hdr, "BOTTOMLEFT",  0, -4)
   body:SetPoint("TOPRIGHT", hdr, "BOTTOMRIGHT", 0, -4)
   body:SetHeight(80)
@@ -2024,11 +2024,11 @@ function HistoryDetailMixin:CreateDetailPane()
   body.text:SetJustifyV("TOP")
   body.text:SetWordWrap(true)
   body.text:SetNonSpaceWrap(true)
-  detailPane.body = body
-  detailPane.sections.body = body
+  self.body = body
+  self.sections.body = body
 
   -- Footer (breakdown chips + sender history + actions)
-  local footer = CreateFrame("Frame", nil, detailPane, "BackdropTemplate")
+  local footer = CreateFrame("Frame", nil, self, "BackdropTemplate")
   footer:SetHeight(64)
   footer:SetPoint("TOPLEFT",  body, "BOTTOMLEFT",  0, -4)
   footer:SetPoint("TOPRIGHT", body, "BOTTOMRIGHT", 0, -4)
@@ -2076,17 +2076,17 @@ function HistoryDetailMixin:CreateDetailPane()
   footer.btn2:HookScript("OnEnter", ActionOnEnter)
   footer.btn2:HookScript("OnLeave", ActionOnLeave)
 
-  detailPane.footer = footer
-  detailPane.actions = { btn1 = footer.btn1, btn2 = footer.btn2 }
-  detailPane.sections.footer = footer
+  self.footer = footer
+  self.actions = { btn1 = footer.btn1, btn2 = footer.btn2 }
+  self.sections.footer = footer
 
   -- The stats area scrolls rather than clipping into the tab strip. The
   -- scrollChild's width tracks the viewport so the text re-wraps.
-  local statsScroll = CreateFrame("ScrollFrame", nil, detailPane, "UIPanelScrollFrameTemplate")
+  local statsScroll = CreateFrame("ScrollFrame", nil, self, "UIPanelScrollFrameTemplate")
   statsScroll:SetPoint("TOPLEFT",     footer, "BOTTOMLEFT",  0, -6)
   statsScroll:SetPoint("TOPRIGHT",    footer, "BOTTOMRIGHT", -22, -6)
-  statsScroll:SetPoint("BOTTOMLEFT",  detailPane, "BOTTOMLEFT",  0, 0)
-  statsScroll:SetPoint("BOTTOMRIGHT", detailPane, "BOTTOMRIGHT", -22, 0)
+  statsScroll:SetPoint("BOTTOMLEFT",  self, "BOTTOMLEFT",  0, 0)
+  statsScroll:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -22, 0)
 
   local stats = CreateFrame("Frame", nil, statsScroll)
   -- Width set after BuildStatsArea via the scroll's OnSizeChanged; the
@@ -2102,15 +2102,15 @@ function HistoryDetailMixin:CreateDetailPane()
     if w and w > 0 then stats:SetWidth(w) end
   end)
 
-  detailPane.statsScroll = statsScroll
-  detailPane.stats = stats
+  self.statsScroll = statsScroll
+  self.stats = stats
   -- Must be the ScrollFrame, not the scrollChild: hiding only the child leaves
   -- the scrollbar drawing over the empty state.
-  detailPane.sections.stats = statsScroll
+  self.sections.stats = statsScroll
 
   -- Empty state placeholder (replaces header/body/footer when nothing selected)
-  detailPane.empty = detailPane:BuildEmptyState()
-  detailPane.empty:Hide()
+  self.empty = self:BuildEmptyState()
+  self.empty:Hide()
 end
 
 function HistoryFilterChipsMixin:UpdateChipVisual(chip, cat)
