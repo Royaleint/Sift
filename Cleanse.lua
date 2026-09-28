@@ -1,6 +1,6 @@
 -- Sift/Cleanse.lua
--- 9-stage text normalization pipeline. Pure Lua, dual-mode (addon TOC + build tool dofile).
--- Zero WoW API references — runs identically in both contexts.
+-- 9-stage text normalization pipeline. Pure Lua, dual-mode (TOC load and dofile).
+-- No WoW API references: it must run identically outside the game.
 
 local Cleanse = {}
 
@@ -139,9 +139,8 @@ function Cleanse._Stage4_Confusables(text)
   end)
 end
 
--- Stage 5: explicit alphanumeric block ranges only. Each branch maps one contiguous block
--- whose semantics we've verified. Blocks with reserved holes (Italic, Bold-Italic, etc.)
--- are deferred to UTR #39 full-table generation in BSP-001.x.
+-- Stage 5: explicit alphanumeric block ranges only, each one contiguous. Blocks with
+-- reserved holes (Italic, Bold-Italic, etc.) are not mapped.
 function Cleanse._Stage5_StyledAlnum(text)
   return Cleanse._ScanCodepoints(text, function(cp)
     -- Math Bold A-Z (no holes): U+1D400-U+1D419
@@ -234,9 +233,8 @@ function Cleanse._Stage9_UnicodeSeparators(text)
 end
 
 -- Returns boolean. Flushes word state on any non-letter codepoint.
--- BSP-030: promoted from a file-local to a Cleanse member. Analyze no longer
--- calls it (the fused front-end below detects mixed-script inline); it is
--- retained as the executable spec the differential test reconstructs against.
+-- Analyze no longer calls this; it is kept as the reference the fused pass is
+-- tested against.
 function Cleanse._DetectMixedScript(text)
   if not text or text == "" then return false end
   local function scriptOf(cp)
@@ -270,14 +268,10 @@ function Cleanse._DetectMixedScript(text)
   return mixed
 end
 
--- BSP-030: fused single-pass front-end. Collapses Stages 2-5 + mixed-script
--- detection — previously FIVE separate _ScanCodepoints rebuilds (Stages 2,3,4,5
--- + a _DetectMixedScript pass that built and threw away a whole copy) — into ONE
--- codepoint walk with one output buffer. Pure-ASCII input fast-paths past it
--- entirely (Stages 2-5 are identity on ASCII; ASCII is never mixed-script).
--- Byte-identical to the staged pipeline, locked by a differential test in
--- this addon's build tooling. The _Stage2..5 / _DetectMixedScript functions
--- above are retained as that spec and as unit-test targets — do not delete them.
+-- Fused front-end: Stages 2-5 plus mixed-script detection in one codepoint walk,
+-- skipped entirely for pure-ASCII input. Must stay byte-identical to the staged
+-- pipeline; the _Stage2..5 / _DetectMixedScript functions above are its test
+-- reference, so do not delete them.
 local function _isFormatChar(cp)
   if cp == 0x00AD or cp == 0xFEFF or cp == 0x2060 then return true end
   if cp >= 0x200B and cp <= 0x200D then return true end
@@ -317,13 +311,9 @@ local function _scriptOf(cp)
   return nil
 end
 
--- SFT-079: the structural script-mix shape. A mostly-CJK message carrying an
--- embedded run of Latin is what an off-platform contact handle looks like
--- dropped into an otherwise non-Latin advert. It is a shape rather than a
--- vocabulary, so it survives respelling, and measuring it here is free: this
--- walk already decodes every codepoint, and pure-ASCII text skips the walk
--- entirely. Measured, not judged -- whether the shape MEANS anything is
--- Signals.lua's decision, and it is capture-only either way.
+-- Script-island shape: a mostly-CJK message carrying an embedded Latin run.
+-- Measured here because this walk already decodes every codepoint; Signals
+-- decides what it means.
 local ISLAND_MIN_CJK = 4  -- ignore a stray ideograph or two
 local ISLAND_MIN_RUN = 4  -- a handle-length run, not an incidental letter
 
@@ -351,11 +341,9 @@ local function _emit(out, n, cp)
   return n
 end
 
--- One codepoint walk = Stages 2,3,4,5 + mixed-script. Decoder mirrors
--- _ScanCodepoints exactly (incl. 0xFFFD on malformed UTF-8). Returns the folded
--- string and the mixedScript boolean. Format/combining codepoints are skipped
--- entirely (not emitted, and not treated as word boundaries) — matching the
--- staged order where Stages 2/3 strip them before mixed-script detection runs.
+-- Returns the folded string and the mixedScript boolean. The decoder must mirror
+-- _ScanCodepoints exactly (incl. 0xFFFD on malformed UTF-8). Format/combining
+-- codepoints are skipped, not treated as word boundaries, to match the staged order.
 function Cleanse._FusedFrontPass(text)
   local out, n = {}, 0
   local i, len = 1, #text
@@ -412,9 +400,8 @@ function Cleanse._FusedFrontPass(text)
       local folded = Cleanse._confusables[cp] or cp   -- Stage 4 then Stage 5
       folded = _styledFold(folded)
 
-      -- Script-island shape. The Latin run is counted on the FOLDED codepoint so
-      -- a fullwidth-Latin handle counts as the Latin it renders as; digits
-      -- continue a run (handles carry them) but do not start the Latin majority.
+      -- Counted on the folded codepoint, so fullwidth Latin counts as Latin.
+      -- Digits extend a run but do not count toward latinCount.
       if _isCJK(cp) then
         cjkCount = cjkCount + 1
         latinRun = 0
@@ -436,9 +423,7 @@ function Cleanse._FusedFrontPass(text)
   end
   if wordHasLatin and wordHasOther then mixed = true end
 
-  -- latinCount > 0 is load-bearing: digits extend a run but must never BE one on
-  -- their own, or a CJK message quoting a price ("...1234") reads as a contact
-  -- island with no Latin in it at all.
+  -- latinCount > 0 is load-bearing: a digits-only run (a quoted price) is not an island.
   local scriptIsland = cjkCount >= ISLAND_MIN_CJK
     and cjkCount > latinCount
     and latinCount > 0
@@ -459,7 +444,7 @@ function Cleanse.Analyze(text)
 
   text = Cleanse._Stage1_ItemLinks(text)
 
-  -- BSP-030: Stages 2-5 + mixed-script in one pass, with a pure-ASCII fast-path.
+  -- Stages 2-5 + mixed-script in one pass, with a pure-ASCII fast-path.
   local mixedScript, hasTokenSeparator, scriptIsland
   if not string.find(text, "[\128-\255]") then
     mixedScript = false                       -- ASCII: stages 2-5 identity, never mixed
@@ -491,9 +476,7 @@ function Cleanse.Text(text)
   return Cleanse.Analyze(text).normalized
 end
 
--- Dual-mode export. MUST be the final statement so WoW's chunk loader gets the table as the
--- return value when running standalone (build tool) AND attaches to NS.Cleanse when loaded
--- via TOC. Smoke-test this dual-mode behavior in BSP-002 when the addon first loads in WoW.
+-- Dual-mode export: must stay the final statement (dofile return + NS attach).
 local _, NS = ...
 if NS then NS.Cleanse = Cleanse end
 return Cleanse
