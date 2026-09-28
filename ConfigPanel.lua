@@ -1,3 +1,7 @@
+-- Sift/ConfigPanel.lua
+-- The Config panel: detection settings, pause rows, allowlist, blocked senders,
+-- keyword lists, history caps, and the import/export and dev dialogs.
+
 local _, NS = ...
 local L = NS.L
 local ConfigPanel = {}
@@ -2704,8 +2708,8 @@ function ConfigPanel.OpenFPExportDialog(limit)
     "Close", nil)
 end
 
--- Meta breakdown keys, never a content category. Mirrors History.lua's
--- IGNORED_BREAKDOWN_KEYS; keep the two in step.
+-- Meta breakdown keys, never a content category. Copies in ChatScanner, History, HistoryPanel, ShadowLog, Signals, ConfigPanel:
+-- keep all six in step.
 local HISTORY_EXPORT_IGNORED_KEYS = {
   MixedScript = true,
   BlockedActor = true,
