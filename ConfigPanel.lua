@@ -1945,21 +1945,23 @@ RenderBlocked = function()
     end
     row:Show()
 
+    local isManualBlock = type(rowData.entry) == "table" and rowData.entry.manual == true
+
     local label = TrackNative(row:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
     label:SetPoint("LEFT", row, "LEFT", 8, 6)
-    if type(rowData.entry) == "table" and rowData.entry.manual == true then
+    if isManualBlock then
       label:SetText(L["%s (blocked by you)"]:format(rowData.label))
     else
-      label:SetText(rowData.label)
+      label:SetText(L["%s (blocked by Sift)"]:format(rowData.label))
     end
     label:Show()
 
     local meta = TrackNative(row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"))
     meta:SetPoint("LEFT", row, "LEFT", 8, -8)
-    -- BSP-037: a hand-blocked actor can sit here with zero recorded blocks,
-    -- which on its own reads like a stray row. Say who put it there.
-    local origin = (type(rowData.entry) == "table" and rowData.entry.manual == true)
-      and "blocked by you - " or ""
+    -- BSP-037 / SFT-127: a hand-blocked actor can sit here with zero recorded
+    -- blocks, which on its own reads like a stray row, and an auto-blocked
+    -- one otherwise carries no origin at all. Say who put it there either way.
+    local origin = isManualBlock and "blocked by you - " or "blocked by Sift - "
     meta:SetText(origin .. "blocks " .. tostring(BlockedEntryCount(rowData.entry))
       .. " - last " .. RelativeTime(BlockedEntryLastSeen(rowData.entry)))
     meta:Show()
