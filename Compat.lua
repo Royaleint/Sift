@@ -1,3 +1,7 @@
+-- Sift/Compat.lua
+-- Client detection: which WoW flavor is running and which UI paths and content
+-- defaults it gets.
+
 local addonName, NS = ...
 local Compat = {}
 
@@ -15,8 +19,8 @@ local function Detect(env)
   local isClassicFamily = isClassicEra or isTBCAnniversary
   -- Which clients get an opt-in content filter pre-ticked by default. A content
   -- question, deliberately separate from isClassicFamily (UI fallbacks): Mists
-  -- Classic belongs here. WoW Forever is not classic content and gets the retail
-  -- default.
+  -- Classic belongs here.
+  -- WoW Forever should get the retail default; its WOW_PROJECT_ID is unverified in-game.
   local classicContentDefaults = isClassicEra or isTBCAnniversary or isMistsClassic
 
   local hasModernHistoryList =
