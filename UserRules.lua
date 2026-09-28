@@ -6,31 +6,18 @@ local function TouchRevision()
   revision = revision + 1
 end
 
--- BSP-052 / BSP-058: user-authored keyword rules. Two independent lists share
--- this module because their storage, guardrails, and matching are identical --
--- only their effect on the pipeline differs. Matching runs against the same
--- Cleanse-normalised text the corpus matcher sees, so a rule "gold" also catches
--- "g0ld", Cyrillic "gоld", and spaced "g o l d" with no work here.
---
--- The two lists stay separate arrays with separate caps rather than one list
--- with a kind field: dedup and cap are per-list invariants, and a user may
--- legitimately want the same phrase in neither, either, or (perversely) both.
+-- User-authored keyword rules: two independent lists (block and allow) with
+-- shared storage, guardrails and matching. Rules match Cleanse-normalized text,
+-- so "gold" also catches "g0ld" and "g o l d". Dedup and cap are per list.
 local BLOCK = "block"
 local ALLOW = "allow"
 
 UserRules.BLOCK = BLOCK
 UserRules.ALLOW = ALLOW
 
--- Cap rationale: well above any plausible hand-maintained list, far below any
--- performance ceiling (200 plain `find` calls against a cleansed line is low
--- microseconds, dwarfed by Cleanse itself), and small enough to show as "X / 200"
--- in the UI footer. On full we reject rather than evict -- these entries are
--- deliberate user data, unlike the auto-accumulated blockedActors table.
---
--- MIN_LENGTH 3 removes the worst false-positive band (2-char rules like "wt"
--- match "watch", "want", "white"). It does not promise zero false positives:
--- "wts" still sits inside "webtools", and because Cleanse strips whitespace a
--- multi-word rule matches across word boundaries. The UI says so out loud.
+-- A full list rejects new entries rather than evicting: these are deliberate
+-- user data. MIN_LENGTH 3 keeps out 2-character rules that match inside
+-- common words; it does not rule out false positives entirely.
 local LISTS = {
   [BLOCK] = { storeKey = "customBlocks",  cap = 200, minLength = 3 },
   [ALLOW] = { storeKey = "allowKeywords", cap = 200, minLength = 3 },
@@ -43,9 +30,8 @@ local function GetList(kind)
   return LISTS[kind]
 end
 
--- Resolved per call rather than captured at load time: this file loads before
--- DB.Initialize runs, so anything cached here would capture nil and never
--- recover. Cheap enough -- two table lookups off an already-warm path.
+-- Resolved per call, not cached: this file loads before DB.Initialize, so a
+-- load-time capture would hold nil forever.
 local function GetStore(kind)
   local list = GetList(kind)
   if not list then return nil end
@@ -114,13 +100,8 @@ function UserRules.Add(kind, raw)
   return "added", entry
 end
 
--- Accepts a raw string or an index. A string is cleansed first so removal works
--- from whatever the user typed, not only from the stored spelling.
---
--- The phrase match is tried BEFORE the argument is read as an index, because a
--- phrase can be all digits. Sniffing for a number first made those impossible to
--- remove from the UI: "15000" was read as an index, store[15000] held nothing,
--- and the call reported failure while the entry sat in the list.
+-- Accepts a raw string (cleansed first) or an index. The phrase match must run
+-- before the index read: an all-digit phrase such as "15000" is a valid rule.
 function UserRules.Remove(kind, rawOrIndex)
   local store = GetStore(kind)
   if not store then return false end
@@ -237,8 +218,7 @@ function UserRules.GetRevision()
   return revision
 end
 
--- Test seams: the module is dofile-able so the standalone runners can exercise
--- it without a WoW environment, mirroring Cleanse's dual-mode pattern.
+-- Test seams for running the module outside WoW.
 function UserRules.SetCleanseForTest(cleanse)
   testCleanse = cleanse
 end
