@@ -35,12 +35,23 @@ local function Detect(env)
     and type(env.FauxScrollFrame_OnVerticalScroll) == "function"
     and type(env.FauxScrollFrame_GetOffset) == "function"
 
+  -- Blizzard retired OpenReportPlayerDialog in 9.2.5. Every client now opens
+  -- the report dialog through ReportFrame:InitiateReport instead -- the same
+  -- chain Blizzard's own chat-name context menu uses.
   local hasChatReportDialog =
-    type(env.PlayerLocation) == "table"
+    type(env.C_ChatInfo) == "table"
+    and type(env.C_ChatInfo.IsValidChatLine) == "function"
+    and type(env.PlayerLocation) == "table"
     and type(env.PlayerLocation.CreateFromChatLineID) == "function"
     and type(env.C_ReportSystem) == "table"
-    and type(env.C_ReportSystem.OpenReportPlayerDialog) == "function"
-    and env.PLAYER_REPORT_TYPE_SPAM ~= nil
+    and type(env.C_ReportSystem.CanReportPlayer) == "function"
+    and type(env.ReportInfo) == "table"
+    and type(env.ReportInfo.CreateReportInfoFromType) == "function"
+    and type(env.ReportFrame) == "table"
+    and type(env.ReportFrame.InitiateReport) == "function"
+    and type(env.Enum) == "table"
+    and type(env.Enum.ReportType) == "table"
+    and env.Enum.ReportType.Chat ~= nil
 
   return {
     addonName = addonName,

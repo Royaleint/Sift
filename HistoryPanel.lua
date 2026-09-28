@@ -1054,7 +1054,7 @@ function Actions.GetReportKind(entry)
 end
 
 function Actions.GetReportLabel(kind)
-  if kind == "chat" then return "Report Spam" end
+  if kind == "chat" then return "Report" end
   return nil
 end
 
@@ -1128,7 +1128,7 @@ function HistoryDetailMixin:RenderActions(entry)
     actions.btn1:Show()
     actions.btn1.tipTitle = "Block retroactively"
     actions.btn1.tipBody  = "Mark this message as blocked. It already appeared in chat and " ..
-      "stays there, but Sift opens Blizzard's spam report window for it when it can."
+      "stays there, but Sift opens Blizzard's report window for it when it can."
     local allowable = (entry.surface == "chat" or entry.surface == "whisper" or entry.surface == "bn-whisper")
       and entry.guid and entry.guid ~= ""
     if allowable and not (NS.Trust and NS.Trust.IsAllowlisted and NS.Trust.IsAllowlisted(entry.guid)) then
@@ -1156,7 +1156,7 @@ function HistoryDetailMixin:RenderActions(entry)
     actions.btn2:SetScript("OnClick", function() Actions.PerformReport(entry) end)
     actions.btn2:Show()
     actions.btn2.tipTitle = reportLabel
-    actions.btn2.tipBody  = "Open Blizzard's spam report window for this message."
+    actions.btn2.tipBody  = "Open Blizzard's report window for this message."
     return
   end
 

@@ -406,7 +406,10 @@ local function AppendBlockedHistory(record, counter, suppressReport)
     local category = record.customRule and "Custom" or DominantCategory(record.breakdown)
     NS.DB.RecordBlockedActor(record, category)
   end
-  if entryID and not suppressReport and NS.ReportFlow and NS.ReportFlow.QueueChatReport then
+  -- Battle.net whisper lines are excluded until it's confirmed their lineID
+  -- resolves to a valid report location the same way a regular chat line does.
+  if entryID and not suppressReport and record.surface ~= "bn-whisper"
+      and NS.ReportFlow and NS.ReportFlow.QueueChatReport then
     NS.ReportFlow.QueueChatReport(entryID, counter, record.name)
   end
 end

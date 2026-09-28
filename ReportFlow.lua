@@ -114,18 +114,23 @@ function ReportFlow.ReportChatNow(historyEntryID)
     return false
   end
 
+  if not C_ChatInfo or type(C_ChatInfo.IsValidChatLine) ~= "function" then
+    DevLog("chat report line-validity API unavailable.")
+    return false
+  end
+
+  -- History rows outlive chat lines: an old row's lineID can fall out of the
+  -- client's chat buffer before the player acts on it. Once that happens it
+  -- never becomes valid again, so drop the target -- the button/menu entry
+  -- disappears on the next render instead of staying dead.
+  if not C_ChatInfo.IsValidChatLine(target.lineID) then
+    DevLog("chat report line has expired.")
+    ClearTarget(historyEntryID)
+    return false
+  end
+
   if not PlayerLocation or type(PlayerLocation.CreateFromChatLineID) ~= "function" then
     DevLog("chat report location API unavailable.")
-    return false
-  end
-
-  if not C_ReportSystem or type(C_ReportSystem.OpenReportPlayerDialog) ~= "function" then
-    DevLog("chat report dialog API unavailable.")
-    return false
-  end
-
-  if PLAYER_REPORT_TYPE_SPAM == nil then
-    DevLog("chat report type unavailable.")
     return false
   end
 
@@ -135,15 +140,27 @@ function ReportFlow.ReportChatNow(historyEntryID)
     return false
   end
 
-  if type(C_ReportSystem.CanReportPlayer) == "function" then
-    local canCheck, canReport = pcall(C_ReportSystem.CanReportPlayer, PLAYER_REPORT_TYPE_SPAM, location)
-    if canCheck and canReport == false then
-      DevLog("chat report target is not reportable.")
-      return false
-    end
+  if not C_ReportSystem or type(C_ReportSystem.CanReportPlayer) ~= "function" then
+    DevLog("chat report eligibility API unavailable.")
+    return false
   end
 
-  local ok = pcall(C_ReportSystem.OpenReportPlayerDialog, PLAYER_REPORT_TYPE_SPAM, location, target.senderName)
+  local canCheck, canReport = pcall(C_ReportSystem.CanReportPlayer, location)
+  if not canCheck or not canReport then
+    DevLog("chat report target is not reportable.")
+    ClearTarget(historyEntryID)
+    return false
+  end
+
+  if not ReportInfo or type(ReportInfo.CreateReportInfoFromType) ~= "function"
+      or not ReportFrame or type(ReportFrame.InitiateReport) ~= "function"
+      or type(Enum) ~= "table" or type(Enum.ReportType) ~= "table" or Enum.ReportType.Chat == nil then
+    DevLog("chat report dialog API unavailable.")
+    return false
+  end
+
+  local reportInfo = ReportInfo:CreateReportInfoFromType(Enum.ReportType.Chat)
+  local ok = pcall(ReportFrame.InitiateReport, ReportFrame, reportInfo, target.senderName, location)
   if ok then
     ClearTarget(historyEntryID)
     return true
