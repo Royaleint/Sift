@@ -74,6 +74,7 @@ read_globals = {
     -- WoW API (C_ namespaces)
     "C_AddOnProfiler",
     "C_BattleNet",
+    "C_ChatInfo",
     "C_CVar",
     "C_FriendList",
     "C_ReportSystem",
@@ -92,6 +93,8 @@ read_globals = {
     "GetPlayerInfoByGUID",
     "IsPlayerInGuildFromGUID",
     "issecretvalue",
+    "ReportFrame",
+    "ReportInfo",
     "UnitGUID",
     "UnitName",
     "UnitInParty",
@@ -99,7 +102,6 @@ read_globals = {
     "geterrorhandler",
     "GetCursorPosition",
     "GetScreenWidth", "GetScreenHeight",
-    "PLAYER_REPORT_TYPE_SPAM",
 
     -- Ace3 / Libraries
     "LibStub",

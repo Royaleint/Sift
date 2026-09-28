@@ -76,6 +76,7 @@
 
     "C_AddOnProfiler",
     "C_BattleNet",
+    "C_ChatInfo",
     "C_CVar",
     "C_FriendList",
     "C_ReportSystem",
@@ -91,6 +92,8 @@
     "hooksecurefunc",
     "IsPlayerInGuildFromGUID",
     "issecretvalue",
+    "ReportFrame",
+    "ReportInfo",
     "UnitGUID",
     "UnitName",
     "UnitInParty",
@@ -98,7 +101,6 @@
     "geterrorhandler",
     "GetCursorPosition",
     "GetScreenWidth", "GetScreenHeight",
-    "PLAYER_REPORT_TYPE_SPAM",
 
     "LibStub"
   ]
