@@ -380,14 +380,33 @@ local function AddSectionTitle(title, subtitle)
   return -48
 end
 
+-- The width Config content is laid out at, not a live GetWidth() read, since
+-- the host frame can still be wider than that while it's mid-resize.
+local function ContentWidth()
+  if embeddedMode then
+    -- configHost insets Config's outer frame 6px on each side
+    -- (HistoryPanel.lua's configHost:SetPoint calls), hence the 12.
+    return DEFAULT_WIDTH - 12 - (NAV_WIDTH + 8)
+  end
+  return frame:GetWidth() - (NAV_WIDTH + 16) - 12
+end
+
 local function AddStatus(y, message, good)
   if not message or message == "" then
     return y
   end
 
+  -- GameFontHighlight (not the Small variant) so the line is actually
+  -- noticeable. An explicit width makes GetStringHeight() measure at the
+  -- same width AddText would otherwise only reach via a TOPLEFT+RIGHT point
+  -- pair, which needs a layout pass to resolve -- GetStringHeight() runs
+  -- immediately after SetText, before that pass. The offset below is then
+  -- sized off the real (possibly wrapped) height instead of a fixed guess,
+  -- since the bigger font wraps some of the longer messages to two lines.
   local text = good and "|cff5ad080" or "|cffffd100"
-  AddText(text .. message .. "|r", "GameFontHighlightSmall", CONTENT_PAD, y)
-  return y - 22
+  local width = ContentWidth() - (2 * CONTENT_PAD)
+  local fs = AddText(text .. message .. "|r", "GameFontHighlight", CONTENT_PAD, y, width)
+  return y - fs:GetStringHeight() - 8
 end
 
 local function AddNativeButton(label, x, y, width, onClick, tooltipBody)
@@ -1791,12 +1810,15 @@ RenderAllowlist = function()
         "appear in your History. You can't allowlist arbitrary names, only ones Sift has actually seen.")
       or ("Enter as Name-Realm. The sender must already appear in your History. You can't " ..
         "allowlist arbitrary names, only ones Sift has actually seen."))
-  AddNativeButton("Add", CONTENT_PAD + 300, y + 6, 72, function()
+  local function CommitAdd()
     listState.allowlistAddText = addBox:GetText() or ""
     AddAllowlistFromText(listState.allowlistAddText)
     ConfigPanel.ShowSection("Allowlist")
-  end, regional and "Add the player named in the box to the allowlist."
-    or "Add the Name-Realm in the box to the allowlist.")
+  end
+  addBox:SetScript("OnEnterPressed", CommitAdd)
+  AddNativeButton("Add", CONTENT_PAD + 300, y + 6, 72, CommitAdd,
+    regional and "Add the player named in the box to the allowlist."
+      or "Add the Name-Realm in the box to the allowlist.")
   y = y - 34
 
   if removedAllowlistEntry then
