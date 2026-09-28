@@ -63,6 +63,15 @@ local LAYOUT = {
 
   CHIP_GAP       = 3,
   CHIP_MIN_WIDTH = 38,
+  CHIP_HEIGHT    = 22,
+  CHIPS_TOP      = 28,
+  -- Vertical gaps: chip band to dropdown row, dropdown row to list/detail.
+  CHIP_BAND_GAP  = 6,
+  LIST_TOP_GAP   = 6,
+  -- The sender filter chip sits 14px below the list's own top edge, slightly
+  -- over the column header, so it reads as a banner over the list rather
+  -- than a separate reserved row.
+  SENDER_CHIP_LIST_OFFSET = 14,
 }
 
 local CATEGORY_COLORS = {
@@ -2122,7 +2131,12 @@ function HistoryFilterChipsMixin.PlaceCategoryChips(strip)
   if not strip or not strip.chips then return end
 
   -- Each chip is sized to its own label, with LAYOUT.CHIP_MIN_WIDTH as a floor.
-  local x = 0
+  -- Wraps to a new row instead of overflowing once the next chip would cross
+  -- the strip's actual width. A zero width means the anchor chain hasn't
+  -- resolved yet; skip wrapping rather than collapse every chip onto the
+  -- first pixel.
+  local availableWidth = strip:GetWidth()
+  local x, y, rows = 0, 0, 1
   for _, cat in ipairs(CATEGORIES) do
     local chip = strip.chips[cat]
     if chip then
@@ -2130,19 +2144,25 @@ function HistoryFilterChipsMixin.PlaceCategoryChips(strip)
       local textWidth = label and label:GetStringWidth() or 0
       local w = math.floor(textWidth + 24 + 0.5)
       if w < LAYOUT.CHIP_MIN_WIDTH then w = LAYOUT.CHIP_MIN_WIDTH end
-      chip:SetSize(w, 22)
+      if x > 0 and availableWidth > 0 and x + w > availableWidth then
+        x = 0
+        y = y - (LAYOUT.CHIP_HEIGHT + LAYOUT.CHIP_GAP)
+        rows = rows + 1
+      end
+      chip:SetSize(w, LAYOUT.CHIP_HEIGHT)
       chip:ClearAllPoints()
-      chip:SetPoint("TOPLEFT", strip, "TOPLEFT", x, 0)
+      chip:SetPoint("TOPLEFT", strip, "TOPLEFT", x, y)
       x = x + w + LAYOUT.CHIP_GAP
     end
   end
+  strip:SetHeight(rows * LAYOUT.CHIP_HEIGHT + (rows - 1) * LAYOUT.CHIP_GAP)
 end
 
 function HistoryFilterChipsMixin.BuildCategoryChips(strip)
   local chips = {}
   for _, cat in ipairs(CATEGORIES) do
     local chip = CreateFrame("Button", nil, strip, "UIPanelButtonTemplate")
-    chip:SetSize(LAYOUT.CHIP_MIN_WIDTH, 22)
+    chip:SetSize(LAYOUT.CHIP_MIN_WIDTH, LAYOUT.CHIP_HEIGHT)
     chip:SetText(L[CHIP_LABELS[cat] or cat])
     chip:SetScript("OnClick", function()
       filterState.categories[cat] = (filterState.categories[cat] == false)
@@ -2171,7 +2191,12 @@ function HistoryFilterChipsMixin.BuildCategoryChips(strip)
   end
   strip.chips = chips
   strip:PlaceCategoryChips()
-  strip:SetScript("OnSizeChanged", function() strip:PlaceCategoryChips() end)
+  -- A width change can also change the row count, which OnChipsReflowed (set
+  -- by CreateHeaderFilters) repositions everything below the band for.
+  strip:SetScript("OnSizeChanged", function()
+    strip:PlaceCategoryChips()
+    if strip.OnChipsReflowed then strip:OnChipsReflowed() end
+  end)
 end
 
 function Chrome.CreateModernDropdown(parent, labelText, values, labels, getValue, setValue)
@@ -2200,8 +2225,6 @@ end
 
 function HistoryPanelMixin:CreateSenderFilterChip()
   local chip = CreateFrame("Frame", nil, frame)
-  chip:SetPoint("TOPLEFT",  frame, "TOPLEFT",   8, -100)
-  chip:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, -100)
   chip:SetHeight(18)
   chip:Hide()
 
@@ -2217,10 +2240,15 @@ function HistoryPanelMixin:CreateSenderFilterChip()
     "Remove the active sender filter and show entries from all senders again.")
 
   frame.senderChip = chip
+  -- Position it now that it exists; ReflowBelowChips already ran once
+  -- (CreateHeaderFilters, before this chip existed) and skipped it.
+  if frame.filterChipsBand and frame.filterChipsBand.OnChipsReflowed then
+    frame.filterChipsBand:OnChipsReflowed()
+  end
 end
 
 function HistoryPanelMixin:UpdateSenderFilterChip()
-  -- Chip show/hide only; listPane anchors belong to CreatePanes.
+  -- Show/hide only; position is owned by ReflowBelowChips (CreateHeaderFilters).
   if not frame or not frame.senderChip or not listPane then return end
   local chip = frame.senderChip
   if filterState and filterState.senderFilter then
@@ -2334,18 +2362,20 @@ function HistoryPanelMixin:CreateHeaderFilters()
   -- get more horizontal room than they had when nested inside listPane.
   local chipsBand = CreateFrame("Frame", nil, frame)
   Mixin(chipsBand, HistoryFilterChipsMixin)
-  chipsBand:SetHeight(24)
-  chipsBand:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, -28)
+  -- Height is set by PlaceCategoryChips (below), from however many rows the
+  -- chips actually need; no fixed height here.
+  chipsBand:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, -LAYOUT.CHIPS_TOP)
   if pauseRow then
     chipsBand:SetPoint("TOPRIGHT", pauseRow, "LEFT", -8, 0)
   else
-    chipsBand:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -360, -28)
+    chipsBand:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -360, -LAYOUT.CHIPS_TOP)
   end
   chipsBand:BuildCategoryChips()
 
   -- Dropdowns band: full panel width, below chips band. Hosts dropdowns +
   -- Refresh. Anchoring to frame (not listPane) means the dropdown row width
-  -- is bounded by the panel, not by the splitter.
+  -- is bounded by the panel, not by the splitter. Top offset is recomputed
+  -- by ReflowBelowChips (below) from the chip band's actual height.
   local ddBand = CreateFrame("Frame", nil, frame)
   ddBand:SetHeight(24)
   ddBand:SetPoint("TOPLEFT",  frame, "TOPLEFT",  6, -56)
@@ -2419,6 +2449,30 @@ function HistoryPanelMixin:CreateHeaderFilters()
   listPane.filterStrip = ddBand
   frame.filterStrip = ddBand
   frame.filterChipsBand = chipsBand
+
+  -- Repositions everything below the chip band from its actual height, so a
+  -- wrapped second row pushes the dropdowns, the sender filter chip, and the
+  -- list/detail area down instead of overlapping them. Re-setting a single
+  -- named point (TOPLEFT, TOPRIGHT) replaces only that point; the bottom
+  -- anchors CreatePanes already set on listPane/detailPane are untouched.
+  local function ReflowBelowChips()
+    local ddTop = -LAYOUT.CHIPS_TOP - chipsBand:GetHeight() - LAYOUT.CHIP_BAND_GAP
+    ddBand:SetPoint("TOPLEFT",  frame, "TOPLEFT",  6, ddTop)
+    ddBand:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, ddTop)
+
+    local listTop = ddTop - ddBand:GetHeight() - LAYOUT.LIST_TOP_GAP
+    listPane:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, listTop)
+    detailPane:SetPoint("TOPLEFT", frame, "TOPLEFT",
+      6 + listPane:GetWidth() + LAYOUT.SPLITTER_WIDTH + 4, listTop)
+
+    if frame.senderChip then
+      local chipTop = listTop - LAYOUT.SENDER_CHIP_LIST_OFFSET
+      frame.senderChip:SetPoint("TOPLEFT",  frame, "TOPLEFT",   8, chipTop)
+      frame.senderChip:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, chipTop)
+    end
+  end
+  chipsBand.OnChipsReflowed = ReflowBelowChips
+  ReflowBelowChips()
 end
 
 -- A decorative vertical line between listPane and detailPane; it does not drag.
