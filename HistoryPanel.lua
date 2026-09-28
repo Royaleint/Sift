@@ -304,20 +304,20 @@ function Data.GetStoredListPaneWidth()
 end
 
 function HistoryPanelMixin:SavePosition()
-  if not frame then return end
+  if not self then return end
   local store = Data.GetCharStore()
   if not store then return end
-  store.x = frame:GetLeft()
-  store.y = frame:GetTop()
+  store.x = self:GetLeft()
+  store.y = self:GetTop()
 end
 
 -- Restores the saved position only; the size is always the fixed panel size.
 function HistoryPanelMixin:ApplyStoredGeometry()
   local store = Data.GetCharStore() or {}
 
-  frame:SetSize(LAYOUT.PANEL_WIDTH, LAYOUT.PANEL_HEIGHT)
+  self:SetSize(LAYOUT.PANEL_WIDTH, LAYOUT.PANEL_HEIGHT)
 
-  frame:ClearAllPoints()
+  self:ClearAllPoints()
   if store.x and store.y then
     -- Clamp an off-screen saved position; the template's NineSlice extends
     -- ~13px beyond the client area.
@@ -325,12 +325,12 @@ function HistoryPanelMixin:ApplyStoredGeometry()
     local screenH = GetScreenHeight and GetScreenHeight() or 1080
     if store.x < -200 or store.x > screenW - 100
        or store.y < 100 or store.y > screenH + 100 then
-      frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+      self:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     else
-      frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", store.x, store.y)
+      self:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", store.x, store.y)
     end
   else
-    frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    self:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
   end
 end
 
@@ -2230,7 +2230,7 @@ function Chrome.CreateModernDropdown(parent, labelText, values, labels, getValue
 end
 
 function HistoryPanelMixin:CreateSenderFilterChip()
-  local chip = CreateFrame("Frame", nil, frame)
+  local chip = CreateFrame("Frame", nil, self)
   chip:SetHeight(18)
   chip:Hide()
 
@@ -2245,18 +2245,18 @@ function HistoryPanelMixin:CreateSenderFilterChip()
   Chrome.AttachTooltip(chip.clear, "Clear sender filter",
     "Remove the active sender filter and show entries from all senders again.")
 
-  frame.senderChip = chip
+  self.senderChip = chip
   -- Position it now that it exists; ReflowBelowChips already ran once
   -- (CreateHeaderFilters, before this chip existed) and skipped it.
-  if frame.filterChipsBand and frame.filterChipsBand.OnChipsReflowed then
-    frame.filterChipsBand:OnChipsReflowed()
+  if self.filterChipsBand and self.filterChipsBand.OnChipsReflowed then
+    self.filterChipsBand:OnChipsReflowed()
   end
 end
 
 function HistoryPanelMixin:UpdateSenderFilterChip()
   -- Show/hide only; position is owned by ReflowBelowChips (CreateHeaderFilters).
-  if not frame or not frame.senderChip or not listPane then return end
-  local chip = frame.senderChip
+  if not self or not self.senderChip or not listPane then return end
+  local chip = self.senderChip
   if filterState and filterState.senderFilter then
     chip.label:SetText(L["|cff58a0ffFiltering by:|r %s"]:format(Data.FormatSender(filterState.senderFilter)))
     chip:Show()
@@ -2280,17 +2280,17 @@ end
 -- Schedules one remeasure a frame later (skipRemeasure stops it chaining),
 -- because text re-wraps after the width shrinks.
 function HistoryPanelMixin:ResizeForConfig(skipRemeasure)
-  if activeMode ~= "Config" or not frame then return end
+  if activeMode ~= "Config" or not self then return end
   local contentBottom = NS.ConfigPanel and NS.ConfigPanel.GetEmbeddedContentBottom
     and NS.ConfigPanel.GetEmbeddedContentBottom()
   local configWidth = NS.ConfigPanel and NS.ConfigPanel.GetEmbeddedWidth
     and NS.ConfigPanel.GetEmbeddedWidth()
   local configFloor = NS.ConfigPanel and NS.ConfigPanel.GetMinimumHeight
     and NS.ConfigPanel.GetMinimumHeight()
-  local width, height = HistoryPanel.ComputeConfigWindowSize(configWidth, configFloor, frame:GetTop(), contentBottom)
-  HistoryPanel.ResizeKeepingTopLeft(frame, width, height)
+  local width, height = HistoryPanel.ComputeConfigWindowSize(configWidth, configFloor, self:GetTop(), contentBottom)
+  HistoryPanel.ResizeKeepingTopLeft(self, width, height)
   if not skipRemeasure and C_Timer and C_Timer.After then
-    C_Timer.After(0, function() frame:ResizeForConfig(true) end)
+    C_Timer.After(0, function() self:ResizeForConfig(true) end)
   end
 end
 
@@ -2365,15 +2365,15 @@ end
 
 function HistoryPanelMixin:CreateHeaderFilters()
   -- Chips band: upper-left, right-bound by the pause-pill row, not by listPane.
-  local chipsBand = CreateFrame("Frame", nil, frame)
+  local chipsBand = CreateFrame("Frame", nil, self)
   Mixin(chipsBand, HistoryFilterChipsMixin)
   -- Height is set by PlaceCategoryChips (below), from however many rows the
   -- chips actually need; no fixed height here.
-  chipsBand:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, -LAYOUT.CHIPS_TOP)
+  chipsBand:SetPoint("TOPLEFT", self, "TOPLEFT", 6, -LAYOUT.CHIPS_TOP)
   if pauseRow then
     chipsBand:SetPoint("TOPRIGHT", pauseRow, "LEFT", -8, 0)
   else
-    chipsBand:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -360, -LAYOUT.CHIPS_TOP)
+    chipsBand:SetPoint("TOPRIGHT", self, "TOPRIGHT", -360, -LAYOUT.CHIPS_TOP)
   end
   chipsBand:BuildCategoryChips()
 
@@ -2381,10 +2381,10 @@ function HistoryPanelMixin:CreateHeaderFilters()
   -- Refresh. Anchoring to frame (not listPane) means the dropdown row width
   -- is bounded by the panel, not by the splitter. Top offset is recomputed
   -- by ReflowBelowChips (below) from the chip band's actual height.
-  local ddBand = CreateFrame("Frame", nil, frame)
+  local ddBand = CreateFrame("Frame", nil, self)
   ddBand:SetHeight(24)
-  ddBand:SetPoint("TOPLEFT",  frame, "TOPLEFT",  6, -56)
-  ddBand:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, -56)
+  ddBand:SetPoint("TOPLEFT",  self, "TOPLEFT",  6, -56)
+  ddBand:SetPoint("TOPRIGHT", self, "TOPRIGHT", -6, -56)
 
   ddBand.surfaceDD = Chrome.CreateModernDropdown(ddBand, "Surface", SURFACE_VALUES, SURFACE_LABELS,
     function() return filterState.surface end,
@@ -2452,8 +2452,8 @@ function HistoryPanelMixin:CreateHeaderFilters()
   -- ShowHistoryContent / ShowConfigContent toggle filterStrip (the dropdowns
   -- row); the chips band is toggled alongside.
   listPane.filterStrip = ddBand
-  frame.filterStrip = ddBand
-  frame.filterChipsBand = chipsBand
+  self.filterStrip = ddBand
+  self.filterChipsBand = chipsBand
 
   -- Repositions everything below the chip band from its actual height, so a
   -- wrapped second row pushes the dropdowns, the sender filter chip, and the
@@ -2462,18 +2462,18 @@ function HistoryPanelMixin:CreateHeaderFilters()
   -- anchors CreatePanes already set on listPane/detailPane are untouched.
   local function ReflowBelowChips()
     local ddTop = -LAYOUT.CHIPS_TOP - chipsBand:GetHeight() - LAYOUT.CHIP_BAND_GAP
-    ddBand:SetPoint("TOPLEFT",  frame, "TOPLEFT",  6, ddTop)
-    ddBand:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, ddTop)
+    ddBand:SetPoint("TOPLEFT",  self, "TOPLEFT",  6, ddTop)
+    ddBand:SetPoint("TOPRIGHT", self, "TOPRIGHT", -6, ddTop)
 
     local listTop = ddTop - ddBand:GetHeight() - LAYOUT.LIST_TOP_GAP
-    listPane:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, listTop)
-    detailPane:SetPoint("TOPLEFT", frame, "TOPLEFT",
+    listPane:SetPoint("TOPLEFT", self, "TOPLEFT", 6, listTop)
+    detailPane:SetPoint("TOPLEFT", self, "TOPLEFT",
       6 + listPane:GetWidth() + LAYOUT.SPLITTER_WIDTH + 4, listTop)
 
-    if frame.senderChip then
+    if self.senderChip then
       local chipTop = listTop - LAYOUT.SENDER_CHIP_LIST_OFFSET
-      frame.senderChip:SetPoint("TOPLEFT",  frame, "TOPLEFT",   8, chipTop)
-      frame.senderChip:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, chipTop)
+      self.senderChip:SetPoint("TOPLEFT",  self, "TOPLEFT",   8, chipTop)
+      self.senderChip:SetPoint("TOPRIGHT", self, "TOPRIGHT", -8, chipTop)
     end
   end
   chipsBand.OnChipsReflowed = ReflowBelowChips
