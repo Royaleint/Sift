@@ -1,5 +1,6 @@
 -- Sift/UserRules.lua
--- The player's own keyword block and allow lists.
+-- The player's own keyword block and allow lists: two independent lists that
+-- share storage, guardrails and matching.
 
 local _, NS = ...
 local UserRules = {}
@@ -9,9 +10,8 @@ local function TouchRevision()
   revision = revision + 1
 end
 
--- User-authored keyword rules: two independent lists (block and allow) with
--- shared storage, guardrails and matching. Rules match Cleanse-normalized text,
--- so "gold" also catches "g0ld" and "g o l d". Dedup and cap are per list.
+-- Rules match Cleanse-normalized text, so "gold" also catches "g0ld" and
+-- "g o l d". Dedup and cap are per list.
 local BLOCK = "block"
 local ALLOW = "allow"
 
