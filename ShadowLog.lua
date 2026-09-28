@@ -1,26 +1,9 @@
 -- Sift/ShadowLog.lua
--- BSP-032 Phase 1: dev-only capture of messages the filter did NOT block.
+-- Dev-only capture of messages the filter did not block, exported with
+-- /bdev fnx. Senders the Trust layer skips never reach it.
 --
--- The pipeline drops every below-threshold message without recording it, so the
--- corpus can only ever grow from spam that was already caught. False negatives
--- are invisible, and novel spam that scores 0 cannot be surfaced by lowering the
--- threshold either (threshold clamps at 1, and 0 never reaches it). This module
--- keeps the misses in a dev-only store so they can be exported (/bdev fnx) and
--- hand-triaged into the corpus.
---
--- WHAT THIS DOES NOT SEE: senders the Trust layer skips. Pipeline returns before
--- scoring for guild members, friends, and the allowlist, so a trusted sender's
--- spam never reaches capture. That is a real hole in the mining set -- it is the
--- exact gap BSP-058's allow-keyword walkthrough exists to audit -- and closing it
--- means a second call site above the trust gate, which is not this ticket.
---
--- Deliberately NOT History. History is the player-facing block record: FIFO,
--- per-character, and capped. Reusing it would evict real blocked entries to make
--- room for chatter, and it never sees the score-0 messages that are the point.
---
--- devMode gates capture at the CALL SITE in ChatScanner, not in here. With
--- devMode off nothing calls in, so a normal player pays one boolean compare per
--- chat line and no allocation at all.
+-- Deliberately not History: History is the player-facing, per-character block
+-- record, and reusing it would evict real blocks to make room for chatter.
 
 local _, NS = ...
 local ShadowLog = {}
@@ -29,14 +12,11 @@ local MAX_ENTRIES     = 1000  -- account-wide cap on distinct captured messages
 local MIN_LEN         = 8     -- min cleansed length; shorter is chatter, not a candidate
 local MAX_VARIANTS    = 3     -- distinct raw spellings kept per cleansed key
 local REPEAT_INTEREST = 3     -- occurrences at which a message counts as repeated
--- Ceiling on how long one entry can resist eviction. Kept one above the highest
--- chance count Rank can produce (max Rank 6, so 7 chances) -- if it clamped, the
--- top of the range would flatten and the repeat term would stop distinguishing
--- the entries that matter most.
+-- Ceiling on eviction chances: must stay at least max Rank + 1 (currently 7),
+-- or the top of the ranking flattens.
 local MAX_CHANCES     = 7
 
--- Mirrors History.lua's IGNORED_BREAKDOWN_KEYS (the canonical set) so the
--- category recorded here matches what History and the config stats call dominant.
+-- Mirrors History.lua's IGNORED_BREAKDOWN_KEYS; keep the two in step.
 local IGNORED_BREAKDOWN_KEYS = {
   MixedScript = true,
   BlockedActor = true,
@@ -45,8 +25,7 @@ local IGNORED_BREAKDOWN_KEYS = {
   ManualBlock = true,
 }
 
--- Every entry carries where it came from, so an audit lane can be told apart
--- from ordinary corpus candidates without rewriting stored entries later.
+-- Every entry records which lane captured it.
 local SOURCE_FN_CANDIDATE = "fn-candidate"
 local SOURCE_ALLOW_AUDIT  = "allow-audit"
 
@@ -73,20 +52,9 @@ local function GetStore()
   return global.shadowLog
 end
 
--- How interesting an entry is for corpus mining, 0 upward. ONE definition, three
--- consumers: it seeds how long an entry resists eviction, it orders the export,
--- and it is where a new signal gets added rather than in a second comparator.
---
--- Scoring at all is the strongest cue we have (something in the corpus already
--- half-matched); repetition is the next, because an advert is repeated and an
--- ordinary question usually is not.
---
--- SFT-081: a capture tag counts on its own, independent of score. The near-miss
--- worth mining most is often the one the score cannot see -- a message with real
--- selling weight held under the line by anti-signal weight scores at or below
--- zero, which ranks it with the chatter and gets it evicted on first sight. The
--- tag is exactly the evidence that says otherwise, so it must not be conditional
--- on a positive score.
+-- How interesting an entry is, 0 upward. The single ranking: it seeds eviction
+-- chances and orders the export, so add new signals here, not in a second
+-- comparator. A capture tag counts even when the score is zero or below.
 function ShadowLog.Rank(entry)
   local rank = 0
   if (tonumber(entry.score) or 0) > 0 then
@@ -106,10 +74,8 @@ local function RefreshChances(entry)
   entry.chances = chances > MAX_CHANCES and MAX_CHANCES or chances
 end
 
--- Also seeds `chances` on any entry that lacks it. A store written before CLOCK
--- eviction existed has none, and an entry read as zero chances is evicted on
--- first sight -- which would throw away exactly the entries a previous session
--- thought worth keeping. Seeding on restore keeps the priority order intact.
+-- Also seeds `chances` on any stored entry that lacks it; one read as zero
+-- chances would be evicted on first sight.
 local function GetIndex(store)
   if index then
     return index
@@ -121,8 +87,7 @@ local function GetIndex(store)
       if tonumber(entry.chances) == nil then
         RefreshChances(entry)
       end
-      -- Provenance was a single string before it could hold more than one lane.
-      -- Lift it on restore so an old record is not quietly treated as having none.
+      -- Older records stored provenance as a single string; lift it on restore.
       if type(entry.sources) ~= "table" then
         entry.sources = type(entry.source) == "string" and { entry.source } or {}
         entry.source = nil
@@ -149,14 +114,8 @@ local function DominantCategory(breakdown)
   return bestCat
 end
 
--- Adds `value` to `list` if it is not already there. Both the tag set and the
--- provenance set are unions for the same reason: sightings of one message
--- disagree, and whichever sighting happened to be last is not the truth. An
--- obfuscated respelling of a handle loses the token match while keeping the
--- shape; a message the allowlist let through may already be recorded from the
--- ordinary lane. Assigning would drop what the record had already earned, which
--- is the opposite of what a mining record is for -- and for provenance it would
--- hide exactly the case an allowlist audit exists to reveal.
+-- Adds `value` to `list` if it is not already there. Tags and provenance are
+-- unions across sightings; assigning would drop what earlier sightings recorded.
 local function AddUnique(list, value)
   for i = 1, #list do
     if list[i] == value then
@@ -179,10 +138,7 @@ local function MergeTags(entry, tags)
   end
 end
 
--- Cleansing folds case, symbols, and repeated letters away, so one key covers
--- many spellings -- but the spellings ARE the data being mined (a re-spelled ad
--- is what defeats a vocabulary rule). Keep a bounded handful of distinct raw
--- originals per key rather than only the first one seen.
+-- One cleansed key covers many raw spellings; keep a bounded handful of them.
 local function AddVariant(entry, original)
   local originals = entry.originals
   for i = 1, #originals do
@@ -195,43 +151,26 @@ local function AddVariant(entry, original)
   end
 end
 
--- Records that this lane saw the message. A record shared by both lanes carries
--- both, because "the allowlist also let this through" is a fact about the record
--- that a first-writer-wins field would silently swallow.
+-- Records that this lane saw the message; a record seen by both lanes keeps both.
 local function MergeSource(entry, source)
   entry.sources = type(entry.sources) == "table" and entry.sources or {}
   AddUnique(entry.sources, source)
 end
 
--- The audit lane also records WHICH allow phrase let the message through --
--- that phrase is the actionable datum: an allowlist you cannot attribute a
--- bypass to is an allowlist you cannot prune. Union, like tags and sources
--- (different phrases can pass the same line over time).
+-- The allow-through lane also records which allow phrases let the message
+-- through (a union, like tags and sources).
 local function MergeAllowPhrase(entry, allowPhrase)
   if type(allowPhrase) ~= "string" or allowPhrase == "" then return end
   entry.allowPhrases = type(entry.allowPhrases) == "table" and entry.allowPhrases or {}
   AddUnique(entry.allowPhrases, allowPhrase)
 end
 
--- CLOCK (second-chance) eviction.
+-- CLOCK (second-chance) eviction. Every incoming message is admitted; the hand
+-- walks the store, an entry with chances left spends one and survives, and the
+-- first entry out of chances is evicted. Chances come from Rank.
 --
--- The store sees every line the filter lets through, so in a busy channel it is
--- full within minutes and everything after that depends on what gets evicted.
--- Two rules matter and they pull against each other: a novel zero-scoring
--- message must ALWAYS be able to get in (it is the whole reason the store
--- exists, and no threshold setting can surface it), while a near-miss already
--- captured must not be pushed out by chatter.
---
--- So: every incoming message is admitted, and the victim is chosen by walking a
--- hand around the store. An entry with chances left spends one and survives;
--- the first entry out of chances is evicted. Chances come from Rank, so a
--- scoring or repeated entry survives several full passes while a one-off line
--- survives one -- and because every visit spends a chance, nothing is immortal.
--- Cost is amortised O(1): each spent chance was paid for by an earlier arrival.
---
--- Deliberately NOT recency. Ranking by timestamp is what made an earlier draft
--- wrong: refreshing the timestamp on every repeat made the most repetitive
--- chatter the LAST thing evicted.
+-- Deliberately not recency: refreshing a timestamp on every repeat would make
+-- the most repetitive chatter the last thing evicted.
 local function EvictOne(store, entries)
   local count = #store
   if count == 0 then
@@ -259,10 +198,7 @@ local function EvictOne(store, entries)
 end
 
 local function Record(original, analysis, surface, score, source, allowPhrase)
-  -- The dev-only gate lives HERE, not at the call sites. Every lane into this
-  -- store has the same obligation, and a caller wiring in from somewhere else in
-  -- the pipeline must not be able to forget it -- so the property is structural
-  -- rather than something you have to read each call site to confirm.
+  -- The dev-only gate lives here, not at the call sites, so no lane can skip it.
   if not (NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode()) then
     return nil
   end
@@ -279,10 +215,7 @@ local function Record(original, analysis, surface, score, source, allowPhrase)
 
   local total = tonumber(score and score.score) or 0
 
-  -- SFT-079: capture-only tags. Evaluate answers nil unless the message already
-  -- carries a sell signal, so a message in another language is never tagged for
-  -- being in another language. Nothing here can block: the tag is written into a
-  -- store a human reads.
+  -- Capture-only tags; Evaluate returns nil unless the message carries a sell signal.
   local tags = NS.Signals and NS.Signals.Evaluate and NS.Signals.Evaluate(analysis, score)
 
   local entries = GetIndex(store)
@@ -333,10 +266,8 @@ function ShadowLog.Capture(original, analysis, surface, score)
   return Record(original, analysis, surface, score, SOURCE_FN_CANDIDATE)
 end
 
--- The seam BSP-058's allow-keyword walkthrough calls, from above the trust gate
--- where Capture never runs. Same store, different provenance: these are messages
--- an allow rule let through, and telling them apart from ordinary misses is the
--- whole point of auditing an allowlist. Unused until that ticket wires it up.
+-- Captures a message an allow keyword let through: same store, separate
+-- provenance, so allowlist passes can be told apart from ordinary misses.
 function ShadowLog.CaptureAllowThrough(original, analysis, surface, score, allowPhrase)
   return Record(original, analysis, surface, score, SOURCE_ALLOW_AUDIT, allowPhrase)
 end
@@ -352,13 +283,8 @@ function ShadowLog.Count()
   return store and #store or 0
 end
 
--- Converges an oversized store back to the cap. Runs at login the way
--- History.TrimAllCharacters does: a store carried over from a build with a
--- larger cap would otherwise only shrink one entry per capture.
---
--- Sheds through the same eviction the store uses at runtime, so there is one
--- retention policy rather than a second one that discards by arrival order and
--- would throw away near-misses to keep chatter.
+-- Shrinks an oversized store back to the cap at login, through the same
+-- eviction used at runtime so there is only one retention policy.
 function ShadowLog.TrimToCap()
   local store = GetStore()
   if not store then
@@ -373,8 +299,7 @@ function ShadowLog.TrimToCap()
   return removed
 end
 
--- Inspection accessor (tests). Mirrors Frequency._Params: the tuning lives here,
--- and a test that hard-codes its own copy of the cap stops testing this module.
+-- Inspection accessor for tests, so they read the tuning rather than copy it.
 function ShadowLog._Params()
   return {
     maxEntries = MAX_ENTRIES,
