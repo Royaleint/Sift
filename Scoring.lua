@@ -8,9 +8,7 @@ local _, NS = ...
 local _injectedPatterns = nil  -- test-only override; primary path is options.patterns or NS.Patterns
 local EMPTY_HITS = {}  -- shared, never mutated: only #hits and hits[i] are read
 
--- Reused across calls: _ScoreHits runs once per scanned chat message and
--- seenRules is pure dedup scratch -- nothing outside this function ever reads
--- it -- so wiping and refilling one table beats allocating a fresh one.
+-- Reused dedup scratch on the per-message path; wiped each call, not reallocated.
 local seenRules = {}
 
 function Scoring.SetPatternsForTest(p)
