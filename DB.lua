@@ -33,7 +33,8 @@ end
 local SV_NAME, SV_LEGACY_NAME = DB.DeriveSVNames(ADDON_NAME)
 local SV_NAME_ERROR = (not SV_NAME) and SV_LEGACY_NAME or nil
 
--- Bump only with a matching migrations[N]: ApplyMigrations stamps the version even when that entry is missing.
+-- Bump only with a matching migrations[N]: ApplyMigrations stamps the version
+-- even when that entry is missing.
 local CURRENT_SCHEMA_VERSION = 4
 local ADDON_VERSION = "1.4.0"
 local BLOCKED_ACTOR_CAP = 5000
@@ -751,7 +752,8 @@ local function MergeBlockedActorCollision(guid, sift, legacy)
     merged.surfaces = MergeCountMap(sift.surfaces, legacy.surfaces, false)
     merged.categories = MergeCountMap(sift.categories, legacy.categories, false)
   end
-  -- Newer side names the entry (a tie keeps Sift's); an unusable name/realm falls back to the other side.
+  -- Newer side names the entry (a tie keeps Sift's); an unusable name/realm
+  -- falls back to the other side.
   local newer, older = sift, legacy
   if legacy.lastBlockedAt > sift.lastBlockedAt then
     newer, older = legacy, sift
