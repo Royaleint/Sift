@@ -233,8 +233,7 @@ function Cleanse._Stage9_UnicodeSeparators(text)
 end
 
 -- Returns boolean. Flushes word state on any non-letter codepoint.
--- Analyze no longer calls this; it is kept as the reference the fused pass is
--- tested against.
+-- Not called by Analyze; kept as the fused pass's test reference.
 function Cleanse._DetectMixedScript(text)
   if not text or text == "" then return false end
   local function scriptOf(cp)
@@ -432,6 +431,7 @@ function Cleanse._FusedFrontPass(text)
   return table.concat(out), mixed, hasTokenSeparator, scriptIsland
 end
 
+-- Output is saved: keyword rules store it and are never re-cleansed, so a change to it needs a migration.
 function Cleanse.Analyze(text)
   if type(text) ~= "string" then
     return {
