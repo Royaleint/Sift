@@ -67,18 +67,18 @@ end
 -- with no realm. Sift stores that full name in `name` and leaves `realm` nil,
 -- the same form Foundry keys the character by.
 --
--- Read on first use, not at file load, and cached: the chat path asks per
--- recorded message. Every caller runs after login.
-local regionalNames
+-- Only a true answer is cached: a false one read early in login must not
+-- stick, so it is asked again until it turns true. Where the function does
+-- not exist this costs a lookup and a type check.
+local regionalNames = false
 
 function Compat.RegionalNames()
-  if regionalNames == nil then
+  if not regionalNames then
     local enabled = rawget(_G, "RegionalUniqueNamesEnabled")
-    local ok, result = false, nil
     if type(enabled) == "function" then
-      ok, result = pcall(enabled)
+      local ok, result = pcall(enabled)
+      regionalNames = ok and result == true
     end
-    regionalNames = ok and result == true
   end
   return regionalNames
 end
