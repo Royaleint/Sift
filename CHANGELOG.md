@@ -1,5 +1,20 @@
 # Sift Changelog
 
+## v1.4.1 (2026-09-29)
+
+- Sift supports WoW Forever, alongside Retail, Classic Era, Anniversary and MoP Classic.
+- Upgrading from BawrSpam now brings your allowlist, blocked list, settings and History across to Sift. Anything you already changed in Sift stays as it is, and players you blocked by hand stay marked as blocked by you.
+- A small "Sift (legacy data)" entry now appears in your addon list. It runs no code and only holds your old BawrSpam saves so Sift can bring them across.
+- Added "Block (Sift)" to the guild and community roster right-click menus, with a confirmation before it blocks.
+- Right-clicking the name of someone you just blocked in chat now shows them as blocked, instead of showing Block as unavailable.
+- Config > Blocked now marks the players Sift blocked on its own, and long names are shortened so they no longer run under the Remove button.
+- Added hover tooltips across the History window, and reworded the Config and History tooltips in plainer language.
+- Tidied the History and Config layout: column headers and buttons size to their own text, the category filter chips wrap to a second row, the window shrinks to fit the Config tab and returns to full size for History, and the Config status line is larger.
+- Pressing Enter in Add from History now adds the name.
+- The Report action in History now works. It opens the game's report window with the sender and chat line already filled in.
+- On WoW Forever, Sift now shows players by first name and surname, and Add from History and /sift allow accept the full name.
+- Updated the bundled Foundry-1.0 library to v1.0.106.
+
 ## v1.4.0 (2026-09-19)
 
 - Sift is the new name for BawrSpam.

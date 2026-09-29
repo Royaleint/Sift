@@ -1,27 +1,17 @@
 # Sift
 
-> **Version:** 1.4.0
-> **Status:** Released on CurseForge (project 1549238). Supports Retail, Classic Era, TBC Anniversary, MoP Classic, and WoW Forever in the same package.
+A personal chat-spam filter for World of Warcraft with recoverable history. Sift hides spam from your chat, and you can read anything it blocked in the History panel and restore it.
 
-A personal chat-spam filter for World of Warcraft with recoverable history. Blocks RMT, boost-service, casino, and phishing spam in chat, and lets you review or restore anything it blocks.
+Open History with `/sift` or the minimap button.
 
-## Features
-
-- **Chat Filter**: Blocks spam in CHANNEL, WHISPER, SAY, and YELL channels before it reaches your chat frame. Trusted senders (party, raid, guild, friends, Battle.net friends) are never filtered.
-- **Chat Bubble Suppression**: Optional CVar toggle that hides world chat bubbles for blocked SAY/YELL spam. CVar restores on the next non-blocked event and on logout — your bubble setting isn't permanently altered.
-- **Repeat Detection**: When a sender repeats spam Sift already caught, in the same kind of chat, the repeat is counted separately in the History stats. Each repeat still gets its own History entry, and this never changes what gets blocked.
-- **Recoverable History**: Every block lands in a per-character history table you can review, restore, or always-allow from. Stored locally; never transmitted.
-- **History Panel**: Master/detail UI with category chips, surface/time/outcome/sort filters, FauxScroll list, and surface-aware Restore / Always-allow actions.
-- **Config Panel**: Ten-section options panel covering Detection, Categories, Surfaces, Allowlist, Blocked, My Keywords, Never Block, History, UI, and Dev. Slash subcommands hit the same surfaces.
-- **Unit Tooltip Annotation**: Hover any player and see "Sift: blocked N spam messages (last Xm ago)" if you've blocked them before.
-- **Minimap Launcher**: LibDBIcon button toggles the history panel.
+Supports Retail, Classic Era, TBC Anniversary, MoP Classic, and WoW Forever.
 
 ## Installation
 
-Available on CurseForge (project 1549238). For a manual/dev install:
+Available on CurseForge. For a manual install:
 
 1. Clone or download this repository.
-2. Place the `Sift/` folder in your WoW client's `Interface/AddOns/` folder, so it lands at `Interface/AddOns/Sift/` (each client flavor — Retail, Classic Era, TBC Anniversary, MoP Classic, WoW Forever — has its own AddOns folder). Foundry-1.0 and the other vendored libraries (LibStub, CallbackHandler-1.0, LibDataBroker-1.1, LibDBIcon-1.0) ship embedded inside `Sift/Libs/` — no separate install — see `Libs/ATTRIBUTION.md`. A standalone install of [Foundry-1.0](https://www.curseforge.com/wow/addons/foundry-1-0) takes priority over the embedded copy if installed and enabled.
+2. Place the `Sift/` folder in your WoW client's `Interface/AddOns/` folder, so it lands at `Interface/AddOns/Sift/` (each client has its own AddOns folder). Foundry-1.0 and the other vendored libraries (LibStub, CallbackHandler-1.0, LibDataBroker-1.1, LibDBIcon-1.0) ship embedded inside `Sift/Libs/`, so no separate install is needed; see `Libs/ATTRIBUTION.md`. A standalone install of [Foundry-1.0](https://www.curseforge.com/wow/addons/foundry-1-0) takes priority over the embedded copy if installed and enabled.
 3. Enable in your addon list and `/reload`.
 
 ## Commands
@@ -30,42 +20,27 @@ Available on CurseForge (project 1549238). For a manual/dev install:
 |---------|-------------|
 | `/sift` | Toggle the History panel |
 | `/sift history` | Toggle the History panel |
-| `/sift config` | Open the Config panel (Detection section) |
-| `/sift options` | Open the Config panel (Detection section) |
-| `/sift allow` | Always-allow the selected sender from history |
-| `/sift export` | Open the export dialog (allowlist + blocked) |
-| `/sift import` | Open the import dialog |
+| `/sift config` | Open the Config panel |
+| `/sift options` | Open the Config panel |
+| `/sift allow <name>` | Always-allow a sender from your History (Name-Realm, or the full name on WoW Forever) |
+| `/sift export` | Export your allowlist |
+| `/sift import` | Import an allowlist |
 | `/sift clearhistory` | Confirm and clear all history |
 | `/sift clearblocked` | Confirm and clear the blocked-senders list |
-| `/sift rebuildstats` | Rebuild this character's per-category stat counts from retained history |
-| `/bdev test` | Synthetic block test (devMode only) |
-
-## How It Works
-
-Sift scores incoming messages against a private hand-curated pattern set. Gold selling (RMT), Boosting, and Carrying each have their own Active, Paused, or Off setting, and My Keywords adds phrases you choose yourself. A few older casino, phishing, and commercial rules still run at fixed settings, with no setting of their own. Each message is cleansed through a 9-stage normalization pipeline (homoglyph swaps, zero-width strip, leet-to-letter, etc.) before scoring, so common evasion tricks don't bypass the filter. Messages over the block threshold are suppressed and logged to history; everything else passes through untouched.
-
-Trust short-circuits run before scoring. Party, raid, guild, friends, and Battle.net friends are never filtered. Senders on your personal allowlist are also never filtered.
-
-The pattern data shipped in `PatternData.lua` is XOR-encoded so the addon files don't expose the underlying spam strings to ban evasion. The build tool that generates this file is in the private dev repo and is not shipped publicly.
+| `/sift rebuildstats` | Rebuild this character's stat counts from retained history |
 
 ## Privacy
 
-- All history is **local-only**, stored per-character in `SiftDB`. Nothing is transmitted off your machine.
-- No telemetry. No remote pattern updates. No cloud sync.
+- All history is **local-only**, stored per-character in `SiftDB`. Sift itself sends nothing off your machine.
+- No telemetry, no cloud sync, nothing downloaded while you play.
 - The allowlist and blocked list are similarly local.
-
-## Known Limitations
-
-- **Pattern corpus grows from personal dogfood observation** — hand-curated, not a comprehensive spam database.
-- **No LFG listing scanning** — premade-group listing text is Kstring-protected on Midnight (unreadable to addons), and Blizzard filters advertisement listings natively, so Sift covers chat surfaces only.
-- **No mail-spam scanning** — chat surfaces only. Mail scanning is a v2.0 candidate.
 
 ## License
 
 Sift is licensed **All Rights Reserved** with explicit addon permissions
 for personal in-game use, private local modification, and contribution forks.
 Redistribution, repackaging, commercial use, relicensing, or reuse of
-Sift code/pattern data in another project requires prior written
+Sift code or data in another project requires prior written
 permission. See `LICENSE`.
 
 Vendored libraries under `Libs/` retain their upstream terms; see
@@ -75,6 +50,6 @@ Vendored libraries under `Libs/` retain their upstream terms; see
 
 ## Attribution
 
-Inspired by funkydude's BadBoy (https://github.com/funkydude/BadBoy) — a long-running chat-spam filter for WoW. Sift is an independent original-work implementation; no code, patterns, or data are imported from BadBoy or any other addon. The category model, scoring approach, cleanse pipeline, and pattern corpus are all original work, written from observed in-game spam by the author.
+Inspired by funkydude's BadBoy (https://github.com/funkydude/BadBoy), a long-running chat-spam filter for WoW. Sift is an independent, original implementation.
 
 Vendored libraries (LibStub, CallbackHandler-1.0, LibDataBroker-1.1, LibDBIcon-1.0) retain their original licenses and authorship; see `Libs/ATTRIBUTION.md`.
