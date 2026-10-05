@@ -164,6 +164,8 @@ local function DecisionCacheHit(id, stamp, event, message, sender, flags, channe
   return slot.decision
 end
 
+-- inProgress marks a slot whose pipeline is still running (a re-entrant filter
+-- call); such a slot is never served, reused or evicted.
 local function ClaimDecisionSlot(id)
   local existing = decisionCacheByID[id]
   if existing and existing.inProgress then return nil end
@@ -190,6 +192,7 @@ end
 
 local function FinishDecisionSlot(slot, generation, stamp, event, message, sender, flags, channelName, guid,
   manualBlocked, trusted, surfaceState, settings, categories, floodEnabled, floodWindow, repeatEnabled, repeatBufferSize, ruleRevision, decision)
+  -- Store only if this run still owns the slot (same id mapping and generation).
   if decisionCacheByID[slot.id] ~= slot or slot.generation ~= generation then return end
   slot.stamp, slot.event, slot.message, slot.sender, slot.flags = stamp, event, message, sender, flags
   slot.channelName, slot.guid = channelName, guid
@@ -406,8 +409,8 @@ local function AppendBlockedHistory(record, counter, suppressReport)
     local category = record.customRule and "Custom" or DominantCategory(record.breakdown)
     NS.DB.RecordBlockedActor(record, category)
   end
-  -- Battle.net whisper lines are excluded until it's confirmed their lineID
-  -- resolves to a valid report location the same way a regular chat line does.
+  -- Battle.net whisper lines are never queued for a report: their lineID is not
+  -- known to resolve to a report location the way a chat line's does.
   if entryID and not suppressReport and record.surface ~= "bn-whisper"
       and NS.ReportFlow and NS.ReportFlow.QueueChatReport then
     NS.ReportFlow.QueueChatReport(entryID, counter, record.name)
@@ -644,9 +647,11 @@ local function FilterBody(event, message, sender, language, channelString, targe
   local surface = EVENT_TO_SURFACE[event] or "chat"
   local surfaceState = (NS.PauseState and NS.PauseState.GetSurface and NS.PauseState.GetSurface(surface)) or "active"
   if surfaceState == "off" then
+    -- The false, false are placeholders: Pipeline returns at the off gate before reading them.
     return Pipeline(event, message, sender, language, channelString, target, flags, unknown,
       channelNumber, channelName, unknown2, counter, guid, settings, false, false, surface, surfaceState)
   end
+  -- Coerced to false, never nil: Pipeline treats nil as "not checked" and looks it up again.
   local manualBlocked = IsUsableString(guid) and NS.DB and NS.DB.IsManuallyBlocked
     and NS.DB.IsManuallyBlocked(guid) == true or false
   local trusted = not manualBlocked and NS.Trust and NS.Trust.IsTrusted
@@ -687,6 +692,7 @@ local function FilterBody(event, message, sender, language, channelString, targe
     end
     error(decision)
   end
+  -- Cache only if settings and category states did not change while Pipeline ran.
   local stable = slot and SameSettings(slot, GetSettings())
   local currentCategories = NS.PauseState and NS.PauseState.GetEffectiveCategoryStates
     and NS.PauseState.GetEffectiveCategoryStates() or nil
@@ -728,6 +734,7 @@ function ChatScanner.Filter(
     pcall(ErrorHandler, result)
     return false
   end
+  -- Only a strict true hides the line; anything else lets it through.
   return result == true
 end
 
