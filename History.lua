@@ -13,8 +13,8 @@ local IGNORED_BREAKDOWN_KEYS = {
   MixedScript = true,
   BlockedActor = true,
   Flood = true,
-  -- Repeat blocks carry a synthesized Throttle weight; it is counted in
-  -- stats.throttled, not as a category.
+  -- Not a category; older saved rows still carry a Throttle weight, so keep it
+  -- excluded. Repeat blocks are counted in stats.throttled.
   Throttle = true,
   -- Manual blocks carry ManualBlock = 1, which is not a category either.
   ManualBlock = true,
@@ -170,6 +170,7 @@ local function EnsureStats(char)
     stats.bySurface = retained.bySurface
     stats.passThru = retained.passThru
     stats.byCategory = retained.byCategory
+    -- throttled and bubblesSuppressed are not in history records and cannot be rebuilt; keep any saved value.
     stats.throttled = stats.throttled or 0
     stats.bubblesSuppressed = stats.bubblesSuppressed or 0
     stats.initialized = true
@@ -233,9 +234,9 @@ function History.Append(record)
   return record.id
 end
 
--- Returns the live records, not copies (copying churned memory on every panel
--- show). Do not mutate them; changes go through MarkRestored / RetroactiveBlock
--- / Append by id.
+-- Returns the live records, not copies (copying would churn memory on every
+-- panel show). Do not mutate them; changes go through MarkRestored /
+-- RetroactiveBlock / Append by id.
 function History.GetRecent(limit)
   local char = GetChar()
   local history = char and char.history or {}
@@ -302,6 +303,7 @@ function History.GetAccountStats()
   local retainedTotal = 0
   local floodTotal = 0
 
+  -- The raw store, because DB.GetChar() returns only the current character.
   local charTable = NS.DB and NS.DB.db and NS.DB.db.sv and NS.DB.db.sv.char
   if type(charTable) == "table" then
     for _, charData in pairs(charTable) do
@@ -449,6 +451,7 @@ end
 
 function History.TrimAllCharacters()
   if not NS.DB or not NS.DB.db or not NS.DB.db.sv then return 0, 0 end
+  -- The raw store, because DB.GetChar() returns only the current character.
   local charTable = NS.DB.db.sv.char
   if type(charTable) ~= "table" then return 0, 0 end
 
