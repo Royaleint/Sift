@@ -124,14 +124,14 @@ L["Copy sender name"] = "Copy sender name"
 -- History panel: detail-pane action tooltips (RenderActions' tipTitle /
 -- tipBody, read by ActionOnEnter through L[self.tipTitle] / L[self.tipBody])
 L["This block has already been undone. No further action needed."] = "This block has already been undone. No further action needed."
-L["This sender is on the allowlist. Future messages from them bypass scanning."] = "This sender is on the allowlist. Future messages from them bypass scanning."
+L["This sender is on the allowlist. Sift won't block messages from them."] = "This sender is on the allowlist. Sift won't block messages from them."
 L["Mark this message as blocked. It already appeared in chat and stays there, but Sift opens Blizzard's report window for it when it can."] = "Mark this message as blocked. It already appeared in chat and stays there, but Sift opens Blizzard's report window for it when it can."
-L["Add this sender to the allowlist. Future messages from them bypass scanning."] = "Add this sender to the allowlist. Future messages from them bypass scanning."
+L["Add this sender to the allowlist. Sift won't block messages from them."] = "Add this sender to the allowlist. Sift won't block messages from them."
 L["Undo this block. The message won't reappear in chat, only here in History, and you can no longer report it."] = "Undo this block. The message won't reappear in chat, only here in History, and you can no longer report it."
 L["Report"] = "Report"
 L["Open Blizzard's report window for this message."] = "Open Blizzard's report window for this message."
 L["Undo this block. The message won't reappear in chat, and the sender is already on the allowlist."] = "Undo this block. The message won't reappear in chat, and the sender is already on the allowlist."
-L["Undo this block and add the sender to the allowlist, so Sift stops checking their messages. The message won't reappear in chat."] = "Undo this block and add the sender to the allowlist, so Sift stops checking their messages. The message won't reappear in chat."
+L["Undo this block and add the sender to the allowlist. The message won't reappear in chat."] = "Undo this block and add the sender to the allowlist. The message won't reappear in chat."
 L["Undo this block without changing the allowlist. The message won't reappear in chat."] = "Undo this block without changing the allowlist. The message won't reappear in chat."
 L["Undo this block. The message won't reappear in chat, and this surface can't be allowlisted."] = "Undo this block. The message won't reappear in chat, and this surface can't be allowlisted."
 
@@ -148,7 +148,7 @@ L["paused"] = "paused"
 L["off"] = "off"
 L["Active \194\183 detected spam is blocked from chat."] = "Active \194\183 detected spam is blocked from chat."
 L["Paused \194\183 detected spam is logged to History but stays in chat."] = "Paused \194\183 detected spam is logged to History but stays in chat."
-L["Off \194\183 this surface is not scanned."] = "Off \194\183 this surface is not scanned."
+L["Off \194\183 Sift won't block messages on this surface."] = "Off \194\183 Sift won't block messages on this surface."
 
 -- History panel: char/account stats-scope button tooltips
 L["Show detection stats for this character only."] = "Show detection stats for this character only."
@@ -239,7 +239,7 @@ L["Toggle each spam category between Active (block), Paused (log only), and Off 
 L["Surfaces"] = "Surfaces"
 L["Choose how Sift handles each kind of chat: Chat, Whisper, and Bnet whisper. Also has the option to hide chat bubbles for blocked messages."] = "Choose how Sift handles each kind of chat: Chat, Whisper, and Bnet whisper. Also has the option to hide chat bubbles for blocked messages."
 L["Allowlist"] = "Allowlist"
-L["Players whose messages Sift doesn't check. Add them from History or import a saved list. If you also block one of them yourself, your block wins."] = "Players whose messages Sift doesn't check. Add them from History or import a saved list. If you also block one of them yourself, your block wins."
+L["Players whose messages Sift won't block. Add them from History or import a saved list. If you also block one of them yourself, your block wins."] = "Players whose messages Sift won't block. Add them from History or import a saved list. If you also block one of them yourself, your block wins."
 L["Players Sift has blocked before, plus anyone you blocked yourself."] = "Players Sift has blocked before, plus anyone you blocked yourself."
 L["Your own words and phrases to block, on top of Sift's filter."] = "Your own words and phrases to block, on top of Sift's filter."
 L["Never Block"] = "Never Block"
@@ -264,14 +264,14 @@ L["Choose how readily Sift blocks spam."] = "Choose how readily Sift blocks spam
 -- body reuses the History-panel key above verbatim)
 L["Active \194\183 detected spam on this surface is blocked from chat."] = "Active \194\183 detected spam on this surface is blocked from chat."
 L["Active \194\183 messages in this category are blocked."] = "Active \194\183 messages in this category are blocked."
-L["Off \194\183 this surface is not scanned at all."] = "Off \194\183 this surface is not scanned at all."
+L["Off \194\183 Sift won't block anything on this surface."] = "Off \194\183 Sift won't block anything on this surface."
 L["Off \194\183 Sift ignores this category."] = "Off \194\183 Sift ignores this category."
 
 -- Config panel: Surfaces section
 L["Filter bubbles"] = "Filter bubbles"
 L["Also hides the chat bubble for blocked Say and Yell messages. To do this, Sift briefly turns off the game's chat bubbles, then turns them back on with the next chat message and when you log out."] = "Also hides the chat bubble for blocked Say and Yell messages. To do this, Sift briefly turns off the game's chat bubbles, then turns them back on with the next chat message and when you log out."
 L["Three states per category: Active (block) / Paused (detect + log, don't hide) / Off (ignore)."] = "Three states per category: Active (block) / Paused (detect + log, don't hide) / Off (ignore)."
-L["Three states per surface: Active (block) / Paused (detect + log, don't hide) / Off (don't scan)."] = "Three states per surface: Active (block) / Paused (detect + log, don't hide) / Off (don't scan)."
+L["Three states per surface: Active (block) / Paused (detect + log, don't hide) / Off (do nothing)."] = "Three states per surface: Active (block) / Paused (detect + log, don't hide) / Off (do nothing)."
 
 -- Config panel: Allowlist section
 L["Type part of a name or realm, then click Apply to filter the list below. You can also search the word shown under each name: manual, history, or import."] = "Type part of a name or realm, then click Apply to filter the list below. You can also search the word shown under each name: manual, history, or import."

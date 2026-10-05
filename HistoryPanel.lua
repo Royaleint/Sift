@@ -1117,7 +1117,7 @@ function HistoryDetailMixin:RenderActions(entry)
       actions.btn2:Disable()
       actions.btn2:Show()
       actions.btn2.tipTitle = "Allowlisted"
-      actions.btn2.tipBody  = "This sender is on the allowlist. Future messages from them bypass scanning."
+      actions.btn2.tipBody  = "This sender is on the allowlist. Sift won't block messages from them."
     end
     return
   end
@@ -1138,7 +1138,7 @@ function HistoryDetailMixin:RenderActions(entry)
       actions.btn2:SetScript("OnClick", function() Actions.PerformAlwaysAllow(entry) end)
       actions.btn2:Show()
       actions.btn2.tipTitle = "Always allow"
-      actions.btn2.tipBody  = "Add this sender to the allowlist. Future messages from them bypass scanning."
+      actions.btn2.tipBody  = "Add this sender to the allowlist. Sift won't block messages from them."
     end
     return
   end
@@ -1181,8 +1181,7 @@ function HistoryDetailMixin:RenderActions(entry)
       end)
       actions.btn1:Show()
       actions.btn1.tipTitle = "Restore + Always allow"
-      actions.btn1.tipBody  = "Undo this block and add the sender to the allowlist, so Sift " ..
-        "stops checking their messages. The message won't reappear in chat."
+      actions.btn1.tipBody  = "Undo this block and add the sender to the allowlist. The message won't reappear in chat."
       actions.btn2:SetText(L["Restore only"])
       actions.btn2:SetScript("OnClick", function() Actions.PerformRestore(entry) end)
       actions.btn2:Show()
@@ -2633,7 +2632,7 @@ function HistoryPanelMixin:CreatePauseRow()
       elseif state == "paused" then
         stateBody = "Paused \194\183 detected spam is logged to History but stays in chat."
       else
-        stateBody = "Off \194\183 this surface is not scanned."
+        stateBody = "Off \194\183 Sift won't block messages on this surface."
       end
       GameTooltip:SetOwner(pillButton, "ANCHOR_RIGHT")
       GameTooltip:AddLine(L[fullName])
