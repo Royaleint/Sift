@@ -200,7 +200,7 @@ local STATS_TILE_TOOLTIPS = {
   },
   passThru = {
     title = "Pass-thru",
-    body  = "Scored as spam but left in chat because the surface or category " ..
+    body  = "Caught as spam but left in chat because the surface or category " ..
             "was set to Paused. Still logged to History for review.",
   },
   restored = {
@@ -704,30 +704,30 @@ end
 -- return these as raw L[] keys, resolved at hover time.
 --
 -- RETIRED and ADDED are two entries so the row and legend tooltips can reuse
--- RETIRED without repeating the score-change sentence.
+-- RETIRED without repeating the ADDED sentence.
 local TIPS = {
   TIME     = "How long ago Sift caught this message. Entries older than 90 days show the date instead.",
   SENDER   = "The player who sent the message. A check mark means you restored it, and (pass-thru) means it was left in chat.",
-  CATEGORY = "The kind of spam Sift found. Spam wave means the same message was posted several times in a short time, and You means you blocked the sender yourself.",
-  SCORE    = "How suspicious the message looked to Sift. Higher means more suspicious, and anything at or above your Block threshold gets caught.",
+  CATEGORY = "The kind of spam Sift found. Spam wave means a flood of the same spam, and You means you blocked the sender yourself.",
+  SCORE    = "How suspicious the message looked to Sift. Higher means more suspicious.",
 
   YOU_HOVER     = "You blocked this player yourself with Block (Sift) on their right-click menu.",
-  SPAM_WAVE_ROW = "Sift caught this because the same message was posted several times within your Spam wave window, by one player or many.",
+  SPAM_WAVE_ROW = "Sift caught this as part of a spam wave, sent by one player or many.",
   QMARK_TITLE   = "Kind of spam not saved",
-  QMARK_BODY    = "Sift caught this but didn't save which kind of spam it was. Older versions of Sift left that out when a player repeated a message Sift had already caught.",
+  QMARK_BODY    = "Sift caught this but didn't save which kind of spam it was. Older versions of Sift sometimes left that out.",
 
   RETIRED = "A kind of spam Sift still catches, but it no longer has its own button to pause it or filter by it.",
-  ADDED   = "Added %d to this message's score.",
+  ADDED   = "Part of why Sift caught this message.",
 
-  CHIP_BLOCKED      = "This player is on your Blocked list, so Sift added %d to the score.",
-  CHIP_MANUAL       = "You blocked this player yourself, so Sift caught this message whatever its score.",
-  CHIP_SPAM_WAVE    = "The same message was posted several times within your Spam wave window, which added %d to the score.",
+  CHIP_BLOCKED      = "This player is on your Blocked list.",
+  CHIP_MANUAL       = "You blocked this player yourself, so Sift caught this message no matter what it said.",
+  CHIP_SPAM_WAVE    = "This message was part of a spam wave.",
   CHIP_REPEAT       = "This message repeated one Sift had already caught from the same sender.",
-  SPAM_WAVE_SWATCH  = "Gray marks messages Sift caught because the same message was posted several times within your Spam wave window, with no spam category of their own. Players you blocked yourself, and entries marked ?, also show in gray.",
+  SPAM_WAVE_SWATCH  = "Gray marks messages Sift caught as part of a spam wave, with no spam category of their own. Players you blocked yourself, and entries marked ?, also show in gray.",
 
   STAT_SURFACE  = "Lifetime detections split by where they came from: Chat, Whisper, and Bnet whisper. Shows this character or the whole account, depending on the Character or Account button.",
   STAT_CATEGORY = "Lifetime detections split by spam category, for this character or the whole account. A gray number means that category is currently Paused or Off.",
-  STAT_PIPELINE = "Repeats counts messages that repeat spam Sift already caught from the same sender. Bubbles suppressed counts the times Sift hid a chat bubble for a blocked Say or Yell. Spam wave (recent) counts blocked messages still in your History that were caught only because the same message was posted several times, so it drops as old entries are removed.",
+  STAT_PIPELINE = "Repeats counts messages that repeat spam Sift already caught from the same sender. Bubbles suppressed counts the times Sift hid a chat bubble for a blocked Say or Yell. Spam wave (recent) counts blocked messages still in your History that were caught only as part of a spam wave, so it drops as old entries are removed.",
 }
 
 -- Pure resolvers (exported for tests). Every display goes through L[] at
@@ -1243,7 +1243,7 @@ function HistoryListMixin:RefreshLegend(stats)
   if not legend then return end
   stats = stats or Data.GetHistoryStats("char")
   -- floodBadgeCount, not floodCount: RenderRow badges Flood on any outcome, so
-  -- the swatch must too. The PIPELINE line uses floodCount (blocked only).
+  -- the swatch must too. The OTHER line uses floodCount (blocked only).
   local floodBadgeCount = tonumber(stats and stats.retained and stats.retained.floodBadgeCount) or 0
   local lx = 4
   local index = 0
@@ -1396,6 +1396,7 @@ function HistoryDetailMixin:RenderBreakdownChips(breakdown)
   end
   table.sort(sorted, function(a, b) return (a.val or 0) > (b.val or 0) end)
 
+  local showPoints = NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode()
   local xOffset = 0
   for index, item in ipairs(sorted) do
     local chip = row.chips[index]
@@ -1416,8 +1417,12 @@ function HistoryDetailMixin:RenderBreakdownChips(breakdown)
     if chip.SetBackdropColor then
       chip:SetBackdropColor(HexNibble(hex, 1), HexNibble(hex, 2), HexNibble(hex, 3), 1)
     end
-    chip.label:SetText(string.format("|cff000000%s +%d|r",
-      L[CATEGORY_BADGE_LABELS[item.cat] or item.cat], item.val))
+    local chipName = L[CATEGORY_BADGE_LABELS[item.cat] or item.cat]
+    if showPoints then
+      chip.label:SetText(string.format("|cff000000%s +%d|r", chipName, item.val))
+    else
+      chip.label:SetText(string.format("|cff000000%s|r", chipName))
+    end
     chip.tipTitle, chip.tipBody, chip.tipBody2, chip.tipValue = HistoryPanel.ChipTipKeys(item.cat, item.val)
     -- Size to the label (same idiom as PlaceCategoryChips): the mapped names
     -- ("Gold selling", "My Keywords") overflow the old fixed 80px.
@@ -1472,7 +1477,7 @@ function HistoryDetailMixin:RefreshDetail()
   end
   if entry.reason == "manual-block" then
     statusText = statusText .. "   " .. L["blocked by you"]
-  else
+  elseif NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode() then
     statusText = statusText .. string.format("   %d / %d",
       tonumber(entry.score) or 0, tonumber(entry.threshold) or 0)
   end
@@ -1933,7 +1938,7 @@ function HistoryStatsMixin.BuildStatsArea(parent)
 
   parent.pipelineLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   parent.pipelineLabel:SetPoint("TOPLEFT", parent.byCategoryText, "BOTTOMLEFT", 0, -8)
-  parent.pipelineLabel:SetText(L["PIPELINE"])
+  parent.pipelineLabel:SetText(L["OTHER"])
 
   parent.pipelineText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   parent.pipelineText:SetPoint("TOPLEFT", parent.pipelineLabel, "BOTTOMLEFT", 0, -2)
@@ -1942,7 +1947,7 @@ function HistoryStatsMixin.BuildStatsArea(parent)
 
   -- One static-text hover host per stats line, anchored TOPLEFT to the
   -- line's label and BOTTOMRIGHT to its text. Titles reuse the existing
-  -- on-screen line labels; PIPELINE gets one host for the whole line.
+  -- on-screen line labels; OTHER gets one host for the whole line.
   local function AddStatsLineTip(labelFS, textFS, title, body)
     local host = CreateFrame("Frame", nil, parent)
     host:SetPoint("TOPLEFT", labelFS, "TOPLEFT", 0, 0)
@@ -1951,7 +1956,7 @@ function HistoryStatsMixin.BuildStatsArea(parent)
   end
   AddStatsLineTip(parent.bySurfaceLabel,  parent.bySurfaceText,  "BY SURFACE",  TIPS.STAT_SURFACE)
   AddStatsLineTip(parent.byCategoryLabel, parent.byCategoryText, "BY CATEGORY", TIPS.STAT_CATEGORY)
-  AddStatsLineTip(parent.pipelineLabel,   parent.pipelineText,   "PIPELINE",    TIPS.STAT_PIPELINE)
+  AddStatsLineTip(parent.pipelineLabel,   parent.pipelineText,   "OTHER",       TIPS.STAT_PIPELINE)
 end
 
 function HistoryDetailMixin.BuildEmptyState(parent)
@@ -2352,7 +2357,7 @@ function HistoryPanelMixin.CreateTabStrip(parent)
     HistoryPanel.ShowConfig(activeConfigSection)
   end)
   Chrome.AttachTooltip(config, "Config",
-    "Adjust thresholds, categories, surfaces, allowlist, and history settings.")
+    "Adjust blocking, categories, surfaces, allowlist, and history settings.")
   tabButtons.Config = config
   parent.tabStrip = strip
 end

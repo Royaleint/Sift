@@ -1701,7 +1701,7 @@ local function AddAxisPauseRow(axis, key, displayLabel, y)
     else
       stateBody = (axis == "surface")
         and "Off \194\183 this surface is not scanned at all."
-        or  "Off \194\183 this category is not scored against messages."
+        or  "Off \194\183 Sift ignores this category."
     end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:AddLine(L[displayLabel])
@@ -1727,53 +1727,31 @@ local RenderHistory
 local RenderUI
 local RenderDev
 
--- Per-setting reset button for Detection sliders. It re-renders the section,
--- since the widgets have no per-widget refresh.
+-- Per-setting reset button for the Detection and Dev sliders. It re-renders the
+-- current section, since the widgets have no per-widget refresh.
 local function AddDetectionReset(rowY, defaultValue, applyDefault)
   AddNativeButton("Reset", CONTENT_PAD + 344, rowY, 52, function()
     applyDefault()
-    ConfigPanel.ShowSection("Detection")
+    ConfigPanel.ShowSection(activeSection)
   end, "Reset this setting to its default (" .. tostring(defaultValue) .. ").")
 end
 
 RenderDetection = function()
-  local y = AddSectionTitle("Detection", "Tune the score threshold and mixed-script signal weight.")
+  local y = AddSectionTitle("Detection", "Choose how readily Sift blocks spam.")
   y = AddStatus(y, sectionStatus.Detection)
   local rowY = y
   y = AddSlider("Block threshold", "threshold", 1, 10, 1, y,
-    "Messages that score at or above this number are blocked. A lower number blocks more " ..
+    "How sure Sift must be before it blocks a message. A lower number blocks more " ..
     "messages, and a higher number blocks fewer.")
   AddDetectionReset(rowY - 10, DEFAULT_SETTINGS.threshold, function()
     SetSetting("threshold", DEFAULT_SETTINGS.threshold)
   end)
-  rowY = y
-  y = AddSlider("Anti-signal cap", "antiSignalCap", -10, -1, 1, y,
-    "Some wording makes a message less likely to be spam and lowers its score. This sets " ..
-    "the most that wording can lower a score, all together. Closer to 0 makes Sift stricter.")
-  AddDetectionReset(rowY - 10, DEFAULT_SETTINGS.antiSignalCap, function()
-    SetSetting("antiSignalCap", DEFAULT_SETTINGS.antiSignalCap)
-  end)
-  rowY = y
-  y = AddSlider("Mixed-script weight", "mixedScriptWeight", 0, 3, 1, y,
-    "Adds this much to the score of a message that already looks like spam when its words " ..
-    "mix alphabets, such as Latin letters swapped for look-alike Cyrillic or Greek ones. " ..
-    "Set to 0 to turn this off.")
-  AddDetectionReset(rowY - 10, DEFAULT_SETTINGS.mixedScriptWeight, function()
-    SetSetting("mixedScriptWeight", DEFAULT_SETTINGS.mixedScriptWeight)
-  end)
-  -- Checkboxes get no reset button; a two-state control is its own reset.
-  y = AddCheckbox("Use mixed-script detection", "mixedScriptEnabled", y, nil,
-    "Watch for words that mix alphabets, such as Latin letters swapped for look-alike " ..
-    "Cyrillic ones. When this is off, Mixed-script weight has no effect.")
 
   -- Bounds come from Frequency so the slider matches the clamp.
   local minWindow, maxWindow, defaultWindow = NS.Frequency.GetFloodWindowBounds()
   rowY = y
   AddSlider("Spam wave window (seconds)", "floodWindow", minWindow, maxWindow, 30, y,
-    "How far back Sift looks when counting how often the same message shows up, from " ..
-    "any sender. A longer window catches slower, more spread-out spam waves; a shorter " ..
-    "one only reacts to rapid bursts. Leave at " .. defaultWindow .. " unless spam " ..
-    "waves are slipping past.")
+    string.format("How long Sift watches for the same spam showing up again and again. A longer window catches slower spam waves, and a shorter one only catches quick bursts. Leave at %d unless spam waves are getting through.", defaultWindow))
   AddDetectionReset(rowY - 10, defaultWindow, function()
     SetSetting("floodWindow", defaultWindow)
   end)
@@ -2026,13 +2004,10 @@ end
 local KEYWORD_SECTIONS = {
   ["My Keywords"] = {
     kind = NS.UserRules and NS.UserRules.BLOCK or "block",
-    blurb = "Words and phrases you want hidden. Matching messages are blocked even when Sift's own filter would let them through.",
+    blurb = "Words and phrases you want hidden. Messages containing them are blocked even when Sift's own filter would let them through.",
     addLabel = "Block phrase",
-    addTooltip = "Type a word or phrase to block. Matching is forgiving about spacing "
-      .. "and odd spellings.",
-    help = "Matching ignores spaces and punctuation, so a phrase can match across word "
-      .. "boundaries \194\183 \"tank lf\" also matches \"tank lfm dungeon\". Prefer distinctive "
-      .. "phrases. Anything blocked this way is recoverable from History.",
+    addTooltip = "Type a word or phrase to block. Sift hides messages that contain it.",
+    help = "A phrase also catches longer text that contains it, so \"tank lf\" also catches \"tank lfm dungeon\". Use distinctive phrases. Anything blocked this way stays in History.",
     emptyLabel = "No keywords yet",
     emptyHint = "Add a word or phrase above to start blocking it.",
     popup = "SIFT_REMOVE_ALL_KEYWORDS",
@@ -2043,7 +2018,7 @@ local KEYWORD_SECTIONS = {
       .. "blocked, unless you blocked the sender yourself.",
     addLabel = "Allow phrase",
     addTooltip = "Type a word or phrase that should always come through, unless you blocked "
-      .. "the sender yourself. Matching works the same way as My Keywords.",
+      .. "the sender yourself.",
     help = "|cffff6060Careful:|r these win over Sift's own filter, so a spammer who guesses "
       .. "one of your phrases can put it in a message and walk straight through. Use long, "
       .. "distinctive phrases, not common words. Only your Allowlist and the players you "
@@ -2057,7 +2032,7 @@ local KEYWORD_SECTIONS = {
 local ADD_STATUS_TEXT = {
   added          = "Added \"%s\".",
   empty          = "Enter a word or phrase.",
-  too_short      = "Needs at least %d characters once spaces and punctuation are removed.",
+  too_short      = "That phrase is too short. Try a longer one.",
   already_exists = "That matches \"%s\", already in this list.",
   full           = "This list is full (%d maximum). Remove something first.",
   unavailable    = "Keyword rules are unavailable.",
@@ -2092,8 +2067,6 @@ local function AddKeywordFromText(section, config, text)
     listState.keywordAddText[config.kind] = ""
   elseif status == "already_exists" then
     sectionStatus[section] = string.format(ADD_STATUS_TEXT.already_exists, entry.raw)
-  elseif status == "too_short" then
-    sectionStatus[section] = string.format(ADD_STATUS_TEXT.too_short, rules.GetMinLength(config.kind))
   elseif status == "full" then
     sectionStatus[section] = string.format(ADD_STATUS_TEXT.full, rules.GetCap(config.kind))
   else
@@ -2165,6 +2138,7 @@ local function RenderKeywordSection(section)
     return
   end
 
+  local showCleansed = NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode()
   for index = startIndex, endIndex do
     local entry = entries[index]
     local row = TrackNative(CreateFrame("Frame", nil, content, "BackdropTemplate"))
@@ -2184,7 +2158,11 @@ local function RenderKeywordSection(section)
 
     local meta = TrackNative(row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"))
     meta:SetPoint("LEFT", row, "LEFT", 8, -8)
-    meta:SetText("matches \"" .. entry.cleansed .. "\" - added " .. RelativeTime(entry.added))
+    local metaText = "added " .. RelativeTime(entry.added)
+    if showCleansed then
+      metaText = "matches \"" .. entry.cleansed .. "\" - " .. metaText
+    end
+    meta:SetText(metaText)
     meta:Show()
 
     local remove = TrackNative(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
@@ -2335,7 +2313,10 @@ end
 RenderDev = function()
   local y = AddSectionTitle("Dev", "Developer-only diagnostics and reset controls.")
   y = AddStatus(y, sectionStatus.Dev)
-  y = AddCheckbox("Enable dev mode", "devMode", y, nil,
+  y = AddCheckbox("Enable dev mode", "devMode", y, function(value)
+    SetSetting("devMode", value)
+    ConfigPanel.ShowSection("Dev")
+  end,
     "Records recent chat from other players, whispers included, into your saved " ..
     "data so missed spam can be reviewed later. Also turns on extra logging and " ..
     "the /bdev diagnostic commands. Leave off unless you are helping test.")
@@ -2364,6 +2345,27 @@ RenderDev = function()
     end
   end, "Discard every captured false-negative candidate. Equivalent to " ..
     "/bdev fnx clear. Confirmation required.")
+  -- Dev mode only.
+  if not (NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode()) then return end
+  y = y - ROW_HEIGHT - 24 - 16
+  local rowY = y
+  y = AddSlider("Anti-signal cap", "antiSignalCap", -10, -1, 1, y,
+    "Some wording makes a message less likely to be spam and lowers its score. This sets " ..
+    "the most that wording can lower a score, all together. Closer to 0 makes Sift stricter.")
+  AddDetectionReset(rowY - 10, DEFAULT_SETTINGS.antiSignalCap, function()
+    SetSetting("antiSignalCap", DEFAULT_SETTINGS.antiSignalCap)
+  end)
+  rowY = y
+  y = AddSlider("Mixed-script weight", "mixedScriptWeight", 0, 3, 1, y,
+    "Adds this much to the score of a message that already looks like spam when its words " ..
+    "mix alphabets, such as Latin letters swapped for look-alike Cyrillic or Greek ones. " ..
+    "Set to 0 to turn this off.")
+  AddDetectionReset(rowY - 10, DEFAULT_SETTINGS.mixedScriptWeight, function()
+    SetSetting("mixedScriptWeight", DEFAULT_SETTINGS.mixedScriptWeight)
+  end)
+  AddCheckbox("Use mixed-script detection", "mixedScriptEnabled", y, nil,
+    "Watch for words that mix alphabets, such as Latin letters swapped for look-alike " ..
+    "Cyrillic ones. When this is off, Mixed-script weight has no effect.")
 end
 
 local RENDERERS = {
@@ -2514,11 +2516,11 @@ end
 
 -- Per-section hover help for the left nav.
 local NAV_TOOLTIPS = {
-  Detection  = "How strict Sift is when deciding what counts as spam. Also covers look-alike letters, wording that lowers a message's score, and repeated messages.",
+  Detection  = "How readily Sift blocks spam, and how it handles spam waves.",
   Categories = "Toggle each spam category between Active (block), Paused (log only), and Off (ignore).",
   Surfaces   = "Choose how Sift handles each kind of chat: Chat, Whisper, and Bnet whisper. Also has the option to hide chat bubbles for blocked messages.",
   Allowlist  = "Players whose messages Sift doesn't check. Add them from History or import a saved list. If you also block one of them yourself, your block wins.",
-  Blocked    = "Players Sift has blocked before, plus anyone you blocked yourself. Sift is a little stricter with messages from players on this list.",
+  Blocked    = "Players Sift has blocked before, plus anyone you blocked yourself.",
   ["My Keywords"] = "Your own words and phrases to block, on top of Sift's filter.",
   ["Never Block"] = "Your own words and phrases that let a message through, even past Sift's filter. They don't override players you blocked yourself.",
   History    = "How much History Sift keeps, your lifetime totals, and the button to clear it.",
