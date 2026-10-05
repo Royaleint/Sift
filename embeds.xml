@@ -1,5 +1,5 @@
 <Ui xmlns="http://www.blizzard.com/wow/ui/">
-  <!-- Foundry-1.0 v1.0.106, unmodified. A standalone Foundry-1.0 loads first
+  <!-- Foundry-1.0, unmodified. A standalone Foundry-1.0 loads first
        (OptionalDeps) and wins; this embed then stands down silently. -->
   <Script file="Libs/Foundry-1.0/Foundry.lua"/>
   <Script file="Libs/Foundry-1.0/Modules/Commands.lua"/>

@@ -108,7 +108,7 @@ read_globals = {
 }
 
 -- Exclude vendored libraries (third-party code; not subject to project rules)
--- and the private dev repo (its own rules + dev-only globals live there).
+-- and the local dev checkout.
 exclude_files = {
     "Sift_Dev/**",
     "Libs/**",
