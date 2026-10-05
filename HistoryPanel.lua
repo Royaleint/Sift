@@ -69,10 +69,6 @@ local LAYOUT = {
   -- Vertical gaps: chip band to dropdown row, dropdown row to list/detail.
   CHIP_BAND_GAP  = 6,
   LIST_TOP_GAP   = 6,
-  -- The sender filter chip sits 14px below the list's own top edge, slightly
-  -- over the column header, so it reads as a banner over the list rather
-  -- than a separate reserved row.
-  SENDER_CHIP_LIST_OFFSET = 14,
 }
 
 local CATEGORY_COLORS = {
@@ -2266,7 +2262,7 @@ function HistoryPanelMixin:CreateSenderFilterChip()
 end
 
 function HistoryPanelMixin:UpdateSenderFilterChip()
-  -- Show/hide only; position is owned by ReflowBelowChips (CreateHeaderFilters).
+  -- Position is owned by ReflowBelowChips (CreateHeaderFilters).
   if not self or not self.senderChip or not listPane then return end
   local chip = self.senderChip
   if filterState and filterState.senderFilter then
@@ -2274,6 +2270,9 @@ function HistoryPanelMixin:UpdateSenderFilterChip()
     chip:Show()
   else
     chip:Hide()
+  end
+  if self.filterChipsBand and self.filterChipsBand.OnChipsReflowed then
+    self.filterChipsBand:OnChipsReflowed()
   end
 end
 
@@ -2469,7 +2468,8 @@ function HistoryPanelMixin:CreateHeaderFilters()
 
   -- Repositions everything below the chip band from its actual height, so a
   -- wrapped second row pushes the dropdowns, the sender filter chip, and the
-  -- list/detail area down instead of overlapping them. Re-setting a single
+  -- list/detail area down instead of overlapping them. The list also drops
+  -- below the chip while it shows. Re-setting a single
   -- named point (TOPLEFT, TOPRIGHT) replaces only that point; the bottom
   -- anchors CreatePanes already set on listPane/detailPane are untouched.
   local function ReflowBelowChips()
@@ -2478,15 +2478,18 @@ function HistoryPanelMixin:CreateHeaderFilters()
     ddBand:SetPoint("TOPRIGHT", self, "TOPRIGHT", -6, ddTop)
 
     local listTop = ddTop - ddBand:GetHeight() - LAYOUT.LIST_TOP_GAP
-    listPane:SetPoint("TOPLEFT", self, "TOPLEFT", 6, listTop)
+    local chip = self.senderChip
+    local listPaneTop = listTop
+    if chip then
+      chip:SetPoint("TOPLEFT",  self, "TOPLEFT",   8, listTop)
+      chip:SetPoint("TOPRIGHT", self, "TOPRIGHT", -8, listTop)
+      if chip:IsShown() then
+        listPaneTop = listTop - chip:GetHeight() - LAYOUT.LIST_TOP_GAP
+      end
+    end
+    listPane:SetPoint("TOPLEFT", self, "TOPLEFT", 6, listPaneTop)
     detailPane:SetPoint("TOPLEFT", self, "TOPLEFT",
       6 + listPane:GetWidth() + LAYOUT.SPLITTER_WIDTH + 4, listTop)
-
-    if self.senderChip then
-      local chipTop = listTop - LAYOUT.SENDER_CHIP_LIST_OFFSET
-      self.senderChip:SetPoint("TOPLEFT",  self, "TOPLEFT",   8, chipTop)
-      self.senderChip:SetPoint("TOPRIGHT", self, "TOPRIGHT", -8, chipTop)
-    end
   end
   chipsBand.OnChipsReflowed = ReflowBelowChips
   ReflowBelowChips()
