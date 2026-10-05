@@ -695,11 +695,11 @@ end
 local function RelativeTime(ts)
   if type(ts) ~= "number" then return "?" end
   local delta = GetServerTime() - ts
-  if delta < 0          then return "0s"  end
-  if delta < 60         then return tostring(delta) .. "s" end
-  if delta < 3600       then return tostring(math.floor(delta / 60))   .. "m" end
-  if delta < 86400      then return tostring(math.floor(delta / 3600)) .. "h" end
-  if delta < 90 * 86400 then return tostring(math.floor(delta / 86400)) .. "d" end
+  if delta < 0          then return L["%ds"]:format(0) end
+  if delta < 60         then return L["%ds"]:format(delta) end
+  if delta < 3600       then return L["%dm"]:format(math.floor(delta / 60)) end
+  if delta < 86400      then return L["%dh"]:format(math.floor(delta / 3600)) end
+  if delta < 90 * 86400 then return L["%dd"]:format(math.floor(delta / 86400)) end
   return date("%Y-%m-%d", ts)
 end
 
@@ -870,7 +870,7 @@ function HistoryRowMixin.RenderRow(row, entry)
     senderLabel = senderLabel .. "-" .. entry.realm
   end
   if outcome == "pass-thru" then
-    senderLabel = senderLabel .. " |cffaa7a3a(pass-thru)|r"
+    senderLabel = senderLabel .. " |cffaa7a3a" .. L["(pass-thru)"] .. "|r"
   elseif outcome == "restored" then
     senderLabel = "|cff5ad080\226\156\147|r " .. senderLabel
   end
@@ -1374,7 +1374,7 @@ function HistoryDetailMixin:RenderBodyFlex(entry)
   local body = detailPane.body
   local original = entry and entry.original or ""
   if #original > LAYOUT.MAX_ORIGINAL_CHARS then
-    original = original:sub(1, LAYOUT.MAX_ORIGINAL_CHARS) .. " \226\128\166(truncated)"
+    original = original:sub(1, LAYOUT.MAX_ORIGINAL_CHARS) .. " \226\128\166" .. L["(truncated)"]
   end
   body.text:SetText(original)
 

@@ -677,11 +677,11 @@ local function RelativeTime(ts)
     return "-"
   end
   local delta = Now() - ts
-  if delta < 0 then return "0s" end
-  if delta < 60 then return tostring(delta) .. "s" end
-  if delta < 3600 then return tostring(math.floor(delta / 60)) .. "m" end
-  if delta < 86400 then return tostring(math.floor(delta / 3600)) .. "h" end
-  if delta < 90 * 86400 then return tostring(math.floor(delta / 86400)) .. "d" end
+  if delta < 0 then return L["%ds"]:format(0) end
+  if delta < 60 then return L["%ds"]:format(delta) end
+  if delta < 3600 then return L["%dm"]:format(math.floor(delta / 60)) end
+  if delta < 86400 then return L["%dh"]:format(math.floor(delta / 3600)) end
+  if delta < 90 * 86400 then return L["%dd"]:format(math.floor(delta / 86400)) end
   return date("%Y-%m-%d", ts)
 end
 
@@ -1169,10 +1169,9 @@ local function ApplyImport(entries, overwrite)
 
   pendingImport = nil
   removedAllowlistEntry = nil
-  sectionStatus.Allowlist = L["Imported %s entries"]:format(tostring(added))
-    .. (skipped > 0 and L["; skipped %s"]:format(tostring(skipped)) or "")
-    .. (lifted > 0 and L["; lifted %s manual blocks"]:format(tostring(lifted)) or "")
-    .. "."
+  sectionStatus.Allowlist = L["Imported %s entries%s%s."]:format(tostring(added),
+    skipped > 0 and L["; skipped %s"]:format(tostring(skipped)) or "",
+    lifted > 0 and L["; lifted %s manual blocks"]:format(tostring(lifted)) or "")
   if activeSection == "Allowlist" and frame and frame:IsShown() then
     ConfigPanel.ShowSection("Allowlist")
   end
@@ -1858,7 +1857,7 @@ RenderAllowlist = function()
   local startIndex = (listState.allowlistPage - 1) * PAGE_ROWS + 1
   local endIndex = math.min(startIndex + PAGE_ROWS - 1, #entries)
 
-  AddText("Entries: " .. tostring(#entries), "GameFontNormalSmall", CONTENT_PAD, y)
+  AddText(L["Entries: %s"]:format(tostring(#entries)), "GameFontNormalSmall", CONTENT_PAD, y)
   y = y - 20
 
   if #entries == 0 then
@@ -1885,7 +1884,15 @@ RenderAllowlist = function()
 
     local meta = TrackNative(row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"))
     meta:SetPoint("LEFT", row, "LEFT", 8, -8)
-    meta:SetText(L["%s - added %s - seen %s"]:format(rowData.entry.source or "manual",
+    local source = rowData.entry.source or "manual"
+    if source == "manual" then
+      source = L["manual"]
+    elseif source == "history" then
+      source = L["history"]
+    elseif source == "import" then
+      source = L["import"]
+    end
+    meta:SetText(L["%s - added %s - seen %s"]:format(source,
       RelativeTime(rowData.entry.addedAt), RelativeTime(rowData.entry.lastSeenAt)))
     meta:Show()
 

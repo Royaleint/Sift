@@ -79,6 +79,12 @@ L["In History: %d   \194\183   First seen: %s   \194\183   Last seen: %s"] = "In
 L["No blocks yet."] = "No blocks yet."
 L["Sift is watching."] = "Sift is watching."
 L["0 blocks recorded."] = "0 blocks recorded."
+L["%ds"] = "%ds"
+L["%dm"] = "%dm"
+L["%dh"] = "%dh"
+L["%dd"] = "%dd"
+L["(pass-thru)"] = "(pass-thru)"
+L["(truncated)"] = "(truncated)"
 
 -- History panel: hover tooltips for the row badges, column headers,
 -- breakdown chips, legend swatches, and stats lines.
@@ -314,7 +320,7 @@ L["Import format must be Sift-allowlist."] = "Import format must be Sift-allowli
 L["Import version must be 1."] = "Import version must be 1."
 L["exportedAt must be positive."] = "exportedAt must be positive."
 L["Import contains no entries."] = "Import contains no entries."
-L["Imported %s entries"] = "Imported %s entries"
+L["Imported %s entries%s%s."] = "Imported %s entries%s%s."
 L["; skipped %s"] = "; skipped %s"
 L["; lifted %s manual blocks"] = "; lifted %s manual blocks"
 L["Import includes entries that are already allowlisted. Overwrite matching entries?"] = "Import includes entries that are already allowlisted. Overwrite matching entries?"
@@ -326,6 +332,10 @@ L["Sift Allowlist Import"] = "Sift Allowlist Import"
 L["Manage senders that Sift should trust."] = "Manage senders that Sift should trust."
 L["No allowlist entries"] = "No allowlist entries"
 L["Use History restore + allow, or import."] = "Use History restore + allow, or import."
+L["Entries: %s"] = "Entries: %s"
+L["manual"] = "manual"
+L["history"] = "history"
+L["import"] = "import"
 
 -- Config panel: Blocked section
 L["Type part of a name to filter the list below, then click Apply."] = "Type part of a name to filter the list below, then click Apply."
