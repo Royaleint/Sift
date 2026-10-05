@@ -626,9 +626,18 @@ local function MatchesFilters(entry)
   return true
 end
 
+-- Manual blocks and keyword catches show no score; they sort as score 0.
+local function EntryShowsScore(entry)
+  return entry.reason ~= "manual-block" and type(entry.customRule) ~= "table"
+end
+
 function Data.SortByMode(list, mode)
   if mode == "score" then
-    table.sort(list, function(a, b) return (a.score or 0) > (b.score or 0) end)
+    table.sort(list, function(a, b)
+      local sa = EntryShowsScore(a) and (a.score or 0) or 0
+      local sb = EntryShowsScore(b) and (b.score or 0) or 0
+      return sa > sb
+    end)
     return
   end
   if mode == "sender" then
@@ -740,6 +749,8 @@ local TIPS = {
   STAT_CATEGORY = "Lifetime detections split by spam category, for this character or the whole account. A gray number means that category is currently Paused or Off.",
   STAT_PIPELINE = "Repeats counts messages that repeat spam Sift already caught from the same sender. Bubbles suppressed counts the times Sift hid a chat bubble for a blocked Say or Yell. Spam wave (recent) counts blocked messages still in your History that were caught only as part of a spam wave, so it drops as old entries are removed.",
 }
+
+HistoryPanel.SortByMode = Data.SortByMode  -- exported for tests
 
 -- Pure resolvers (exported for tests). Every display goes through L[] at
 -- hover time, and %d formatting is applied after the lookup.
@@ -877,11 +888,11 @@ function HistoryRowMixin:RenderRow(entry)
   -- Translated once here: badgeKey is nil only for the "?" case, which is
   -- never run through L[].
   self.badgeText:SetText(badgeKey and L[badgeKey] or "?")
-  -- A manual block has no score; blank it rather than show 0.
-  if entry.reason == "manual-block" then
-    self.scoreText:SetText("")
-  else
+  -- A manual block or keyword catch has no meaningful score; blank it rather than show a number.
+  if EntryShowsScore(entry) then
     self.scoreText:SetText(tostring(entry.score or 0))
+  else
+    self.scoreText:SetText("")
   end
 
   -- Re-point the tooltip fields, since this frame is recycled.
@@ -1488,9 +1499,11 @@ function HistoryDetailMixin:RefreshDetail()
   -- On the meta line because the footer is a fixed three-row layout.
   local keywordNote = ""
   if type(entry.customRule) == "table" then
-    local rule = entry.customRule.raw or entry.customRule.cleansed
+    local rule = entry.customRule.raw
     if rule then
       keywordNote = "   |cffffd100" .. L["caught by your keyword"] .. ": " .. rule .. "|r"
+    else
+      keywordNote = "   |cffffd100" .. L["caught by your keyword"] .. "|r"
     end
   end
 
