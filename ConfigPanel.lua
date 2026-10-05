@@ -704,6 +704,17 @@ local function IsRegionalNames()
   return NS.Compat and NS.Compat.RegionalNames and NS.Compat.RegionalNames() or false
 end
 
+function ConfigPanel.SourceLabel(source)
+  if source == "manual" then
+    return L["manual"]
+  elseif source == "history" then
+    return L["history"]
+  elseif source == "import" then
+    return L["import"]
+  end
+  return source
+end
+
 local function MatchesSearch(entry, guid, search)
   search = Lower(search)
   if search == "" then
@@ -712,6 +723,7 @@ local function MatchesSearch(entry, guid, search)
   return string.find(Lower(guid), search, 1, true)
     or string.find(Lower(SenderLabel(entry)), search, 1, true)
     or string.find(Lower(entry and entry.source), search, 1, true)
+    or string.find(Lower(ConfigPanel.SourceLabel(entry and entry.source)), search, 1, true)
 end
 
 local function SortedAllowlist()
@@ -1884,15 +1896,7 @@ RenderAllowlist = function()
 
     local meta = TrackNative(row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"))
     meta:SetPoint("LEFT", row, "LEFT", 8, -8)
-    local source = rowData.entry.source or "manual"
-    if source == "manual" then
-      source = L["manual"]
-    elseif source == "history" then
-      source = L["history"]
-    elseif source == "import" then
-      source = L["import"]
-    end
-    meta:SetText(L["%s - added %s - seen %s"]:format(source,
+    meta:SetText(L["%s - added %s - seen %s"]:format(ConfigPanel.SourceLabel(rowData.entry.source or "manual"),
       RelativeTime(rowData.entry.addedAt), RelativeTime(rowData.entry.lastSeenAt)))
     meta:Show()
 
