@@ -228,16 +228,10 @@ L["Show or hide the minimap button, and reset the Config and History panels to t
 L["Dev"] = "Dev"
 L["Developer-only diagnostics and full settings reset."] = "Developer-only diagnostics and full settings reset."
 
--- Config panel: Detection section sliders and checkboxes
+-- Config panel: Detection section sliders
 L["Block threshold"] = "Block threshold"
 L["How sure Sift must be before it blocks a message. A lower number blocks more messages, and a higher number blocks fewer."] = "How sure Sift must be before it blocks a message. A lower number blocks more messages, and a higher number blocks fewer."
-L["Anti-signal cap"] = "Anti-signal cap"
-L["Some wording makes a message less likely to be spam and lowers its score. This sets the most that wording can lower a score, all together. Closer to 0 makes Sift stricter."] = "Some wording makes a message less likely to be spam and lowers its score. This sets the most that wording can lower a score, all together. Closer to 0 makes Sift stricter."
-L["Mixed-script weight"] = "Mixed-script weight"
-L["Adds this much to the score of a message that already looks like spam when its words mix alphabets, such as Latin letters swapped for look-alike Cyrillic or Greek ones. Set to 0 to turn this off."] = "Adds this much to the score of a message that already looks like spam when its words mix alphabets, such as Latin letters swapped for look-alike Cyrillic or Greek ones. Set to 0 to turn this off."
 L["Reset"] = "Reset"
-L["Use mixed-script detection"] = "Use mixed-script detection"
-L["Watch for words that mix alphabets, such as Latin letters swapped for look-alike Cyrillic ones. When this is off, Mixed-script weight has no effect."] = "Watch for words that mix alphabets, such as Latin letters swapped for look-alike Cyrillic ones. When this is off, Mixed-script weight has no effect."
 L["Spam wave window (seconds)"] = "Spam wave window (seconds)"
 
 -- Config panel: per-surface / per-category pause rows (AddAxisPauseRow's
@@ -331,6 +325,14 @@ L["Export FN candidates"] = "Export FN candidates"
 L["Save the recent chat captured while dev mode is on to a copy-paste window for review. Equivalent to /bdev fnx. Requires dev mode."] = "Save the recent chat captured while dev mode is on to a copy-paste window for review. Equivalent to /bdev fnx. Requires dev mode."
 L["Clear FN log"] = "Clear FN log"
 L["Discard every captured false-negative candidate. Equivalent to /bdev fnx clear. Confirmation required."] = "Discard every captured false-negative candidate. Equivalent to /bdev fnx clear. Confirmation required."
+
+-- Config panel: Dev section, shown only in dev mode
+L["Anti-signal cap"] = "Anti-signal cap"
+L["Some wording makes a message less likely to be spam and lowers its score. This sets the most that wording can lower a score, all together. Closer to 0 makes Sift stricter."] = "Some wording makes a message less likely to be spam and lowers its score. This sets the most that wording can lower a score, all together. Closer to 0 makes Sift stricter."
+L["Mixed-script weight"] = "Mixed-script weight"
+L["Adds this much to the score of a message that already looks like spam when its words mix alphabets, such as Latin letters swapped for look-alike Cyrillic or Greek ones. Set to 0 to turn this off."] = "Adds this much to the score of a message that already looks like spam when its words mix alphabets, such as Latin letters swapped for look-alike Cyrillic or Greek ones. Set to 0 to turn this off."
+L["Use mixed-script detection"] = "Use mixed-script detection"
+L["Watch for words that mix alphabets, such as Latin letters swapped for look-alike Cyrillic ones. When this is off, Mixed-script weight has no effect."] = "Watch for words that mix alphabets, such as Latin letters swapped for look-alike Cyrillic ones. When this is off, Mixed-script weight has no effect."
 
 -- Config panel: resize handle
 L["Resize panel"] = "Resize panel"

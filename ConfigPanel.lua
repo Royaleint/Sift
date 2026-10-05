@@ -1727,12 +1727,12 @@ local RenderHistory
 local RenderUI
 local RenderDev
 
--- Per-setting reset button for Detection sliders. It re-renders the section,
--- since the widgets have no per-widget refresh.
+-- Per-setting reset button for the Detection and Dev sliders. It re-renders the
+-- current section, since the widgets have no per-widget refresh.
 local function AddDetectionReset(rowY, defaultValue, applyDefault)
   AddNativeButton("Reset", CONTENT_PAD + 344, rowY, 52, function()
     applyDefault()
-    ConfigPanel.ShowSection("Detection")
+    ConfigPanel.ShowSection(activeSection)
   end, "Reset this setting to its default (" .. tostring(defaultValue) .. ").")
 end
 
@@ -1746,25 +1746,6 @@ RenderDetection = function()
   AddDetectionReset(rowY - 10, DEFAULT_SETTINGS.threshold, function()
     SetSetting("threshold", DEFAULT_SETTINGS.threshold)
   end)
-  rowY = y
-  y = AddSlider("Anti-signal cap", "antiSignalCap", -10, -1, 1, y,
-    "Some wording makes a message less likely to be spam and lowers its score. This sets " ..
-    "the most that wording can lower a score, all together. Closer to 0 makes Sift stricter.")
-  AddDetectionReset(rowY - 10, DEFAULT_SETTINGS.antiSignalCap, function()
-    SetSetting("antiSignalCap", DEFAULT_SETTINGS.antiSignalCap)
-  end)
-  rowY = y
-  y = AddSlider("Mixed-script weight", "mixedScriptWeight", 0, 3, 1, y,
-    "Adds this much to the score of a message that already looks like spam when its words " ..
-    "mix alphabets, such as Latin letters swapped for look-alike Cyrillic or Greek ones. " ..
-    "Set to 0 to turn this off.")
-  AddDetectionReset(rowY - 10, DEFAULT_SETTINGS.mixedScriptWeight, function()
-    SetSetting("mixedScriptWeight", DEFAULT_SETTINGS.mixedScriptWeight)
-  end)
-  -- Checkboxes get no reset button; a two-state control is its own reset.
-  y = AddCheckbox("Use mixed-script detection", "mixedScriptEnabled", y, nil,
-    "Watch for words that mix alphabets, such as Latin letters swapped for look-alike " ..
-    "Cyrillic ones. When this is off, Mixed-script weight has no effect.")
 
   -- Bounds come from Frequency so the slider matches the clamp.
   local minWindow, maxWindow, defaultWindow = NS.Frequency.GetFloodWindowBounds()
@@ -2157,6 +2138,7 @@ local function RenderKeywordSection(section)
     return
   end
 
+  local showCleansed = NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode()
   for index = startIndex, endIndex do
     local entry = entries[index]
     local row = TrackNative(CreateFrame("Frame", nil, content, "BackdropTemplate"))
@@ -2176,7 +2158,11 @@ local function RenderKeywordSection(section)
 
     local meta = TrackNative(row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"))
     meta:SetPoint("LEFT", row, "LEFT", 8, -8)
-    meta:SetText("matches \"" .. entry.cleansed .. "\" - added " .. RelativeTime(entry.added))
+    local metaText = "added " .. RelativeTime(entry.added)
+    if showCleansed then
+      metaText = "matches \"" .. entry.cleansed .. "\" - " .. metaText
+    end
+    meta:SetText(metaText)
     meta:Show()
 
     local remove = TrackNative(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
@@ -2327,7 +2313,10 @@ end
 RenderDev = function()
   local y = AddSectionTitle("Dev", "Developer-only diagnostics and reset controls.")
   y = AddStatus(y, sectionStatus.Dev)
-  y = AddCheckbox("Enable dev mode", "devMode", y, nil,
+  y = AddCheckbox("Enable dev mode", "devMode", y, function(value)
+    SetSetting("devMode", value)
+    ConfigPanel.ShowSection("Dev")
+  end,
     "Records recent chat from other players, whispers included, into your saved " ..
     "data so missed spam can be reviewed later. Also turns on extra logging and " ..
     "the /bdev diagnostic commands. Leave off unless you are helping test.")
@@ -2356,6 +2345,27 @@ RenderDev = function()
     end
   end, "Discard every captured false-negative candidate. Equivalent to " ..
     "/bdev fnx clear. Confirmation required.")
+  -- Dev mode only.
+  if not (NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode()) then return end
+  y = y - ROW_HEIGHT - 24 - 16
+  local rowY = y
+  y = AddSlider("Anti-signal cap", "antiSignalCap", -10, -1, 1, y,
+    "Some wording makes a message less likely to be spam and lowers its score. This sets " ..
+    "the most that wording can lower a score, all together. Closer to 0 makes Sift stricter.")
+  AddDetectionReset(rowY - 10, DEFAULT_SETTINGS.antiSignalCap, function()
+    SetSetting("antiSignalCap", DEFAULT_SETTINGS.antiSignalCap)
+  end)
+  rowY = y
+  y = AddSlider("Mixed-script weight", "mixedScriptWeight", 0, 3, 1, y,
+    "Adds this much to the score of a message that already looks like spam when its words " ..
+    "mix alphabets, such as Latin letters swapped for look-alike Cyrillic or Greek ones. " ..
+    "Set to 0 to turn this off.")
+  AddDetectionReset(rowY - 10, DEFAULT_SETTINGS.mixedScriptWeight, function()
+    SetSetting("mixedScriptWeight", DEFAULT_SETTINGS.mixedScriptWeight)
+  end)
+  AddCheckbox("Use mixed-script detection", "mixedScriptEnabled", y, nil,
+    "Watch for words that mix alphabets, such as Latin letters swapped for look-alike " ..
+    "Cyrillic ones. When this is off, Mixed-script weight has no effect.")
 end
 
 local RENDERERS = {
