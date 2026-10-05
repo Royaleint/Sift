@@ -1701,7 +1701,7 @@ local function AddAxisPauseRow(axis, key, displayLabel, y)
     else
       stateBody = (axis == "surface")
         and "Off \194\183 this surface is not scanned at all."
-        or  "Off \194\183 this category is not scored against messages."
+        or  "Off \194\183 Sift ignores this category."
     end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:AddLine(L[displayLabel])
@@ -1741,7 +1741,7 @@ RenderDetection = function()
   y = AddStatus(y, sectionStatus.Detection)
   local rowY = y
   y = AddSlider("Block threshold", "threshold", 1, 10, 1, y,
-    "Messages that score at or above this number are blocked. A lower number blocks more " ..
+    "How sure Sift must be before it blocks a message. A lower number blocks more " ..
     "messages, and a higher number blocks fewer.")
   AddDetectionReset(rowY - 10, DEFAULT_SETTINGS.threshold, function()
     SetSetting("threshold", DEFAULT_SETTINGS.threshold)
@@ -2028,8 +2028,7 @@ local KEYWORD_SECTIONS = {
     kind = NS.UserRules and NS.UserRules.BLOCK or "block",
     blurb = "Words and phrases you want hidden. Matching messages are blocked even when Sift's own filter would let them through.",
     addLabel = "Block phrase",
-    addTooltip = "Type a word or phrase to block. Matching is forgiving about spacing "
-      .. "and odd spellings.",
+    addTooltip = "Type a word or phrase to block. Sift hides messages that contain it.",
     help = "Matching ignores spaces and punctuation, so a phrase can match across word "
       .. "boundaries \194\183 \"tank lf\" also matches \"tank lfm dungeon\". Prefer distinctive "
       .. "phrases. Anything blocked this way is recoverable from History.",
@@ -2043,7 +2042,7 @@ local KEYWORD_SECTIONS = {
       .. "blocked, unless you blocked the sender yourself.",
     addLabel = "Allow phrase",
     addTooltip = "Type a word or phrase that should always come through, unless you blocked "
-      .. "the sender yourself. Matching works the same way as My Keywords.",
+      .. "the sender yourself.",
     help = "|cffff6060Careful:|r these win over Sift's own filter, so a spammer who guesses "
       .. "one of your phrases can put it in a message and walk straight through. Use long, "
       .. "distinctive phrases, not common words. Only your Allowlist and the players you "
@@ -2514,11 +2513,11 @@ end
 
 -- Per-section hover help for the left nav.
 local NAV_TOOLTIPS = {
-  Detection  = "How strict Sift is when deciding what counts as spam. Also covers look-alike letters, wording that lowers a message's score, and repeated messages.",
+  Detection  = "How readily Sift blocks spam, and how it handles spam waves.",
   Categories = "Toggle each spam category between Active (block), Paused (log only), and Off (ignore).",
   Surfaces   = "Choose how Sift handles each kind of chat: Chat, Whisper, and Bnet whisper. Also has the option to hide chat bubbles for blocked messages.",
   Allowlist  = "Players whose messages Sift doesn't check. Add them from History or import a saved list. If you also block one of them yourself, your block wins.",
-  Blocked    = "Players Sift has blocked before, plus anyone you blocked yourself. Sift is a little stricter with messages from players on this list.",
+  Blocked    = "Players Sift has blocked before, plus anyone you blocked yourself.",
   ["My Keywords"] = "Your own words and phrases to block, on top of Sift's filter.",
   ["Never Block"] = "Your own words and phrases that let a message through, even past Sift's filter. They don't override players you blocked yourself.",
   History    = "How much History Sift keeps, your lifetime totals, and the button to clear it.",
