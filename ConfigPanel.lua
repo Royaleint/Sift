@@ -1737,7 +1737,7 @@ local function AddDetectionReset(rowY, defaultValue, applyDefault)
 end
 
 RenderDetection = function()
-  local y = AddSectionTitle("Detection", "Tune the score threshold and mixed-script signal weight.")
+  local y = AddSectionTitle("Detection", "Choose how readily Sift blocks spam.")
   y = AddStatus(y, sectionStatus.Detection)
   local rowY = y
   y = AddSlider("Block threshold", "threshold", 1, 10, 1, y,
@@ -1770,10 +1770,7 @@ RenderDetection = function()
   local minWindow, maxWindow, defaultWindow = NS.Frequency.GetFloodWindowBounds()
   rowY = y
   AddSlider("Spam wave window (seconds)", "floodWindow", minWindow, maxWindow, 30, y,
-    "How far back Sift looks when counting how often the same message shows up, from " ..
-    "any sender. A longer window catches slower, more spread-out spam waves; a shorter " ..
-    "one only reacts to rapid bursts. Leave at " .. defaultWindow .. " unless spam " ..
-    "waves are slipping past.")
+    string.format("How long Sift watches for the same spam showing up again and again. A longer window catches slower spam waves, and a shorter one only catches quick bursts. Leave at %d unless spam waves are getting through.", defaultWindow))
   AddDetectionReset(rowY - 10, defaultWindow, function()
     SetSetting("floodWindow", defaultWindow)
   end)
@@ -2026,12 +2023,10 @@ end
 local KEYWORD_SECTIONS = {
   ["My Keywords"] = {
     kind = NS.UserRules and NS.UserRules.BLOCK or "block",
-    blurb = "Words and phrases you want hidden. Matching messages are blocked even when Sift's own filter would let them through.",
+    blurb = "Words and phrases you want hidden. Messages containing them are blocked even when Sift's own filter would let them through.",
     addLabel = "Block phrase",
     addTooltip = "Type a word or phrase to block. Sift hides messages that contain it.",
-    help = "Matching ignores spaces and punctuation, so a phrase can match across word "
-      .. "boundaries \194\183 \"tank lf\" also matches \"tank lfm dungeon\". Prefer distinctive "
-      .. "phrases. Anything blocked this way is recoverable from History.",
+    help = "A phrase also catches longer text that contains it, so \"tank lf\" also catches \"tank lfm dungeon\". Use distinctive phrases. Anything blocked this way stays in History.",
     emptyLabel = "No keywords yet",
     emptyHint = "Add a word or phrase above to start blocking it.",
     popup = "SIFT_REMOVE_ALL_KEYWORDS",
@@ -2056,7 +2051,7 @@ local KEYWORD_SECTIONS = {
 local ADD_STATUS_TEXT = {
   added          = "Added \"%s\".",
   empty          = "Enter a word or phrase.",
-  too_short      = "Needs at least %d characters once spaces and punctuation are removed.",
+  too_short      = "That phrase is too short. Try a longer one.",
   already_exists = "That matches \"%s\", already in this list.",
   full           = "This list is full (%d maximum). Remove something first.",
   unavailable    = "Keyword rules are unavailable.",
@@ -2091,8 +2086,6 @@ local function AddKeywordFromText(section, config, text)
     listState.keywordAddText[config.kind] = ""
   elseif status == "already_exists" then
     sectionStatus[section] = string.format(ADD_STATUS_TEXT.already_exists, entry.raw)
-  elseif status == "too_short" then
-    sectionStatus[section] = string.format(ADD_STATUS_TEXT.too_short, rules.GetMinLength(config.kind))
   elseif status == "full" then
     sectionStatus[section] = string.format(ADD_STATUS_TEXT.full, rules.GetCap(config.kind))
   else
