@@ -163,10 +163,9 @@ function Cleanse._Stage5_StyledAlnum(text)
   end)
 end
 
--- Stage 6: in-word leetspeak via a single gsub pass over candidate positions.
--- Each candidate leet char gets substituted only if BOTH neighbors are ASCII
--- letters. The position capture lets the replacement read the original
--- neighbors directly, without walking the string byte by byte.
+-- Stage 6: in-word leetspeak. A leet char is replaced only when both neighbors
+-- in the original text are ASCII letters ("s00n" stays). _leetSource is a
+-- file-level upvalue so the gsub callback is not a new closure per message.
 Cleanse._leetMap = {
   ["0"] = "o", ["1"] = "l", ["3"] = "e", ["4"] = "a", ["5"] = "s",
   ["7"] = "t", ["8"] = "b", ["@"] = "a", ["$"] = "s",
@@ -451,6 +450,7 @@ function Cleanse.Analyze(text)
     }
   end
 
+  -- Read before Stage 1, which strips the link markup this looks for.
   local containsItemLinks = string.find(text, "|H", 1, true) ~= nil
 
   text = Cleanse._Stage1_ItemLinks(text)

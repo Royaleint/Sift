@@ -87,6 +87,7 @@ function Frequency.RecordAndCount(cleansed, now)
   now = tonumber(now) or 0
   local cutoff = now - window
 
+  -- Clock moved backwards (caller-supplied time): drop the pending sweep.
   if lastFloodNow and now < lastFloodNow then
     nextSweepAt = nil
   end
@@ -129,7 +130,7 @@ function Frequency.IsFloodEnabled()
   return floodEnabled
 end
 
--- Capped at 240 to limit false positives.
+-- Clamped to MIN_WINDOW..MAX_WINDOW; a longer window raises false positives.
 function Frequency.SetFloodWindow(value)
   value = tonumber(value) or DEFAULT_WINDOW
   if value < MIN_WINDOW then value = MIN_WINDOW end

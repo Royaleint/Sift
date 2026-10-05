@@ -19,9 +19,8 @@ local function Detect(env)
   local isClassicFamily = isClassicEra or isTBCAnniversary
   -- Which clients get an opt-in content filter pre-ticked by default. A content
   -- question, deliberately separate from isClassicFamily (UI fallbacks): Mists
-  -- Classic belongs here.
-  -- WoW Forever should get the retail default; its WOW_PROJECT_ID is unverified
-  -- in-game.
+  -- Classic belongs here. WoW Forever gets the retail default only because its
+  -- WOW_PROJECT_ID matches none of these; nothing here detects it.
   local classicContentDefaults = isClassicEra or isTBCAnniversary or isMistsClassic
 
   local hasModernHistoryList =
@@ -35,9 +34,9 @@ local function Detect(env)
     and type(env.FauxScrollFrame_OnVerticalScroll) == "function"
     and type(env.FauxScrollFrame_GetOffset) == "function"
 
-  -- Blizzard retired OpenReportPlayerDialog in 9.2.5. Every client now opens
-  -- the report dialog through ReportFrame:InitiateReport instead -- the same
-  -- chain Blizzard's own chat-name context menu uses.
+  -- Chat reports open through ReportFrame:InitiateReport, the chain Blizzard's
+  -- own chat-name menu uses. OpenReportPlayerDialog is gone on every supported
+  -- client; do not fall back to it.
   local hasChatReportDialog =
     type(env.C_ChatInfo) == "table"
     and type(env.C_ChatInfo.IsValidChatLine) == "function"
@@ -73,11 +72,10 @@ end
 
 -- WoW Forever names are regionally unique: a character is "First Surname",
 -- with no realm. Sift stores that full name in `name` and leaves `realm` nil,
--- the same form Foundry keys the character by.
+-- the same form the Foundry-1.0 library keys the character by.
 --
 -- Only a true answer is cached: a false one read early in login must not
--- stick, so it is asked again until it turns true. Where the function does
--- not exist this costs a lookup and a type check.
+-- stick, so it is asked again until it turns true.
 local regionalNames = false
 
 function Compat.RegionalNames()
