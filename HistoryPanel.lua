@@ -636,7 +636,8 @@ function Data.SortByMode(list, mode)
     table.sort(list, function(a, b)
       local sa = EntryShowsScore(a) and (a.score or 0) or 0
       local sb = EntryShowsScore(b) and (b.score or 0) or 0
-      return sa > sb
+      if sa ~= sb then return sa > sb end
+      return (a.ts or 0) > (b.ts or 0)
     end)
     return
   end
@@ -656,6 +657,8 @@ function Data.SortByMode(list, mode)
   end
   -- "newest" is default ordering from History.GetAll(); leave as-is.
 end
+
+HistoryPanel.SortByMode = Data.SortByMode  -- exported for tests
 
 function Data.ApplyFilterAndSort(entries)
   if not filterState or not sortMode then
@@ -749,8 +752,6 @@ local TIPS = {
   STAT_CATEGORY = "Lifetime detections split by spam category, for this character or the whole account. A gray number means that category is currently Paused or Off.",
   STAT_PIPELINE = "Repeats counts messages that repeat spam Sift already caught from the same sender. Bubbles suppressed counts the times Sift hid a chat bubble for a blocked Say or Yell. Spam wave (recent) counts blocked messages still in your History that were caught only as part of a spam wave, so it drops as old entries are removed.",
 }
-
-HistoryPanel.SortByMode = Data.SortByMode  -- exported for tests
 
 -- Pure resolvers (exported for tests). Every display goes through L[] at
 -- hover time, and %d formatting is applied after the lookup.
@@ -888,7 +889,6 @@ function HistoryRowMixin:RenderRow(entry)
   -- Translated once here: badgeKey is nil only for the "?" case, which is
   -- never run through L[].
   self.badgeText:SetText(badgeKey and L[badgeKey] or "?")
-  -- A manual block or keyword catch has no meaningful score; blank it rather than show a number.
   if EntryShowsScore(entry) then
     self.scoreText:SetText(tostring(entry.score or 0))
   else
