@@ -218,16 +218,20 @@ function UserRules.RepairStore(store)
 end
 
 -- Rebuilds every non-ASCII entry's cleansed form from its raw spelling.
--- Called once, from migrations[5]. Returns changed, merged, kept (all >= 0),
--- or false, "unavailable" if Cleanse isn't loaded and an entry needs it --
+-- Called from migrations[5] and migrations[6], once each per store. Takes an
+-- optional minLength (bytes): an entry whose non-empty recleansed form is
+-- shorter is removed, not kept. Returns changed, merged, kept, dropped (all
+-- >= 0; dropped is the array of removed raw phrases, in store order), or
+-- false, "unavailable" if Cleanse isn't loaded and an entry needs it --
 -- checked before that entry (or any after it) is written, so a deferred
 -- migration leaves the store exactly as it found it.
 --
 -- Dedupes converging entries itself (first wins): left to RepairShape, a clean
 -- merge would be logged as malformed, or dropped silently in a release build.
-function UserRules.RecleanseStore(store)
-  if type(store) ~= "table" then return 0, 0, 0 end
+function UserRules.RecleanseStore(store, minLength)
+  if type(store) ~= "table" then return 0, 0, 0, {} end
   local changed, kept = 0, 0
+  local dropped, isDropped = {}, {}
   for index = 1, #store do
     local entry = store[index]
     if type(entry) == "table" and type(entry.raw) == "string" and string.find(entry.raw, "[\128-\255]") then
@@ -236,6 +240,9 @@ function UserRules.RecleanseStore(store)
         return false, "unavailable"
       elseif recleansed == "" then
         kept = kept + 1
+      elseif minLength and #recleansed < minLength then
+        isDropped[index] = true
+        dropped[#dropped + 1] = entry.raw
       elseif recleansed ~= entry.cleansed then
         entry.cleansed = recleansed
         changed = changed + 1
@@ -248,10 +255,10 @@ function UserRules.RecleanseStore(store)
   for index = 1, #store do
     local entry = store[index]
     local cleansed = type(entry) == "table" and entry.cleansed or nil
-    if type(cleansed) == "string" and not seen[cleansed] then
+    if type(cleansed) == "string" and not seen[cleansed] and not isDropped[index] then
       seen[cleansed] = true
       deduped[#deduped + 1] = entry
-    else
+    elseif not isDropped[index] then
       merged = merged + 1
     end
   end
@@ -262,8 +269,8 @@ function UserRules.RecleanseStore(store)
     store[index] = deduped[index]
   end
 
-  if changed > 0 or merged > 0 then TouchRevision() end
-  return changed, merged, kept
+  if changed > 0 or merged > 0 or #dropped > 0 then TouchRevision() end
+  return changed, merged, kept, dropped
 end
 
 function UserRules.GetRevision()

@@ -511,3 +511,6 @@ L["could not bring back your BawrSpam data this time. It will try again next log
 L["enforcing new account-wide history cap: trimmed %d records (%d per-char excess, %d global). Open /sift config > History to adjust the caps."] = "enforcing new account-wide history cap: trimmed %d records (%d per-char excess, %d global). Open /sift config > History to adjust the caps."
 L["could not initialize: Foundry.DB is missing."] = "could not initialize: Foundry.DB is missing."
 L["brought back %d allowed players and %d blocked senders from BawrSpam"] = "brought back %d allowed players and %d blocked senders from BawrSpam"
+
+-- DB.lua: keyword-phrase removal notice
+L["Removed from your %s because they are now too short to use: %s"] = "Removed from your %s because they are now too short to use: %s"

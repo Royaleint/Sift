@@ -38,7 +38,7 @@ local SV_NAME_ERROR = (not SV_NAME) and SV_LEGACY_NAME or nil
 -- A migration that returns false stops the loop before stamping and retries
 -- at the next login; a permanently deferred migration would block every
 -- later one, which is unreachable in the shipped load order.
-local CURRENT_SCHEMA_VERSION = 5
+local CURRENT_SCHEMA_VERSION = 6
 local ADDON_VERSION = "1.4.1"
 local BLOCKED_ACTOR_CAP = 5000
 
@@ -199,23 +199,32 @@ end
 -- Rebuilds every non-ASCII saved phrase once from its raw spelling: older saves
 -- can hold a cleansed form (mostly CJK) that no longer matches.
 -- Returns false (defer, retry next login) only when Cleanse is missing and a
--- stored rule needs it; with no UserRules at all, schema 5 is still stamped.
+-- stored rule needs it; with no UserRules at all, its own schema number is still stamped.
+-- The same body serves as migration 6. A phrase whose rebuilt form is shorter
+-- than the list minimum is removed and named in chat.
 migrations[5] = function(db)
   local UserRules = NS.UserRules
   if not (UserRules and UserRules.RecleanseStore) then return end
   local L = NS.L
   local lists = {
-    { db.global.customBlocks, L["My Keywords"] },
-    { db.global.allowKeywords, L["Never Block"] },
+    { db.global.customBlocks, L["My Keywords"], UserRules.GetMinLength(UserRules.BLOCK) },
+    { db.global.allowKeywords, L["Never Block"], UserRules.GetMinLength(UserRules.ALLOW) },
   }
   local results = {}
   for index, list in ipairs(lists) do
-    local changed, merged, kept = UserRules.RecleanseStore(list[1])
+    local changed, merged, kept, dropped = UserRules.RecleanseStore(list[1], list[3])
     if changed == false then return false end
-    results[index] = { merged, kept }
+    results[index] = { merged, kept, dropped }
   end
   for index, list in ipairs(lists) do
-    local merged, kept = results[index][1], results[index][2]
+    local merged, kept, dropped = results[index][1], results[index][2], results[index][3]
+    if #dropped > 0 then
+      local quoted = {}
+      for position, raw in ipairs(dropped) do
+        quoted[position] = '"' .. raw .. '"'
+      end
+      Print(L["Removed from your %s because they are now too short to use: %s"]:format(list[2], table.concat(quoted, ", ")))
+    end
     if merged > 0 then
       Print(L["%d of your %s phrases matched another phrase already in the list, so we combined the duplicates. What gets filtered has not changed."]:format(merged, list[2]))
     end
@@ -224,6 +233,9 @@ migrations[5] = function(db)
     end
   end
 end
+
+-- A matching change means saved phrases containing certain characters need the same one-time rebuild as migration 5; a store that is already current comes through unchanged.
+migrations[6] = migrations[5]
 
 local function CopyDefaults(source)
   local copy = {}
