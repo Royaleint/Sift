@@ -1,5 +1,12 @@
 # Sift Changelog
 
+## v1.5.0 (2026-10-05)
+
+- Reworded the Config and History tooltips, help text and navigation hints in plainer English, and the History stats line label now reads OTHER.
+- The keyword detail line in History shows only the phrase you typed.
+- Reworded the "Always allow" and "Restore + Always allow" tooltips, and the empty Allowlist message and the /sift rebuildstats message. The Report entry in the History row menu now uses the same label as the detail pane.
+- The "Filtering by" sender chip in History now has its own row instead of covering the column header and the first row.
+
 ## v1.4.1 (2026-09-29)
 
 - Sift supports WoW Forever, alongside Retail, Classic Era, Anniversary and MoP Classic.
