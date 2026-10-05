@@ -1396,6 +1396,7 @@ function HistoryDetailMixin:RenderBreakdownChips(breakdown)
   end
   table.sort(sorted, function(a, b) return (a.val or 0) > (b.val or 0) end)
 
+  local showPoints = NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode()
   local xOffset = 0
   for index, item in ipairs(sorted) do
     local chip = row.chips[index]
@@ -1416,8 +1417,12 @@ function HistoryDetailMixin:RenderBreakdownChips(breakdown)
     if chip.SetBackdropColor then
       chip:SetBackdropColor(HexNibble(hex, 1), HexNibble(hex, 2), HexNibble(hex, 3), 1)
     end
-    chip.label:SetText(string.format("|cff000000%s +%d|r",
-      L[CATEGORY_BADGE_LABELS[item.cat] or item.cat], item.val))
+    local chipName = L[CATEGORY_BADGE_LABELS[item.cat] or item.cat]
+    if showPoints then
+      chip.label:SetText(string.format("|cff000000%s +%d|r", chipName, item.val))
+    else
+      chip.label:SetText(string.format("|cff000000%s|r", chipName))
+    end
     chip.tipTitle, chip.tipBody, chip.tipBody2, chip.tipValue = HistoryPanel.ChipTipKeys(item.cat, item.val)
     -- Size to the label (same idiom as PlaceCategoryChips): the mapped names
     -- ("Gold selling", "My Keywords") overflow the old fixed 80px.
@@ -1472,7 +1477,7 @@ function HistoryDetailMixin:RefreshDetail()
   end
   if entry.reason == "manual-block" then
     statusText = statusText .. "   " .. L["blocked by you"]
-  else
+  elseif NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode() then
     statusText = statusText .. string.format("   %d / %d",
       tonumber(entry.score) or 0, tonumber(entry.threshold) or 0)
   end
