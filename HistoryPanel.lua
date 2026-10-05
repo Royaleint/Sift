@@ -2787,7 +2787,7 @@ function HistoryPanel.Initialize()
         local reportKind = Actions.GetReportKind(entry)
         local reportLabel = Actions.GetReportLabel(reportKind)
         if reportLabel then
-          rootDescription:CreateButton(L["Report"], function() Actions.PerformReport(entry) end)
+          rootDescription:CreateButton(L[reportLabel], function() Actions.PerformReport(entry) end)
         end
         rootDescription:CreateButton(L["Copy sender name"], function() Actions.ShowCopySenderPopup(entry) end)
       end,
