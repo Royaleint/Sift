@@ -1873,7 +1873,7 @@ RenderAllowlist = function()
   y = y - 20
 
   if #entries == 0 then
-    AddDisabledRow("No allowlist entries", "Use History restore + allow, or import.", y)
+    AddDisabledRow("No allowlist entries", "Use Restore + Always allow in History, or import.", y)
     return
   end
 

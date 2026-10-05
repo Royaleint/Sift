@@ -253,7 +253,7 @@ local function RebuildStats()
 		return
 	end
 	local total = NS.History.RebuildByCategory()
-	Print(L["byCategory rebuilt from retained history: %s entries categorized. Reload or reopen History panel to refresh stats display."]:format(tostring(total)))
+	Print(L["stats rebuilt from retained history: %s entries counted. Reload or reopen the History panel to refresh the stats display."]:format(tostring(total)))
 end
 
 -- /bdev fpx [N]: false-positive export dialog, limited to the last N restored
