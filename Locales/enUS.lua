@@ -359,3 +359,22 @@ L["pseudo-locale tool is unavailable (locale table not loaded)."] = "pseudo-loca
 
 -- DB.lua: keyword-phrase merge notice
 L["%d of your %s phrases matched another phrase already in the list, so we combined the duplicates. What gets filtered has not changed."] = "%d of your %s phrases matched another phrase already in the list, so we combined the duplicates. What gets filtered has not changed."
+
+-- Init.lua: /sift command output
+L["history panel is unavailable."] = "history panel is unavailable."
+L["config panel is unavailable."] = "config panel is unavailable."
+L["allow requires a sender from History, by their full name."] = "allow requires a sender from History, by their full name."
+L["allow requires a sender from History, formatted as Name-Realm."] = "allow requires a sender from History, formatted as Name-Realm."
+L["sender is already allowlisted or cannot be allowlisted."] = "sender is already allowlisted or cannot be allowlisted."
+L[" Your manual block on them was removed."] = " Your manual block on them was removed."
+L["allowlisted %s."] = "allowlisted %s."
+L["rebuild API unavailable."] = "rebuild API unavailable."
+L["byCategory rebuilt from retained history: %s entries categorized. Reload or reopen History panel to refresh stats display."] = "byCategory rebuilt from retained history: %s entries categorized. Reload or reopen History panel to refresh stats display."
+L["usage: %s"] = "usage: %s"
+L["brought your BawrSpam data back, but a follow-up step failed. A /reload should finish it."] = "brought your BawrSpam data back, but a follow-up step failed. A /reload should finish it."
+L["could not bring back your BawrSpam data this time. It will try again next login."] = "could not bring back your BawrSpam data this time. It will try again next login."
+
+-- DB.lua: chat notices
+L["enforcing new account-wide history cap: trimmed %d records (%d per-char excess, %d global). Open /sift config > History to adjust the caps."] = "enforcing new account-wide history cap: trimmed %d records (%d per-char excess, %d global). Open /sift config > History to adjust the caps."
+L["could not initialize: Foundry.DB is missing."] = "could not initialize: Foundry.DB is missing."
+L["brought back %d allowed players and %d blocked senders from BawrSpam"] = "brought back %d allowed players and %d blocked senders from BawrSpam"
