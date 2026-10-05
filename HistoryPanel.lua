@@ -820,7 +820,7 @@ end
 function HistoryRowMixin.RowOnEnter(self)
   if not GameTooltip then return end
   if not self.tipTitle then
-    -- Defensive: shown rows always carry a tipTitle (RowTipKeys never returns nil); only hidden rows clear it.
+    -- Defensive: shown rows always carry a tipTitle (RowTipKeys always returns a title key); only hidden rows clear it.
     GameTooltip:Hide()
     return
   end

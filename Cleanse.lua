@@ -164,8 +164,8 @@ function Cleanse._Stage5_StyledAlnum(text)
 end
 
 -- Stage 6: in-word leetspeak. A leet char is replaced only when both neighbors
--- in the original text are ASCII letters ("s00n" stays). _leetSource is a
--- file-level upvalue so the gsub callback is not a new closure per message.
+-- in the original text are ASCII letters. _leetSource is a file-level upvalue
+-- so the gsub callback is not a new closure per message.
 Cleanse._leetMap = {
   ["0"] = "o", ["1"] = "l", ["3"] = "e", ["4"] = "a", ["5"] = "s",
   ["7"] = "t", ["8"] = "b", ["@"] = "a", ["$"] = "s",

@@ -827,8 +827,8 @@ local function DeepEqual(a, b)
 end
 
 -- A missing schema stamp means the older layout (it dropped the stamp when it
--- equalled the default). Only nil or 3 imports settings and characters; any
--- other stamp brings the lists over and nothing else.
+-- equalled the default). Only nil and 3 are released legacy layouts, so only they
+-- import settings and characters; any other stamp brings the lists over and nothing else.
 local function LegacyStampAccepted(stamp)
   return stamp == nil or stamp == 3
 end
@@ -861,8 +861,8 @@ local function OverlaySettings(defaultSettings, legacySettings)
 end
 
 -- Empty means no history and zero detections and blocks, whether the fields are
--- absent (an alt never loaded by Foundry) or zero (the current character, which
--- RepairShape has already backfilled).
+-- absent (Foundry strips default values from a slot at logout) or zero (the
+-- current character, which RepairShape has already backfilled).
 local function IsEmptyCharSlot(char)
   if type(char) ~= "table" then return true end
   local history = char.history
