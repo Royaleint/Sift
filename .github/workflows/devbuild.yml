@@ -1,7 +1,6 @@
 name: Dev Build (no upload)
 
-# Manual build of the exact installable addon zip, WITHOUT publishing anywhere.
-# This is how test builds reach friends without going through a full release.
+# Manual build of the exact installable addon zip, without publishing anywhere.
 # Trigger from the Actions tab, pick a branch, then download the zip artifact
 # from the finished run. The -d flag skips all uploads; no API tokens are used.
 

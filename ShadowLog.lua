@@ -12,8 +12,8 @@ local MAX_ENTRIES     = 1000  -- account-wide cap on distinct captured messages
 local MIN_LEN         = 8     -- min cleansed length; shorter is chatter, not a candidate
 local MAX_VARIANTS    = 3     -- distinct raw spellings kept per cleansed key
 local REPEAT_INTEREST = 3     -- occurrences at which a message counts as repeated
--- Ceiling on eviction chances: must stay at least max Rank + 1 (currently 7),
--- or the top of the ranking flattens.
+-- Ceiling on eviction chances: must stay at least max Rank + 1, or the top of
+-- the ranking flattens.
 local MAX_CHANCES     = 7
 
 -- Meta keys, never a category. Copies in ChatScanner, History, HistoryPanel,
@@ -88,7 +88,7 @@ local function GetIndex(store)
       if tonumber(entry.chances) == nil then
         RefreshChances(entry)
       end
-      -- Older records stored provenance as a single string; lift it on restore.
+      -- SavedVariables may hold a single-string `source`; migrate it into `sources`.
       if type(entry.sources) ~= "table" then
         entry.sources = type(entry.source) == "string" and { entry.source } or {}
         entry.source = nil

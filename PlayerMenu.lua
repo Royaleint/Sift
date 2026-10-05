@@ -57,6 +57,7 @@ local function IsUsableName(value)
   return IsUsableString(value) and not IsDisplayToken(value)
 end
 
+-- Session-only by design; never move this into SavedVariables.
 local rememberedTargets = {}
 
 local function TargetKey(name, realm)

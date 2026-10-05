@@ -1,7 +1,7 @@
 -- Sift/PauseState.lua
 -- Category and surface pause states (active / paused / off), the category
 -- taxonomy, and the listeners notified when a state changes.
--- Also loaded outside the game by the pattern build: keep file scope free of
+-- Also loaded outside the game by offline tooling: keep file scope free of
 -- WoW API and NS lookups.
 
 local _, NS = ...
@@ -19,8 +19,8 @@ local SURFACE_KEYS = { "chat", "whisper", "bn-whisper" }
 -- runs; "Boosting" is powerleveling and related services.
 --
 -- RETIRED_CATEGORY_STATES are still scored but have no button. Their states are
--- frozen at their shipped defaults; Commercial must stay "paused", since
--- "active" would start blocking messages that pass through today.
+-- frozen at their shipped defaults; Commercial must stay "paused": "active"
+-- would block messages Sift lets through.
 local CATEGORY_KEYS = { "RMT", "Boosting", "Carrying", "Custom" }
 local RETIRED_CATEGORY_STATES = {
   Casino     = "active",
@@ -105,6 +105,7 @@ function PauseState.GetRetiredCategoryStates() return RETIRED_CATEGORY_STATES en
 -- The category-state table Scoring gates on. The frozen retired states are
 -- merged over the persisted ones: a retired key missing from SavedVariables
 -- would otherwise read as nil and its rules (Anti included) would stop counting.
+-- Returns one shared table rewritten on every call; copy it before keeping it.
 function PauseState.GetEffectiveCategoryStates()
   for key in pairs(effectiveCategories) do effectiveCategories[key] = nil end
   local settings = GetSettings()

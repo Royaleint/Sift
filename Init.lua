@@ -144,6 +144,7 @@ local function RunSyntheticTest(message)
     2,
     "Trade",
     nil,
+    -- Non-numeric line ID on purpose: keeps the test out of the decision cache and sender ring.
     "SiftTestLine",
     "Player-9999-FFFFFFFF"
   )
@@ -346,6 +347,7 @@ local function RunPerf(rest)
   if type(charView) == "table" and type(charView.history) == "table" then
     current = #charView.history
   end
+  -- The raw store, because DB.GetChar() returns only the current character.
   if NS.DB and NS.DB.db and type(NS.DB.db.sv) == "table"
     and type(NS.DB.db.sv.char) == "table" then
     local total = 0
@@ -392,7 +394,7 @@ local COMMANDS = {
 	clearhistory = ConfirmClearHistory,
 	clearblocked = ConfirmClearBlocked,
 	rebuildstats = RebuildStats,
-	-- Transitional hint for the old /sift test command.
+	-- Kept so /sift test points users to /bdev test.
 	test = function()
 		Print("/sift test moved to /bdev test (requires devMode).")
 	end,

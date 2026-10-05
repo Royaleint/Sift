@@ -31,6 +31,7 @@ end
 -- Resolved at file scope but raised in Initialize: an error() during file load
 -- would abort the rest of this file with no useful context.
 local SV_NAME, SV_LEGACY_NAME = DB.DeriveSVNames(ADDON_NAME)
+-- On failure DeriveSVNames returns (nil, reason), so the second value is the message.
 local SV_NAME_ERROR = (not SV_NAME) and SV_LEGACY_NAME or nil
 
 -- Bump only with a matching migrations[N]: a missing entry still stamps N.
@@ -118,7 +119,7 @@ local VALID_AXIS_STATES = { active = true, paused = true, off = true }
 
 -- Saved keys left behind by a removed feature, pruned on load. They must stay
 -- byte-identical to the keys originally written, or the prune silently misses
--- them. The prefix is split on purpose so source scans for the token stay clean.
+-- them. Keep the prefix split: the joined token must not appear literally in source.
 local DEFUNCT_KEY_PREFIX = "lf" .. "g"
 local DEFUNCT_SURFACE_KEYS = { DEFUNCT_KEY_PREFIX .. "-search", DEFUNCT_KEY_PREFIX .. "-applicant" }
 local DEFUNCT_SETTING_KEYS = { DEFUNCT_KEY_PREFIX .. "ScanEnabled" }
@@ -128,13 +129,11 @@ local DEFUNCT_SETTING_KEYS = { DEFUNCT_KEY_PREFIX .. "ScanEnabled" }
 local DEFUNCT_CATEGORY_KEYS = { "Casino", "Phishing", "Commercial", "Anti" }
 
 local migrations = {}
--- migrations[2] is defined immediately below; migrations[3] is defined after
--- the local Print helper so its closure can capture Print (Lua locals are
--- only visible to closures defined after their declaration).
+-- migrations[3] onward are defined after Print and DevLog so they can call them.
 
 migrations[2] = function(db)
-  -- Whisper split: entries with channel CHAT_MSG_WHISPER or CHAT_MSG_BN_WHISPER
-  -- were previously written with surface="chat". Reclassify to their own surface keys.
+  -- Whisper split: older saves filed whisper and Battle.net whisper entries
+  -- under surface="chat". Move them to their own surface keys.
   local history = (db.char and db.char.history) or {}
   for index = 1, #history do
     local entry = history[index]
@@ -197,13 +196,10 @@ migrations[4] = function(db)
   end
 end
 
--- The repeat-collapse fix changes what a phrase containing certain
--- multi-byte characters (mostly CJK) cleanses to. A phrase saved before the
--- fix can hold the old, damaged form and stop matching, so every non-ASCII
--- saved phrase is rebuilt from its raw spelling once. Returns false to defer
--- the whole migration (see ApplyMigrations below) only when Cleanse itself
--- is missing and a stored rule needs it; UserRules missing entirely still
--- stamps schema 5, since there is nothing to migrate.
+-- Rebuilds every non-ASCII saved phrase once from its raw spelling: older saves
+-- can hold a cleansed form (mostly CJK) that no longer matches.
+-- Returns false (defer, retry next login) only when Cleanse is missing and a
+-- stored rule needs it; with no UserRules at all, schema 5 is still stamped.
 migrations[5] = function(db)
   local UserRules = NS.UserRules
   if not (UserRules and UserRules.RecleanseStore) then return end
@@ -320,8 +316,7 @@ local function RepairSettings(settings)
   settings.enabledCategories = type(settings.enabledCategories) == "table" and settings.enabledCategories or {}
   for category, defaultState in pairs(defaultSettings.enabledCategories) do
     local current = settings.enabledCategories[category]
-    -- Reset when missing OR not a valid enum (stale boolean / junk).
-    -- Otherwise the existing valid enum value is kept.
+    -- Reset when missing or not a valid enum (a stale boolean or junk).
     if current == nil or not (type(current) == "string" and VALID_AXIS_STATES[current]) then
       settings.enabledCategories[category] = defaultState
     end
@@ -345,7 +340,7 @@ local function RepairSettings(settings)
   -- Repair the throttle subtree; junk values fall back to defaults.
   settings.throttle = type(settings.throttle) == "table" and settings.throttle or {}
   settings.throttle.enabled = settings.throttle.enabled ~= false
-  -- bufferSize is no longer a setting; prune it from existing saves.
+  -- Defunct key: pruned from saves that still carry it.
   settings.throttle.bufferSize = nil
 end
 
@@ -419,7 +414,8 @@ function DB.Initialize()
 
   -- Both from the TOC vararg: `name` so a renamed folder passes Foundry's
   -- IsAddOnLoaded check, `sv` so the store matches this build's declared global.
-  -- RepairShape runs before and after the migrations; both passes are needed.
+  -- RepairShape runs twice: migrations read a validated shape, and the second
+  -- pass repairs whatever they wrote.
   DB.db = F.DB:New({ name = ADDON_NAME, sv = SV_NAME, defaults = defaults, defaultProfile = true })
   RepairShape(DB.db.global, DB.db.char)
   ApplyMigrations(DB.db)
@@ -786,11 +782,9 @@ local function MergedManualBlockedAt(sift, legacy)
   return sift.manualBlockedAt
 end
 
--- One collision between an existing Sift entry and a legacy entry for the
--- same guid. Equal-and-positive firstBlockedAt means both sides are counting
--- the same original block, so counts take the max instead of summing; the
--- "greater than zero" guard keeps two entries that are both simply missing
--- firstBlockedAt (coerced to 0 above) on the sum branch instead.
+-- Merges a Sift entry and a legacy entry for the same guid. An equal, positive
+-- firstBlockedAt means both count the same original block, so counts take the
+-- max; two missing (0) stamps are not a match and still sum.
 local function MergeBlockedActorCollision(guid, sift, legacy)
   local sameOrigin = sift.firstBlockedAt == legacy.firstBlockedAt and sift.firstBlockedAt > 0
   local merged = {
@@ -832,18 +826,16 @@ local function DeepEqual(a, b)
   return true
 end
 
--- The older saved layout dropped the schema stamp whenever it equalled its
--- default, so a missing stamp is that older layout. Only a missing stamp or
--- 3 was ever left on disk by a released build; any other value brings the
--- lists over and nothing else.
+-- A missing schema stamp means the older layout (it dropped the stamp when it
+-- equalled the default). Only nil and 3 are released legacy layouts, so only they
+-- import settings and characters; any other stamp brings the lists over and nothing else.
 local function LegacyStampAccepted(stamp)
   return stamp == nil or stamp == 3
 end
 
--- Legacy settings only ever overlay onto a still-default profile (the caller
--- already checked that), and even then only one level into the three subtree
--- settings. A retired category or throttle key that no longer exists in the
--- current defaults is simply never read here, so it never comes back.
+-- Caller guarantees a still-default profile. Only keys present in the current
+-- defaults are read (one level into the three subtrees), so retired keys never
+-- come back.
 local function OverlaySettings(defaultSettings, legacySettings)
   local out = DeepCopy(defaultSettings)
   for key, defaultValue in pairs(defaultSettings) do
@@ -855,9 +847,8 @@ local function OverlaySettings(defaultSettings, legacySettings)
             out[key][innerKey] = legacySubtree[innerKey]
           end
         end
-        -- Carrying split out of Boosting after this legacy layout shipped: a
-        -- legacy store with no Carrying key of its own inherits the legacy
-        -- Boosting state instead of falling back to Carrying's default.
+        -- A legacy store with no Carrying key inherits its Boosting state instead of
+        -- Carrying's default.
         if key == "enabledCategories" and legacySubtree.Carrying == nil and legacySubtree.Boosting ~= nil then
           out[key].Carrying = legacySubtree.Boosting
         end
@@ -869,10 +860,9 @@ local function OverlaySettings(defaultSettings, legacySettings)
   return out
 end
 
--- A slot with no history and nothing detected or blocked yet counts as
--- empty whether those fields are simply absent (a sparse alt Foundry never
--- wrote defaults into) or present at zero (the character currently logging
--- in, whose slot RepairShape already backfilled before this ever runs).
+-- Empty means no history and zero detections and blocks, whether the fields are
+-- absent (Foundry strips default values from a slot at logout) or zero (the
+-- current character, which RepairShape has already backfilled).
 local function IsEmptyCharSlot(char)
   if type(char) ~= "table" then return true end
   local history = char.history
@@ -883,13 +873,10 @@ local function IsEmptyCharSlot(char)
   return detections == 0 and blocked == 0
 end
 
--- Merges the legacy BawrSpam store into an already-populated Sift store,
--- once. Pure: no NS and no WoW API, so it is exercised outside the client. It
--- never mutates legacySV. Two phases: Build reads both stores (siftSV only to
--- detect collisions) and deep-copies whatever it needs into fresh working
--- tables; Commit is then plain assignment with nothing left that can raise.
--- A raise during Build therefore leaves siftSV untouched -- a failed import
--- assigns nothing.
+-- Merges the legacy BawrSpam store into the Sift store, once. Pure (no NS, no
+-- WoW API) so tests can run it, and never mutates legacySV. Build only reads and
+-- copies; Commit is plain assignment that cannot raise, so a failed import
+-- leaves siftSV untouched.
 function DB.MergeLegacyStore(siftSV, legacySV, now)
   if type(siftSV) ~= "table" or type(siftSV.global) ~= "table" then
     return nil, "no Sift store"
@@ -1041,6 +1028,7 @@ function DB.ImportLegacyData()
     return nil
   end
 
+  -- The raw SV table, not DB.db: the merge needs every character's slot.
   local summary = DB.MergeLegacyStore(_G[SV_NAME], legacy, Now())
   if summary then
     RepairShape(DB.db.global, DB.db.char)

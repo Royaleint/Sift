@@ -1,3 +1,4 @@
+-- HistoryPanel: the Sift History window (filterable list, detail pane, detection stats), its embedded Config tab, the surface pause pills, and the minimap launcher.
 local _, NS = ...
 local L = NS.L
 local HistoryPanel = {}
@@ -37,12 +38,12 @@ function Chrome.AttachTooltip(widget, title, body, hint)
   end)
 end
 
--- Every plain-number layout constant for this file, in one local.
+-- Layout constants for this file.
 --
--- The panel is fixed-size (min == default) so the legend and stat tiles always
--- fit; it leaves that size only while the embedded Config tab shows. The
--- embedded Config bottom offset must match configHost's BOTTOMRIGHT offset in
--- BuildFrame. MIN_LIST_PANE_WIDTH clamps an older, too-narrow saved width.
+-- The panel is fixed-size so the legend and stat tiles always fit; it leaves
+-- that size only while the embedded Config tab shows. CONFIG_HOST_BOTTOM_MARGIN
+-- must match configHost's BOTTOMRIGHT offset in BuildFrame. MIN_LIST_PANE_WIDTH
+-- clamps a saved width below the minimum.
 local LAYOUT = {
   PANEL_WIDTH  = 940,
   PANEL_HEIGHT = 560,
@@ -135,8 +136,8 @@ do
   for _, cat in ipairs(retired) do DISPLAY_CATEGORIES[#DISPLAY_CATEGORIES + 1] = cat end
 end
 
--- Lowercase surface keys, as ChatScanner writes them. An unmapped key (an old
--- saved surface) displays as its raw string rather than erroring.
+-- Lowercase surface keys, as ChatScanner writes them. An unmapped saved surface
+-- key displays as its raw string rather than erroring.
 local SURFACE_VALUES = { "All", "chat", "whisper", "bn-whisper" }
 local SURFACE_LABELS = {
   All               = "All",
@@ -176,7 +177,7 @@ local SORT_LABELS = {
   sender = "Sender",
 }
 
--- Stats-area tile metadata, at file scope so later helpers can reach it.
+-- Stats-area tiles: display order, labels, tooltips, and value colours.
 local STATS_TILE_KEYS = { "detected", "blocked", "passThru", "restored", "falsePositives" }
 local STATS_TILE_LABELS = {
   detected       = "DETECTED",
@@ -444,6 +445,7 @@ function Chrome.CreateHistoryFrame(parent)
   if ok and f then
     return f
   end
+  -- Unprotected retry on purpose: a template failure raises its real error here.
   return CreateFrame("Frame", "SiftHistoryFrame", parent, "PortraitFrameTemplate")
 end
 
@@ -679,6 +681,7 @@ function HistoryListMixin:ClassicScrollBar(scroll)
   return name and _G[name .. "ScrollBar"] or nil
 end
 
+-- Breakdown only; EntryDominantCategory (used by the filter) also maps a custom-rule block to Custom.
 local function DominantCategory(breakdown)
   if type(breakdown) ~= "table" then return nil end
   local bestCat, bestVal
@@ -711,8 +714,8 @@ end
 -- swatches, and column and stats-line hosts below. The resolvers below
 -- return these as raw L[] keys, resolved at hover time.
 --
--- RETIRED and ADDED are two entries so the row and legend tooltips can reuse
--- RETIRED without repeating the ADDED sentence.
+-- RETIRED and ADDED are separate so the row tooltip can reuse RETIRED without
+-- the ADDED sentence the chip tooltip adds.
 local TIPS = {
   TIME     = "How long ago Sift caught this message. Entries older than 90 days show the date instead.",
   SENDER   = "The player who sent the message. A check mark means you restored it, and (pass-thru) means it was left in chat.",
@@ -751,21 +754,15 @@ function HistoryPanel.RowTipKeys(entry)
   local cat = DominantCategory(entry.breakdown)
   if cat then
     if RETIRED_CATEGORY_SET[cat] then
-      -- The visible badge does not mark retired categories, so badgeKey and
-      -- titleKey are the same plain label; TIPS.RETIRED is carried only as
-      -- bodyKey, the extra sentence the tooltip adds.
+      -- Retired categories get a plain badge; TIPS.RETIRED appears only in the tooltip body.
       local label = CATEGORY_BADGE_LABELS[cat] or cat
       return label, label, TIPS.RETIRED
     end
     if CHIP_FULL_NAMES[cat] then
-      -- `or cat` fallback keeps the badge intact for a category with no
-      -- CATEGORY_BADGE_LABELS entry (e.g. Boosting): without it, this would
-      -- resolve to a nil badgeKey and render "?" instead of the category name.
+      -- Keep `or cat`: most categories have no CATEGORY_BADGE_LABELS entry, and a nil badgeKey renders "?".
       return CATEGORY_BADGE_LABELS[cat] or cat, CHIP_FULL_NAMES[cat], nil
     end
-    -- An unknown category (a breakdown key that is not ignored, not in
-    -- CATEGORY_BADGE_LABELS, and not a CHIP_FULL_NAMES entry): the same
-    -- raw-key fallback ChipTipKeys/LegendTipKeys use.
+    -- Unknown category: the same raw-key fallback ChipTipKeys and LegendTipKeys use.
     local label = CATEGORY_BADGE_LABELS[cat] or cat
     return label, label, nil
   end
@@ -823,7 +820,7 @@ end
 function HistoryRowMixin.RowOnEnter(self)
   if not GameTooltip then return end
   if not self.tipTitle then
-    -- Defensive: unreachable today.
+    -- Defensive: shown rows always carry a tipTitle (RowTipKeys always returns a title key); only hidden rows clear it.
     GameTooltip:Hide()
     return
   end
@@ -1321,7 +1318,7 @@ function HistoryStatsMixin:RefreshStatsArea()
   local categoryParts = {}
   for _, cat in ipairs(DISPLAY_CATEGORIES) do
     local count = tonumber(byCategory[cat]) or 0
-    -- A retired category is listed only while old rows still carry it.
+    -- A retired category is listed only while its lifetime count is nonzero.
     if count > 0 or not RETIRED_CATEGORY_SET[cat] then
       local hex = CATEGORY_COLORS[cat] or "888"
       local hexFull = (hex:gsub(".", "%0%0"))  -- 3-char hex expanded per digit to 6 for color codes
@@ -1395,6 +1392,7 @@ function HistoryDetailMixin:RenderBreakdownChips(breakdown)
 
   local sorted = {}
   for cat, val in pairs(breakdown) do
+    -- Only MixedScript is hidden; the other IGNORED_BREAKDOWN_KEYS still show as chips.
     if cat ~= "MixedScript" and (tonumber(val) or 0) > 0 then
       sorted[#sorted + 1] = { cat = cat, val = val }
     end
@@ -1429,8 +1427,8 @@ function HistoryDetailMixin:RenderBreakdownChips(breakdown)
       chip.label:SetText(string.format("|cff000000%s|r", chipName))
     end
     chip.tipTitle, chip.tipBody, chip.tipBody2, chip.tipValue = HistoryPanel.ChipTipKeys(item.cat, item.val)
-    -- Size to the label (same idiom as PlaceCategoryChips): the mapped names
-    -- ("Gold selling", "My Keywords") overflow the old fixed 80px.
+    -- Size to the label with an 80px floor (same idiom as PlaceCategoryChips):
+    -- mapped names like "Gold selling" do not fit 80px.
     local chipWidth = math.max(80, math.floor((chip.label:GetStringWidth() or 0) + 10.5))
     chip:SetSize(chipWidth, 14)
     chip:ClearAllPoints()
@@ -1569,11 +1567,11 @@ function HistoryListMixin:SelectEntry(id)
     local revision = NS.History and NS.History.GetRevision and NS.History.GetRevision()
     if revision ~= nil and revision ~= HistoryPanel._listRevision then
       if listPane then listPane:RefreshList() end
-      -- RefreshDetail can move the selection after RefreshList painted, so
-      -- repaint once selectedEntryId has settled.
     else
       if detailPane then detailPane:RefreshDetail() end
     end
+    -- Repaint highlights after either branch: RefreshDetail can move the
+    -- selection after RefreshList painted.
     local scroll = listPane.scroll
     if scroll and scroll.rows then
       for _, row in ipairs(scroll.rows) do
@@ -1742,8 +1740,8 @@ function HistoryListMixin:CreateModernListPane()
     end,
   })
 
-  -- Replace F.List's default anchors: scrollBox inset 18px top and bottom
-  -- (legend strip) with the scrollbar gutter on the right; scrollBar flush.
+  -- Replace F.List's default anchors: scrollBox inset 18px for the column header
+  -- above and the legend strip below, scrollbar gutter on the right; scrollBar flush.
   local handles = list:GetNativeHandles()
   local scrollBox = handles.scrollBox
   local scrollBar = handles.scrollBar
@@ -1913,7 +1911,6 @@ function HistoryStatsMixin.BuildStatsArea(parent)
     tile.labelText = tile:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     tile.labelText:SetPoint("BOTTOM", tile, "BOTTOM", 0, 4)
     tile.labelText:SetText(L[STATS_TILE_LABELS[key]])
-    -- Tiles are layout-only Frames and need EnableMouse for tooltips.
     local meta = STATS_TILE_TOOLTIPS[key]
     if meta then Chrome.AttachTooltip(tile, meta.title, meta.body) end
     parent.tiles[key] = tile
@@ -2140,11 +2137,9 @@ local CHIP_LABELS = {
 function HistoryFilterChipsMixin.PlaceCategoryChips(strip)
   if not strip or not strip.chips then return end
 
-  -- Each chip is sized to its own label, with LAYOUT.CHIP_MIN_WIDTH as a floor.
-  -- Wraps to a new row instead of overflowing once the next chip would cross
-  -- the strip's actual width. A zero width means the anchor chain hasn't
-  -- resolved yet; skip wrapping rather than collapse every chip onto the
-  -- first pixel.
+  -- Chips size to their labels (CHIP_MIN_WIDTH floor) and wrap at the strip's width.
+  -- A zero width means anchors haven't resolved yet: skip wrapping rather than
+  -- push every chip onto its own row.
   local availableWidth = strip:GetWidth()
   local x, y, rows = 0, 0, 1
   for _, cat in ipairs(CATEGORIES) do
@@ -2175,6 +2170,7 @@ function HistoryFilterChipsMixin.BuildCategoryChips(strip)
     chip:SetSize(LAYOUT.CHIP_MIN_WIDTH, LAYOUT.CHIP_HEIGHT)
     chip:SetText(L[CHIP_LABELS[cat] or cat])
     chip:SetScript("OnClick", function()
+      -- nil counts as included; only an explicit false hides (see UpdateChipVisual, MatchesFilters).
       filterState.categories[cat] = (filterState.categories[cat] == false)
       strip:UpdateChipVisual(chip, cat)
       if listPane then listPane:RefreshList() end
@@ -2368,8 +2364,7 @@ function HistoryPanelMixin.CreateTabStrip(parent)
 end
 
 function HistoryPanelMixin:CreateHeaderFilters()
-  -- Chips band: upper-left, right-bound by the pause-pill row so the chips
-  -- get more horizontal room than they had when nested inside listPane.
+  -- Chips band: upper-left, right-bound by the pause-pill row, not by listPane.
   local chipsBand = CreateFrame("Frame", nil, frame)
   Mixin(chipsBand, HistoryFilterChipsMixin)
   -- Height is set by PlaceCategoryChips (below), from however many rows the

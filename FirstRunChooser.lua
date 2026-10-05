@@ -4,8 +4,7 @@
 -- seen set changes only on Apply or Keep current settings. Dismissal writes
 -- nothing.
 --
--- Ships dark: with LIVE = false and dev mode off, no player sees this panel;
--- /bdev chooser previews it.
+-- Shown only when LIVE is true or dev mode is on; /bdev chooser previews it.
 local addonName, NS = ...
 local L = NS.L
 

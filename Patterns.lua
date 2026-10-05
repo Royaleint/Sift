@@ -101,6 +101,8 @@ end
 
 function Patterns:Match(cleansedText)
   local hits = {}
+  -- Fast path when no ordered rule is loaded; keep it in step with the loop
+  -- below, which differs only by the ordered branch.
   if not _hasOrdered then
     for i = 1, #_compiled do
       local p = _compiled[i]

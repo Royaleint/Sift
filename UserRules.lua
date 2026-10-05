@@ -168,7 +168,7 @@ function UserRules.GetMinLength(kind)
 end
 
 -- Returns the first entry whose cleansed form is a substring of `text`.
--- Insertion order decides between overlapping rules ("wts" before "wts boost"),
+-- Insertion order decides between overlapping rules ("abc" before "abc def"),
 -- which is deterministic and is what the UI tooltip promises.
 function UserRules.Match(kind, text)
   if type(text) ~= "string" or text == "" then return nil end
@@ -223,9 +223,8 @@ end
 -- checked before that entry (or any after it) is written, so a deferred
 -- migration leaves the store exactly as it found it.
 --
--- Dedupes converging entries itself, first-wins, rather than leaving it to
--- the closing RepairShape pass, whose dev-only "malformed" wording would
--- misdescribe a clean merge and silently drop a phrase in a release build.
+-- Dedupes converging entries itself (first wins): left to RepairShape, a clean
+-- merge would be logged as malformed, or dropped silently in a release build.
 function UserRules.RecleanseStore(store)
   if type(store) ~= "table" then return 0, 0, 0 end
   local changed, kept = 0, 0

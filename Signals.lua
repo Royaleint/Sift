@@ -1,8 +1,7 @@
 -- Sift/Signals.lua
 -- Capture-only signals for the shadow log: the script-island shape (a mostly
 -- CJK message carrying an embedded Latin run) and contact-channel tokens.
--- Nothing in this file can block a message; promoting a tag to a blocking
--- signal means moving it into the encoded pattern corpus first.
+-- Nothing in this file can block a message; do not add a blocking path here.
 --
 -- Neither signal fires on language alone: Evaluate returns nothing unless the
 -- message also carries a sell signal. Keep that rule an early return, not a
