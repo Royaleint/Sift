@@ -1726,7 +1726,7 @@ local function AddAxisPauseRow(axis, key, displayLabel, y)
       stateBody = "Paused \194\183 detected spam is logged to History but stays in chat."
     else
       stateBody = (axis == "surface")
-        and "Off \194\183 this surface is not scanned at all."
+        and "Off \194\183 Sift won't block anything on this surface."
         or  "Off \194\183 Sift ignores this category."
     end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -1792,7 +1792,7 @@ RenderCategories = function()
 end
 
 RenderSurfaces = function()
-  local y = AddSectionTitle("Surfaces", "Three states per surface: Active (block) / Paused (detect + log, don't hide) / Off (don't scan).")
+  local y = AddSectionTitle("Surfaces", "Three states per surface: Active (block) / Paused (detect + log, don't hide) / Off (do nothing).")
   y = AddStatus(y, sectionStatus.Surfaces)
   for _, surface in ipairs(SURFACE_KEYS) do
     local label = SURFACE_LABELS[surface] or surface
@@ -2534,7 +2534,7 @@ local NAV_TOOLTIPS = {
   Detection  = "How readily Sift blocks spam, and how it handles spam waves.",
   Categories = "Toggle each spam category between Active (block), Paused (log only), and Off (ignore).",
   Surfaces   = "Choose how Sift handles each kind of chat: Chat, Whisper, and Bnet whisper. Also has the option to hide chat bubbles for blocked messages.",
-  Allowlist  = "Players whose messages Sift doesn't check. Add them from History or import a saved list. If you also block one of them yourself, your block wins.",
+  Allowlist  = "Players whose messages Sift won't block. Add them from History or import a saved list. If you also block one of them yourself, your block wins.",
   Blocked    = "Players Sift has blocked before, plus anyone you blocked yourself.",
   ["My Keywords"] = "Your own words and phrases to block, on top of Sift's filter.",
   ["Never Block"] = "Your own words and phrases that let a message through, even past Sift's filter. They don't override players you blocked yourself.",

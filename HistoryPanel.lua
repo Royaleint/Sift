@@ -626,9 +626,19 @@ local function MatchesFilters(entry)
   return true
 end
 
+-- Manual blocks and keyword catches show no score; they sort as score 0.
+local function EntryShowsScore(entry)
+  return entry.reason ~= "manual-block" and type(entry.customRule) ~= "table"
+end
+
 function Data.SortByMode(list, mode)
   if mode == "score" then
-    table.sort(list, function(a, b) return (a.score or 0) > (b.score or 0) end)
+    table.sort(list, function(a, b)
+      local sa = EntryShowsScore(a) and (a.score or 0) or 0
+      local sb = EntryShowsScore(b) and (b.score or 0) or 0
+      if sa ~= sb then return sa > sb end
+      return (a.ts or 0) > (b.ts or 0)
+    end)
     return
   end
   if mode == "sender" then
@@ -647,6 +657,8 @@ function Data.SortByMode(list, mode)
   end
   -- "newest" is default ordering from History.GetAll(); leave as-is.
 end
+
+HistoryPanel.SortByMode = Data.SortByMode  -- exported for tests
 
 function Data.ApplyFilterAndSort(entries)
   if not filterState or not sortMode then
@@ -877,11 +889,10 @@ function HistoryRowMixin:RenderRow(entry)
   -- Translated once here: badgeKey is nil only for the "?" case, which is
   -- never run through L[].
   self.badgeText:SetText(badgeKey and L[badgeKey] or "?")
-  -- A manual block has no score; blank it rather than show 0.
-  if entry.reason == "manual-block" then
-    self.scoreText:SetText("")
-  else
+  if EntryShowsScore(entry) then
     self.scoreText:SetText(tostring(entry.score or 0))
+  else
+    self.scoreText:SetText("")
   end
 
   -- Re-point the tooltip fields, since this frame is recycled.
@@ -1117,7 +1128,7 @@ function HistoryDetailMixin:RenderActions(entry)
       actions.btn2:Disable()
       actions.btn2:Show()
       actions.btn2.tipTitle = "Allowlisted"
-      actions.btn2.tipBody  = "This sender is on the allowlist. Future messages from them bypass scanning."
+      actions.btn2.tipBody  = "This sender is on the allowlist. Sift won't block messages from them."
     end
     return
   end
@@ -1138,7 +1149,7 @@ function HistoryDetailMixin:RenderActions(entry)
       actions.btn2:SetScript("OnClick", function() Actions.PerformAlwaysAllow(entry) end)
       actions.btn2:Show()
       actions.btn2.tipTitle = "Always allow"
-      actions.btn2.tipBody  = "Add this sender to the allowlist. Future messages from them bypass scanning."
+      actions.btn2.tipBody  = "Add this sender to the allowlist. Sift won't block messages from them."
     end
     return
   end
@@ -1181,8 +1192,7 @@ function HistoryDetailMixin:RenderActions(entry)
       end)
       actions.btn1:Show()
       actions.btn1.tipTitle = "Restore + Always allow"
-      actions.btn1.tipBody  = "Undo this block and add the sender to the allowlist, so Sift " ..
-        "stops checking their messages. The message won't reappear in chat."
+      actions.btn1.tipBody  = "Undo this block and add the sender to the allowlist. The message won't reappear in chat."
       actions.btn2:SetText(L["Restore only"])
       actions.btn2:SetScript("OnClick", function() Actions.PerformRestore(entry) end)
       actions.btn2:Show()
@@ -1489,9 +1499,11 @@ function HistoryDetailMixin:RefreshDetail()
   -- On the meta line because the footer is a fixed three-row layout.
   local keywordNote = ""
   if type(entry.customRule) == "table" then
-    local rule = entry.customRule.raw or entry.customRule.cleansed
+    local rule = entry.customRule.raw
     if rule then
       keywordNote = "   |cffffd100" .. L["caught by your keyword"] .. ": " .. rule .. "|r"
+    else
+      keywordNote = "   |cffffd100" .. L["caught by your keyword"] .. "|r"
     end
   end
 
@@ -2633,7 +2645,7 @@ function HistoryPanelMixin:CreatePauseRow()
       elseif state == "paused" then
         stateBody = "Paused \194\183 detected spam is logged to History but stays in chat."
       else
-        stateBody = "Off \194\183 this surface is not scanned."
+        stateBody = "Off \194\183 Sift won't block messages on this surface."
       end
       GameTooltip:SetOwner(pillButton, "ANCHOR_RIGHT")
       GameTooltip:AddLine(L[fullName])
@@ -2788,7 +2800,7 @@ function HistoryPanel.Initialize()
         local reportKind = Actions.GetReportKind(entry)
         local reportLabel = Actions.GetReportLabel(reportKind)
         if reportLabel then
-          rootDescription:CreateButton(L["Report"], function() Actions.PerformReport(entry) end)
+          rootDescription:CreateButton(L[reportLabel], function() Actions.PerformReport(entry) end)
         end
         rootDescription:CreateButton(L["Copy sender name"], function() Actions.ShowCopySenderPopup(entry) end)
       end,
