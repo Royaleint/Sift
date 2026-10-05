@@ -29,6 +29,8 @@ L["Character"] = "Character"
 L["Account"] = "Account"
 L["Refresh"] = "Refresh"
 L["History list is unavailable in this client."] = "History list is unavailable in this client."
+L["Left-click to toggle the History panel."] = "Left-click to toggle the History panel."
+L["Right-click for the Pause-surface menu and config."] = "Right-click for the Pause-surface menu and config."
 
 -- History panel: category / stat-tile / pause-pill display labels, reached
 -- via table lookups keyed by internal category or surface names
@@ -70,6 +72,13 @@ L["PASSED THROUGH"] = "PASSED THROUGH"
 L["surface paused"] = "surface paused"
 L["blocked by you"] = "blocked by you"
 L["caught by your keyword"] = "caught by your keyword"
+L["%s entries filtered out."] = "%s entries filtered out."
+L["%s lifetime detections; retained history is empty."] = "%s lifetime detections; retained history is empty."
+L["0 detections recorded."] = "0 detections recorded."
+L["In History: %d   \194\183   First seen: %s   \194\183   Last seen: %s"] = "In History: %d   \194\183   First seen: %s   \194\183   Last seen: %s"
+L["No blocks yet."] = "No blocks yet."
+L["Sift is watching."] = "Sift is watching."
+L["0 blocks recorded."] = "0 blocks recorded."
 
 -- History panel: hover tooltips for the row badges, column headers,
 -- breakdown chips, legend swatches, and stats lines.
@@ -100,6 +109,11 @@ L["Always allow"] = "Always allow"
 L["Restore"] = "Restore"
 L["Restore + Always allow"] = "Restore + Always allow"
 L["Restore only"] = "Restore only"
+L["Sender name (Ctrl+C to copy):"] = "Sender name (Ctrl+C to copy):"
+L["%s removed your manual block on %s."] = "%s removed your manual block on %s."
+L["that player"] = "that player"
+L["Filter by this sender"] = "Filter by this sender"
+L["Copy sender name"] = "Copy sender name"
 
 -- History panel: detail-pane action tooltips (RenderActions' tipTitle /
 -- tipBody, read by ActionOnEnter through L[self.tipTitle] / L[self.tipBody])
@@ -168,6 +182,7 @@ L["Blocked means hidden from chat. Restored means you undid the block. Pass-thru
 L["Sort"] = "Sort"
 L["Newest first \194\183 by Score (highest first) \194\183 by Sender (groups repeat offenders)."] = "Newest first \194\183 by Score (highest first) \194\183 by Sender (groups repeat offenders)."
 L["Reload the list to show messages Sift caught since you opened this window, or after clearing History."] = "Reload the list to show messages Sift caught since you opened this window, or after clearing History."
+L["|cff58a0ffFiltering by:|r %s"] = "|cff58a0ffFiltering by:|r %s"
 
 -- History panel: dropdown value labels (SURFACE_LABELS / TIME_WINDOW_VALUES /
 -- OUTCOME_VALUES / SORT_LABELS -- the display text for each dropdown's options)

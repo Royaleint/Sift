@@ -221,11 +221,19 @@ local STATS_TILE_COLORS = {
   falsePositives = { 0.53, 0.67, 0.80 },
 }
 
+function Chrome.ShowPopup(which, ...)
+  local dialog = StaticPopupDialogs and StaticPopupDialogs[which]
+  if not dialog or type(StaticPopup_Show) ~= "function" then return end
+  if which == "SIFT_COPY_SENDER" then
+    dialog.text = L["Sender name (Ctrl+C to copy):"]
+    dialog.button1 = CLOSE or "Close"
+  end
+  return StaticPopup_Show(which, ...)
+end
+
 function Chrome.RegisterStaticPopups()
   if StaticPopupDialogs and not StaticPopupDialogs["SIFT_COPY_SENDER"] then
     StaticPopupDialogs["SIFT_COPY_SENDER"] = {
-      text = "Sender name (Ctrl+C to copy):",
-      button1 = CLOSE or "Close",
       hasEditBox = true,
       editBoxWidth = 250,
       OnShow = function(self, data)
@@ -914,11 +922,11 @@ function HistoryDetailMixin:ShowEmptyState(show)
       local retained = stats and stats.retained and stats.retained.detections or 0
       local detected = stats and stats.lifetime and stats.lifetime.detections or retained
       if retained > 0 then
-        detailPane.empty.stats:SetText(tostring(retained) .. " entries filtered out.")
+        detailPane.empty.stats:SetText(L["%s entries filtered out."]:format(tostring(retained)))
       elseif detected > 0 then
-        detailPane.empty.stats:SetText(tostring(detected) .. " lifetime detections; retained history is empty.")
+        detailPane.empty.stats:SetText(L["%s lifetime detections; retained history is empty."]:format(tostring(detected)))
       else
-        detailPane.empty.stats:SetText("0 detections recorded.")
+        detailPane.empty.stats:SetText(L["0 detections recorded."])
       end
     end
   end
@@ -947,8 +955,7 @@ function HistoryDetailMixin:RenderSenderHistory(entry, entries)
     end
   end
 
-  detailPane.footer.senderHistory:SetText(string.format(
-    "In History: %d   \194\183   First seen: %s   \194\183   Last seen: %s",
+  detailPane.footer.senderHistory:SetText(L["In History: %d   ·   First seen: %s   ·   Last seen: %s"]:format(
     count,
     firstSeen and RelativeTime(firstSeen) or "-",
     lastSeen  and RelativeTime(lastSeen)  or "-"))
@@ -980,8 +987,8 @@ function Actions.PerformAlwaysAllow(entry)
     local _, clearedManualBlock = NS.Trust.AddAllowlist(entry.guid, entry.name, entry.realm, "history")
     -- Lifting a manual block is otherwise invisible; say so.
     if clearedManualBlock then
-      local message = "|cff33ff99Sift|r removed your manual block on "
-        .. tostring(entry.name or "that player") .. "."
+      local message = L["%s removed your manual block on %s."]:format(
+        "|cff33ff99Sift|r", tostring(entry.name or L["that player"]))
       if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
         DEFAULT_CHAT_FRAME:AddMessage(message)
       else
@@ -1070,9 +1077,7 @@ function Actions.PerformReport(entry)
 end
 
 function Actions.ShowCopySenderPopup(entry)
-  if StaticPopup_Show then
-    StaticPopup_Show("SIFT_COPY_SENDER", nil, nil, Data.FormatSender(entry))
-  end
+  Chrome.ShowPopup("SIFT_COPY_SENDER", nil, nil, Data.FormatSender(entry))
 end
 
 local rowContextMenu  -- set in HistoryPanel.Initialize()
@@ -1104,7 +1109,7 @@ function HistoryDetailMixin:RenderActions(entry)
   local outcome = entry.outcome or "blocked"
 
   if outcome == "restored" then
-    actions.btn1:SetText(L["\226\156\147 Restored"])
+    actions.btn1:SetText(L["✓ Restored"])
     actions.btn1:Disable()
     actions.btn1:Show()
     actions.btn1.tipTitle = "Restored"
@@ -1965,15 +1970,15 @@ function HistoryDetailMixin.BuildEmptyState(parent)
 
   f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
   f.title:SetPoint("CENTER", f, "CENTER", 0, 40)
-  f.title:SetText("No blocks yet.")
+  f.title:SetText(L["No blocks yet."])
 
   f.subtitle = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   f.subtitle:SetPoint("CENTER", f, "CENTER", 0, 16)
-  f.subtitle:SetText("Sift is watching.")
+  f.subtitle:SetText(L["Sift is watching."])
 
   f.stats = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   f.stats:SetPoint("CENTER", f, "CENTER", 0, -12)
-  f.stats:SetText("0 blocks recorded.")
+  f.stats:SetText(L["0 blocks recorded."])
 
   return f
 end
@@ -2257,7 +2262,7 @@ function HistoryPanelMixin:UpdateSenderFilterChip()
   if not frame or not frame.senderChip or not listPane then return end
   local chip = frame.senderChip
   if filterState and filterState.senderFilter then
-    chip.label:SetText("|cff58a0ffFiltering by:|r " .. Data.FormatSender(filterState.senderFilter))
+    chip.label:SetText(L["|cff58a0ffFiltering by:|r %s"]:format(Data.FormatSender(filterState.senderFilter)))
     chip:Show()
   else
     chip:Hide()
@@ -2341,7 +2346,7 @@ function HistoryPanelMixin.CreateTabStrip(parent)
   local history = CreateFrame("Button", nil, strip, "UIPanelButtonTemplate")
   history:SetSize(92, 24)
   history:SetPoint("LEFT", strip, "LEFT", 0, 0)
-  history:SetText("History")
+  history:SetText(L["History"])
   history:SetScript("OnClick", function()
     HistoryPanel.Show()
   end)
@@ -2352,7 +2357,7 @@ function HistoryPanelMixin.CreateTabStrip(parent)
   local config = CreateFrame("Button", nil, strip, "UIPanelButtonTemplate")
   config:SetSize(92, 24)
   config:SetPoint("LEFT", history, "RIGHT", 6, 0)
-  config:SetText("Config")
+  config:SetText(L["Config"])
   config:SetScript("OnClick", function()
     HistoryPanel.ShowConfig(activeConfigSection)
   end)
@@ -2638,7 +2643,7 @@ function HistoryPanelMixin.CreatePauseRow(parent)
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
       GameTooltip:AddLine(L[fullName])
       GameTooltip:AddLine(L[stateBody], 1.00, 1.00, 1.00, true)
-      GameTooltip:AddLine(L["Left-click cycles forward \194\183 Right-click cycles back."],
+      GameTooltip:AddLine(L["Left-click cycles forward · Right-click cycles back."],
         0.70, 0.70, 0.70, true)
       GameTooltip:Show()
     end)
@@ -2731,8 +2736,8 @@ function Chrome.RegisterMinimap()
     end,
     OnTooltipShow = function(tooltip)
       tooltip:AddLine("Sift")
-      tooltip:AddLine("Left-click to toggle the History panel.", 1, 1, 1)
-      tooltip:AddLine("Right-click for the Pause-surface menu and config.", 1, 1, 1)
+      tooltip:AddLine(L["Left-click to toggle the History panel."], 1, 1, 1)
+      tooltip:AddLine(L["Right-click for the Pause-surface menu and config."], 1, 1, 1)
     end,
   })
 
@@ -2773,24 +2778,24 @@ function HistoryPanel.Initialize()
       builder = function(anchor, rootDescription, entry)
         rootDescription:CreateTitle("Sift")
         if Actions.ContextEntryRestorable(entry) then
-          rootDescription:CreateButton("Restore", function() Actions.PerformRestore(entry) end)
+          rootDescription:CreateButton(L["Restore"], function() Actions.PerformRestore(entry) end)
           if Actions.ContextEntryCanAllowlist(entry) then
-            rootDescription:CreateButton("Restore + Always allow", function()
+            rootDescription:CreateButton(L["Restore + Always allow"], function()
               Actions.PerformRestore(entry)
               Actions.PerformAlwaysAllow(entry)
             end)
           end
         end
-        rootDescription:CreateButton("Filter by this sender", function() Actions.SetSenderFilter(entry) end)
+        rootDescription:CreateButton(L["Filter by this sender"], function() Actions.SetSenderFilter(entry) end)
         if filterState and filterState.senderFilter then
-          rootDescription:CreateButton("Clear sender filter", Actions.ClearSenderFilter)
+          rootDescription:CreateButton(L["Clear sender filter"], Actions.ClearSenderFilter)
         end
         local reportKind = Actions.GetReportKind(entry)
         local reportLabel = Actions.GetReportLabel(reportKind)
         if reportLabel then
           rootDescription:CreateButton(reportLabel, function() Actions.PerformReport(entry) end)
         end
-        rootDescription:CreateButton("Copy sender name", function() Actions.ShowCopySenderPopup(entry) end)
+        rootDescription:CreateButton(L["Copy sender name"], function() Actions.ShowCopySenderPopup(entry) end)
       end,
     })
 
