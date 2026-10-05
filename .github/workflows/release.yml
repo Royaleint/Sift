@@ -30,13 +30,9 @@ jobs:
     permissions:
       contents: write
     steps:
-      # A manual run that names a tag must package THAT tag. The guard and
-      # changelog steps below already read `inputs.tag`, but nothing used to
-      # check it out, so the packager built whatever ref the run was dispatched
-      # from and uploaded it under the named tag's release notes. This step runs
-      # before the checkout — there is no clone yet, so the tag is resolved
-      # through the API rather than local git — and fails loudly on a typo'd or
-      # deleted tag instead of letting the wrong build publish.
+      # A manual run that names a tag must package that tag. Runs before
+      # checkout (no clone yet), so the tag is resolved through the API; a
+      # typo'd or deleted tag fails here instead of publishing the wrong build.
       - name: Verify the dispatched tag exists
         if: inputs.tag != ''
         env:
@@ -49,26 +45,21 @@ jobs:
           fi
           echo "Dispatched tag $TAG resolves."
 
-      # On a tag push `inputs.tag` is empty, so `ref` resolves to '' — which is
-      # actions/checkout's own default, meaning "the ref that triggered the run".
-      # The tag-push path is therefore unchanged.
+      # On a tag push `inputs.tag` is empty, so `ref` is '': actions/checkout's
+      # default, the ref that triggered the run.
       - name: Checkout
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
           ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || '' }}
 
-      # Guard against a stale tag re-triggering the uploader. A bulk tag push
-      # (e.g. `git push --tags`, or re-pushing previously-deleted tags) fires
-      # this workflow once per tag ref — including OLD versions. Whichever run
-      # finishes last becomes CurseForge's newest file, so an old tag can
-      # silently overwrite a newer release (this happened with v1.1.1 over
-      # v1.1.2 on 2026-06-01 — see release-pipeline.md). Only the highest
-      # version tag in the repo is allowed to publish.
-      # versionsort.suffix makes "vX.Y.Z-rc1" sort BEFORE "vX.Y.Z" so a final
+      # Only the highest version tag may publish. A bulk tag push fires this
+      # workflow once per tag, old ones included, and whichever run finishes
+      # last becomes CurseForge's newest file.
+      # versionsort.suffix sorts "vX.Y.Z-rc1" before "vX.Y.Z", so a final
       # release is never blocked by its own prerelease tag.
-      # --list 'v*' keeps non-version tags out of the comparison: without it any
-      # such tag could sort to the top and block every future release.
+      # --list 'v*' keeps non-version tags out; one could otherwise sort to the
+      # top and block every release.
       - name: Guard — only the newest tag may publish
         id: guard
         run: |
@@ -115,7 +106,7 @@ jobs:
           echo "--- Extracted markdown for $TAG ---"
           cat RELEASE_NOTES.md
           # CurseForge renders changelogType markdown as plain text; convert to
-          # HTML so CF + GitHub both render correctly. (See release-pipeline.md.)
+          # HTML so CF + GitHub both render correctly.
           if ! command -v pandoc &>/dev/null; then
             echo "pandoc not preinstalled — installing"
             sudo apt-get update -qq && sudo apt-get install -y pandoc
@@ -124,14 +115,8 @@ jobs:
           echo "--- Converted HTML uploaded to CurseForge ---"
           cat RELEASE_NOTES.html
 
-      # Single run, no -g: the multi-flavor "## Interface: 11508, 20505, 120005"
-      # line plus enable-toc-creation builds ONE combined zip with per-flavor
-      # TOCs, uploaded as a single CurseForge file tagged for all three clients
-      # (Retail, Classic Era, TBC). No Wago/WoWInterface yet — add the IDs +
-      # tokens to this step when that day comes (no rebuild needed).
-      # Build the package WITHOUT uploading anywhere, purely so the shipped
-      # zip can be inspected before any store sees it. Costs one extra
-      # packager run; buys checking the real artifact, not a guess. (STU-064)
+      # Dry-run build (-d, no upload) so the checks below inspect the real zip
+      # before any store sees it.
       - name: Build package (no upload) for release-safety checks
         if: steps.guard.outputs.publish == 'true'
         uses: BigWigsMods/packager@v2
@@ -140,8 +125,8 @@ jobs:
 
       # A .pkgmeta ignore rule that strips a TOC-listed file ships an
       # "Error loading <file>" to every player at every login with no CI
-      # signal — this check fails the release instead. Covers every flavor
-      # TOC inside the zip. (STU-064)
+      # signal; this check fails the release instead. Covers every flavor
+      # TOC inside the zip.
       - name: Check — every TOC-listed file ships in the zip
         if: steps.guard.outputs.publish == 'true'
         run: node .github/scripts/check-toc-vs-zip.mjs .release
@@ -152,17 +137,18 @@ jobs:
         if: steps.guard.outputs.publish == 'true'
         run: node .github/scripts/check-legacy-companion.mjs .release
 
+      # Single run, no -g: the multi-flavor Interface line in Sift.toc plus
+      # enable-toc-creation builds one combined zip with per-flavor TOCs,
+      # uploaded as a single CurseForge file tagged for every listed client.
       - name: Package and Release
         if: steps.guard.outputs.publish == 'true'
         uses: BigWigsMods/packager@v2
         env:
           CF_API_KEY: ${{ secrets.CF_API_KEY }}
           GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
-      # Verify CurseForge holds EXACTLY one file for this version — a silent
-      # duplicate upload (packager retry layers make it structurally
-      # possible) otherwise goes unnoticed until a player asks which file to
-      # download. Warns-and-skips until CF_CORE_API_KEY (free Core API key,
-      # console.curseforge.com) is added to repo secrets. (STU-064)
+      # Verify CurseForge holds exactly one file for this version; a duplicate
+      # upload from packager retries otherwise goes unnoticed. Warns and skips
+      # when the CF_CORE_API_KEY secret is not set.
       - name: Check — CurseForge received exactly one file
         if: steps.guard.outputs.publish == 'true'
         env:

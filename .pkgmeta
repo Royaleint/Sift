@@ -7,9 +7,8 @@ manual-changelog:
   filename: RELEASE_NOTES.html
   markup-type: html
 
-# No `externals:` block — Sift vendors its libraries directly in Libs/
-# (see .gitignore: "Libs/ is tracked … manual vendor pattern"). The packager
-# ships them as-is from the checkout rather than fetching them at build time.
+# No `externals:` block: libraries are vendored in Libs/ and ship from the
+# checkout as-is.
 
 ignore:
   - .git
@@ -29,11 +28,10 @@ ignore:
   - CLAUDE.md
   - RELEASE_NOTES.md
   - RELEASE_NOTES.html
-  # Build-matrix dev-build files (BSP-070). Generated and gitignored, listed
-  # here too: shipping either gives every user a second TOC and a double-loaded
-  # addon. This is not belt-and-braces — check-toc-vs-zip.mjs verifies that
-  # TOC-referenced files exist, never that only one TOC does, so these two
-  # entries and the .gitignore rules are the whole defense.
+  # Dev-build files: generated and gitignored, but listed here too. Shipping
+  # either gives every user a second TOC and a double-loaded addon, and
+  # check-toc-vs-zip.mjs does not check for an extra TOC, so these entries
+  # and .gitignore are the only defense.
   - Sift_DevBuild.toc
   - DevBuildGuard.lua
 
