@@ -350,6 +350,12 @@ L["Filter choices not saved. Sift will ask again next login; change them any tim
 L["Block %s? Sift will hide their messages in say, yell, whispers, emotes and channels. Guild, community, party, raid and instance chat is not hidden."] = "Block %s? Sift will hide their messages in say, yell, whispers, emotes and channels. Guild, community, party, raid and instance chat is not hidden."
 L["Block"] = "Block"
 L["Cancel"] = "Cancel"
+L["this player"] = "this player"
+L["Blocked %s. Undo in /sift config > Blocked."] = "Blocked %s. Undo in /sift config > Blocked."
+L["%s is already blocked."] = "%s is already blocked."
+L["Block (Sift) - unavailable for this message"] = "Block (Sift) - unavailable for this message"
+L["Blocked (Sift)"] = "Blocked (Sift)"
+L["Block (Sift)"] = "Block (Sift)"
 
 -- Init.lua: /bdev pseudolocale command
 L["pseudo-locale applied. Open a Sift panel now; a panel you already opened this session needs /reload, then run this again first."] = "pseudo-locale applied. Open a Sift panel now; a panel you already opened this session needs /reload, then run this again first."

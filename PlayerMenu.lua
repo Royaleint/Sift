@@ -28,10 +28,6 @@ local ROSTER_WHICH = {
   "COMMUNITIES_WOW_MEMBER",
 }
 
-local BLOCK_LABEL = "Block (Sift)"
-local BLOCKED_LABEL = "Blocked (Sift)"
-local UNAVAILABLE_LABEL = "Block (Sift) - unavailable for this message"
-
 local registered = false
 
 local function IsSecret(value)
@@ -217,7 +213,7 @@ local function SenderLabel(name, realm)
   if name and realm then
     return name .. "-" .. realm
   end
-  return name or "this player"
+  return name or L["this player"]
 end
 
 local function AddDisabledButton(rootDescription, label)
@@ -235,9 +231,9 @@ local function OnBlockClicked(guid, name, realm)
 
   if NS.DB.BlockActorManually(guid, name, realm) then
     RememberTarget(guid, name, realm)
-    Print("Blocked " .. SenderLabel(name, realm) .. ". Undo in /sift config > Blocked.")
+    Print(L["Blocked %s. Undo in /sift config > Blocked."]:format(SenderLabel(name, realm)))
   else
-    Print(SenderLabel(name, realm) .. " is already blocked.")
+    Print(L["%s is already blocked."]:format(SenderLabel(name, realm)))
   end
 end
 
@@ -253,9 +249,6 @@ local function RegisterConfirmDialog()
     return false
   end
   StaticPopupDialogs[CONFIRM_DIALOG] = {
-    text = L["Block %s? Sift will hide their messages in say, yell, whispers, emotes and channels. Guild, community, party, raid and instance chat is not hidden."],
-    button1 = L["Block"],
-    button2 = CANCEL or L["Cancel"],
     OnAccept = function(_, data)
       if type(data) == "table" then
         OnBlockClicked(data.guid, data.name, data.realm)
@@ -267,6 +260,17 @@ local function RegisterConfirmDialog()
   }
   confirmRegistered = true
   return true
+end
+
+function PlayerMenu.ShowPopup(which, ...)
+  local dialog = StaticPopupDialogs and StaticPopupDialogs[which]
+  if not dialog or type(StaticPopup_Show) ~= "function" then return end
+  if which == CONFIRM_DIALOG then
+    dialog.text = L["Block %s? Sift will hide their messages in say, yell, whispers, emotes and channels. Guild, community, party, raid and instance chat is not hidden."]
+    dialog.button1 = L["Block"]
+    dialog.button2 = CANCEL or L["Cancel"]
+  end
+  return StaticPopup_Show(which, ...)
 end
 
 local function AddBlockEntry(_owner, rootDescription, contextData, confirm)
@@ -286,7 +290,7 @@ local function AddBlockEntry(_owner, rootDescription, contextData, confirm)
     -- A chat line Sift did not read, or one already pushed out of the ring:
     -- say the entry is unavailable rather than letting it vanish.
     if contextData.lineID ~= nil then
-      AddDisabledButton(rootDescription, UNAVAILABLE_LABEL)
+      AddDisabledButton(rootDescription, L["Block (Sift) - unavailable for this message"])
     end
     return
   end
@@ -294,13 +298,13 @@ local function AddBlockEntry(_owner, rootDescription, contextData, confirm)
   -- Already blocked: show the state rather than hiding the entry. Unblocking
   -- stays in Config > Blocked.
   if NS.DB and NS.DB.IsManuallyBlocked and NS.DB.IsManuallyBlocked(guid) then
-    AddDisabledButton(rootDescription, BLOCKED_LABEL)
+    AddDisabledButton(rootDescription, L["Blocked (Sift)"])
     return
   end
 
-  rootDescription:CreateButton(BLOCK_LABEL, function()
+  rootDescription:CreateButton(L["Block (Sift)"], function()
     if confirm then
-      StaticPopup_Show(CONFIRM_DIALOG, SenderLabel(name, realm), nil, { guid = guid, name = name, realm = realm })
+      PlayerMenu.ShowPopup(CONFIRM_DIALOG, SenderLabel(name, realm), nil, { guid = guid, name = name, realm = realm })
     else
       OnBlockClicked(guid, name, realm)
     end
