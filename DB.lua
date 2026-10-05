@@ -179,10 +179,7 @@ migrations[3] = function(db)
     local perCharRemoved, globalRemoved = NS.History.TrimAllCharacters()
     local total = perCharRemoved + globalRemoved
     if total > 0 then
-      Print(string.format(
-        "enforcing new account-wide history cap: trimmed %d records "
-          .. "(%d per-char excess, %d global). Open /sift config > "
-          .. "History to adjust the caps.",
+      Print(NS.L["enforcing new account-wide history cap: trimmed %d records (%d per-char excess, %d global). Open /sift config > History to adjust the caps."]:format(
         total, perCharRemoved, globalRemoved
       ))
     end
@@ -416,7 +413,7 @@ function DB.Initialize()
   local F = _G.Foundry_1_0
   if not (F and F:HasModule("DB")) then
     NS._InitFailed = true
-    Print("could not initialize: Foundry.DB is missing.")
+    Print(NS.L["could not initialize: Foundry.DB is missing."])
     return false
   end
 
@@ -1047,8 +1044,7 @@ function DB.ImportLegacyData()
   local summary = DB.MergeLegacyStore(_G[SV_NAME], legacy, Now())
   if summary then
     RepairShape(DB.db.global, DB.db.char)
-    Print(string.format(
-      "brought back %d allowed players and %d blocked senders from BawrSpam",
+    Print(NS.L["brought back %d allowed players and %d blocked senders from BawrSpam"]:format(
       summary.allow, summary.actors
     ))
   end

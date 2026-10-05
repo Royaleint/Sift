@@ -25,6 +25,7 @@ ignore:
   # Drop only the agent doc; README.md (+ packager-generated CHANGELOG) ship.
   # NOTE: no inline comments on ignore entries — the packager reads them literally.
   - Sift_Dev
+  - tests
   - CLAUDE.md
   - RELEASE_NOTES.md
   - RELEASE_NOTES.html

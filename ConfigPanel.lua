@@ -677,11 +677,11 @@ local function RelativeTime(ts)
     return "-"
   end
   local delta = Now() - ts
-  if delta < 0 then return "0s" end
-  if delta < 60 then return tostring(delta) .. "s" end
-  if delta < 3600 then return tostring(math.floor(delta / 60)) .. "m" end
-  if delta < 86400 then return tostring(math.floor(delta / 3600)) .. "h" end
-  if delta < 90 * 86400 then return tostring(math.floor(delta / 86400)) .. "d" end
+  if delta < 0 then return L["%ds"]:format(0) end
+  if delta < 60 then return L["%ds"]:format(delta) end
+  if delta < 3600 then return L["%dm"]:format(math.floor(delta / 60)) end
+  if delta < 86400 then return L["%dh"]:format(math.floor(delta / 3600)) end
+  if delta < 90 * 86400 then return L["%dd"]:format(math.floor(delta / 86400)) end
   return date("%Y-%m-%d", ts)
 end
 
@@ -704,6 +704,17 @@ local function IsRegionalNames()
   return NS.Compat and NS.Compat.RegionalNames and NS.Compat.RegionalNames() or false
 end
 
+function ConfigPanel.SourceLabel(source)
+  if source == "manual" then
+    return L["manual"]
+  elseif source == "history" then
+    return L["history"]
+  elseif source == "import" then
+    return L["import"]
+  end
+  return source
+end
+
 local function MatchesSearch(entry, guid, search)
   search = Lower(search)
   if search == "" then
@@ -712,6 +723,7 @@ local function MatchesSearch(entry, guid, search)
   return string.find(Lower(guid), search, 1, true)
     or string.find(Lower(SenderLabel(entry)), search, 1, true)
     or string.find(Lower(entry and entry.source), search, 1, true)
+    or string.find(Lower(ConfigPanel.SourceLabel(entry and entry.source)), search, 1, true)
 end
 
 local function SortedAllowlist()
@@ -813,7 +825,7 @@ end
 local function FindRegionalHistorySender(text)
   local wanted = Lower(NS.Compat.NormalizeFullName(text))
   if wanted == "" then
-    return nil, "Enter a sender by their full name."
+    return nil, L["Enter a sender by their full name."]
   end
 
   local entries = NS.History and NS.History.GetAll and NS.History.GetAll() or {}
@@ -824,7 +836,7 @@ local function FindRegionalHistorySender(text)
     end
   end
 
-  return nil, "Sift can only manually allow players already present in History."
+  return nil, L["Sift can only manually allow players already present in History."]
 end
 
 local function FindHistorySender(text)
@@ -835,7 +847,7 @@ local function FindHistorySender(text)
 
   local name, realm = string.match(text, "^%s*([^%-]+)%-(.-)%s*$")
   if not name or name == "" or not realm or realm == "" then
-    return nil, "Enter a sender as Name-Realm."
+    return nil, L["Enter a sender as Name-Realm."]
   end
 
   local entries = NS.History and NS.History.GetAll and NS.History.GetAll() or {}
@@ -849,7 +861,7 @@ local function FindHistorySender(text)
     end
   end
 
-  return nil, "Sift can only manually allow players already present in History."
+  return nil, L["Sift can only manually allow players already present in History."]
 end
 
 local function AddAllowlistFromText(text)
@@ -859,29 +871,29 @@ local function AddAllowlistFromText(text)
     return false
   end
   if not NS.Trust or not NS.Trust.AddAllowlist then
-    sectionStatus.Allowlist = "Allowlist API is unavailable."
+    sectionStatus.Allowlist = L["Allowlist API is unavailable."]
     return false
   end
   local added, clearedManualBlock = NS.Trust.AddAllowlist(entry.guid, entry.name, entry.realm, "history")
-  local unblocked = clearedManualBlock and " Manual block removed." or ""
+  local unblocked = clearedManualBlock and L[" Manual block removed."] or ""
   if added then
-    sectionStatus.Allowlist = "Added " .. SenderLabel(entry) .. "." .. unblocked
+    sectionStatus.Allowlist = L["Added %s."]:format(SenderLabel(entry)) .. unblocked
     listState.allowlistAddText = ""
     removedAllowlistEntry = nil
     return true
   end
-  sectionStatus.Allowlist = SenderLabel(entry) .. " is already allowlisted." .. unblocked
+  sectionStatus.Allowlist = L["%s is already allowlisted."]:format(SenderLabel(entry)) .. unblocked
   return false
 end
 
 local function RemoveAllowlist(guid, entry)
   if not NS.Trust or not NS.Trust.RemoveAllowlist then
-    sectionStatus.Allowlist = "Allowlist API is unavailable."
+    sectionStatus.Allowlist = L["Allowlist API is unavailable."]
     return
   end
   if NS.Trust.RemoveAllowlist(guid) then
     removedAllowlistEntry = { guid = guid, entry = CopyTable(entry) }
-    sectionStatus.Allowlist = "Removed " .. SenderLabel(entry) .. "."
+    sectionStatus.Allowlist = L["Removed %s."]:format(SenderLabel(entry))
     ConfigPanel.ShowSection("Allowlist")
   end
 end
@@ -895,14 +907,14 @@ local function UndoAllowlistRemove()
   local _, clearedManualBlock =
     NS.Trust.AddAllowlist(removed.guid, entry.name, entry.realm, entry.source or "manual")
   removedAllowlistEntry = nil
-  sectionStatus.Allowlist = "Restored " .. SenderLabel(entry) .. "."
-    .. (clearedManualBlock and " Manual block removed." or "")
+  sectionStatus.Allowlist = L["Restored %s."]:format(SenderLabel(entry))
+    .. (clearedManualBlock and L[" Manual block removed."] or "")
   ConfigPanel.ShowSection("Allowlist")
 end
 
 local function RemoveBlocked(key)
   if NS.DB and NS.DB.RemoveBlockedActor and NS.DB.RemoveBlockedActor(key) then
-    sectionStatus.Blocked = "Removed blocked actor."
+    sectionStatus.Blocked = L["Removed blocked actor."]
     ConfigPanel.ShowSection("Blocked")
     return
   end
@@ -910,7 +922,7 @@ local function RemoveBlocked(key)
   local blocked = GetBlockedActors()
   blocked[key] = nil
   listState.blockedCache = nil
-  sectionStatus.Blocked = "Removed blocked actor."
+  sectionStatus.Blocked = L["Removed blocked actor."]
   ConfigPanel.ShowSection("Blocked")
 end
 
@@ -1021,7 +1033,7 @@ local function ParseImportText(text)
   local seenGuids = {}
 
   if type(text) ~= "string" or text == "" then
-    return nil, "Import text is empty."
+    return nil, L["Import text is empty."]
   end
 
   local lineNumber = 0
@@ -1031,17 +1043,17 @@ local function ParseImportText(text)
     if line ~= "" then
       local key, value = string.match(line, "^([A-Za-z]+)=(.*)$")
       if not key then
-        return nil, "Line " .. lineNumber .. " is not key=value."
+        return nil, L["Line %s is not key=value."]:format(tostring(lineNumber))
       end
 
       if key == "format" then
-        if formatName then return nil, "Duplicate format line." end
+        if formatName then return nil, L["Duplicate format line."] end
         formatName = value
       elseif key == "version" then
-        if version then return nil, "Duplicate version line." end
+        if version then return nil, L["Duplicate version line."] end
         version = tonumber(value)
       elseif key == "exportedAt" then
-        if exportedAt then return nil, "Duplicate exportedAt line." end
+        if exportedAt then return nil, L["Duplicate exportedAt line."] end
         exportedAt = tonumber(value)
       elseif key == "entry" then
         local fields = SplitPipeFields(value)
@@ -1049,7 +1061,7 @@ local function ParseImportText(text)
           fields[6] = ""
         end
         if not fields or #fields ~= 6 then
-          return nil, "Line " .. lineNumber .. " must have 6 entry fields."
+          return nil, L["Line %s must have 6 entry fields."]:format(tostring(lineNumber))
         end
 
         local guid = fields[1]
@@ -1060,22 +1072,22 @@ local function ParseImportText(text)
         local lastSeenAt = fields[6]
 
         if not ValidGuid(guid) then
-          return nil, "Line " .. lineNumber .. " has an invalid GUID."
+          return nil, L["Line %s has an invalid GUID."]:format(tostring(lineNumber))
         end
         if seenGuids[guid] then
-          return nil, "Line " .. lineNumber .. " repeats a GUID."
+          return nil, L["Line %s repeats a GUID."]:format(tostring(lineNumber))
         end
         if not ValidName(name) or not ValidName(realm) then
-          return nil, "Line " .. lineNumber .. " has invalid name fields."
+          return nil, L["Line %s has invalid name fields."]:format(tostring(lineNumber))
         end
         if not ValidSource(source) then
-          return nil, "Line " .. lineNumber .. " has an invalid source."
+          return nil, L["Line %s has an invalid source."]:format(tostring(lineNumber))
         end
         if addedAt ~= "" and not tonumber(addedAt) then
-          return nil, "Line " .. lineNumber .. " has invalid addedAt."
+          return nil, L["Line %s has invalid addedAt."]:format(tostring(lineNumber))
         end
         if lastSeenAt ~= "" and not tonumber(lastSeenAt) then
-          return nil, "Line " .. lineNumber .. " has invalid lastSeenAt."
+          return nil, L["Line %s has invalid lastSeenAt."]:format(tostring(lineNumber))
         end
 
         seenGuids[guid] = true
@@ -1086,22 +1098,22 @@ local function ParseImportText(text)
           source = source ~= "" and source or "import",
         }
       else
-        return nil, "Line " .. lineNumber .. " has an unknown key."
+        return nil, L["Line %s has an unknown key."]:format(tostring(lineNumber))
       end
     end
   end
 
   if formatName ~= "Sift-allowlist" then
-    return nil, "Import format must be Sift-allowlist."
+    return nil, L["Import format must be Sift-allowlist."]
   end
   if version ~= 1 then
-    return nil, "Import version must be 1."
+    return nil, L["Import version must be 1."]
   end
   if exportedAt ~= nil and exportedAt < 0 then
-    return nil, "exportedAt must be positive."
+    return nil, L["exportedAt must be positive."]
   end
   if #entries == 0 then
-    return nil, "Import contains no entries."
+    return nil, L["Import contains no entries."]
   end
 
   return entries, nil
@@ -1138,7 +1150,7 @@ end
 
 local function ApplyImport(entries, overwrite)
   if not NS.Trust or not NS.Trust.AddAllowlist then
-    sectionStatus.Allowlist = "Allowlist API is unavailable."
+    sectionStatus.Allowlist = L["Allowlist API is unavailable."]
     return
   end
 
@@ -1169,10 +1181,9 @@ local function ApplyImport(entries, overwrite)
 
   pendingImport = nil
   removedAllowlistEntry = nil
-  sectionStatus.Allowlist = "Imported " .. tostring(added) .. " entries"
-    .. (skipped > 0 and ("; skipped " .. tostring(skipped)) or "")
-    .. (lifted > 0 and ("; lifted " .. tostring(lifted) .. " manual blocks") or "")
-    .. "."
+  sectionStatus.Allowlist = L["Imported %s entries%s%s."]:format(tostring(added),
+    skipped > 0 and L["; skipped %s"]:format(tostring(skipped)) or "",
+    lifted > 0 and L["; lifted %s manual blocks"]:format(tostring(lifted)) or "")
   if activeSection == "Allowlist" and frame and frame:IsShown() then
     ConfigPanel.ShowSection("Allowlist")
   end
@@ -1240,7 +1251,7 @@ local function EnsureDialog()
   dialogFrame.cancel = CreateFrame("Button", nil, dialogFrame, "UIPanelButtonTemplate")
   dialogFrame.cancel:SetSize(100, 24)
   dialogFrame.cancel:SetPoint("BOTTOMRIGHT", dialogFrame, "BOTTOMRIGHT", -18, 16)
-  dialogFrame.cancel:SetText("Close")
+  dialogFrame.cancel:SetText(L["Close"])
   dialogFrame.cancel:SetScript("OnClick", CloseDialog)
 
   dialogFrame:Hide()
@@ -1287,7 +1298,7 @@ local function ShowTextDialog(title, text, primaryLabel, primaryHandler)
   dialog.textValue = text or ""
   dialog.title:SetText(title)
   dialog.status:SetText("")
-  dialog.primary:SetText(primaryLabel or "Close")
+  dialog.primary:SetText(primaryLabel or L["Close"])
   dialog.primary:ClearAllPoints()
   if primaryHandler then
     dialog.primary:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", -128, 16)
@@ -1331,15 +1342,12 @@ local function RegisterStaticPopups()
   popupsRegistered = true
 
   StaticPopupDialogs["SIFT_CLEAR_HISTORY"] = {
-    text = "Clear all Sift history?",
-    button1 = "Clear",
-    button2 = "Cancel",
     OnAccept = function()
       if NS.History and NS.History.Clear then
         NS.History.Clear()
-        sectionStatus.History = "History cleared."
+        sectionStatus.History = L["History cleared."]
       else
-        sectionStatus.History = "History clear API is unavailable."
+        sectionStatus.History = L["History clear API is unavailable."]
       end
       if activeSection == "History" and frame and frame:IsShown() then
         ConfigPanel.ShowSection("History")
@@ -1351,9 +1359,6 @@ local function RegisterStaticPopups()
   }
 
   StaticPopupDialogs["SIFT_CLEAR_BLOCKED"] = {
-    text = "Clear all blocked actors?",
-    button1 = "Clear",
-    button2 = "Cancel",
     OnAccept = function()
       if not (NS.DB and NS.DB.ClearBlockedActors and NS.DB.ClearBlockedActors()) then
         -- The DB path did not run, so no revision bump; drop the cache
@@ -1361,7 +1366,7 @@ local function RegisterStaticPopups()
         ClearTable(GetBlockedActors())
         listState.blockedCache = nil
       end
-      sectionStatus.Blocked = "Blocked actors cleared."
+      sectionStatus.Blocked = L["Blocked actors cleared."]
       if activeSection == "Blocked" and frame and frame:IsShown() then
         ConfigPanel.ShowSection("Blocked")
       end
@@ -1372,15 +1377,12 @@ local function RegisterStaticPopups()
   }
 
   StaticPopupDialogs["SIFT_CLEAR_SHADOWLOG"] = {
-    text = "Clear the captured false-negative log?",
-    button1 = "Clear",
-    button2 = "Cancel",
     OnAccept = function()
       if NS.ShadowLog and NS.ShadowLog.Clear then
         local cleared = NS.ShadowLog.Clear()
-        sectionStatus.Dev = "Shadow log cleared: " .. tostring(cleared) .. " entries removed."
+        sectionStatus.Dev = L["Shadow log cleared: %s entries removed."]:format(tostring(cleared))
       else
-        sectionStatus.Dev = "Shadow log clear API is unavailable."
+        sectionStatus.Dev = L["Shadow log clear API is unavailable."]
       end
       if activeSection == "Dev" and frame and frame:IsShown() then
         ConfigPanel.ShowSection("Dev")
@@ -1393,12 +1395,9 @@ local function RegisterStaticPopups()
 
   -- Clearing a keyword list has no undo, so it asks first. The count fills %d.
   StaticPopupDialogs["SIFT_REMOVE_ALL_KEYWORDS"] = {
-    text = "Remove every phrase from your keyword block list (%d in total)? This cannot be undone.",
-    button1 = "Remove All",
-    button2 = "Cancel",
     OnAccept = function()
       local removed = NS.UserRules and NS.UserRules.RemoveAll(NS.UserRules.BLOCK) or 0
-      sectionStatus["My Keywords"] = "Removed " .. removed .. " phrase(s)."
+      sectionStatus["My Keywords"] = L["Removed %s phrase(s)."]:format(tostring(removed))
       if activeSection == "My Keywords" and frame and frame:IsShown() then
         ConfigPanel.ShowSection("My Keywords")
       end
@@ -1409,12 +1408,9 @@ local function RegisterStaticPopups()
   }
 
   StaticPopupDialogs["SIFT_REMOVE_ALL_ALLOW_KEYWORDS"] = {
-    text = "Remove every phrase from your never-block list (%d in total)? This cannot be undone.",
-    button1 = "Remove All",
-    button2 = "Cancel",
     OnAccept = function()
       local removed = NS.UserRules and NS.UserRules.RemoveAll(NS.UserRules.ALLOW) or 0
-      sectionStatus["Never Block"] = "Removed " .. removed .. " phrase(s)."
+      sectionStatus["Never Block"] = L["Removed %s phrase(s)."]:format(tostring(removed))
       if activeSection == "Never Block" and frame and frame:IsShown() then
         ConfigPanel.ShowSection("Never Block")
       end
@@ -1425,15 +1421,12 @@ local function RegisterStaticPopups()
   }
 
   StaticPopupDialogs["SIFT_RESET_SETTINGS"] = {
-    text = "Reset Sift settings to defaults?",
-    button1 = "Reset",
-    button2 = "Cancel",
     OnAccept = function()
       if ResetSettings() then
-        sectionStatus.Dev = "Settings reset to defaults."
+        sectionStatus.Dev = L["Settings reset to defaults."]
         SetHistoryPanelMinimapShown(SettingValue("showMinimapButton") ~= false)
       else
-        sectionStatus.Dev = "Settings API is unavailable."
+        sectionStatus.Dev = L["Settings API is unavailable."]
       end
       if activeSection == "Dev" and frame and frame:IsShown() then
         ConfigPanel.ShowSection("Dev")
@@ -1445,9 +1438,6 @@ local function RegisterStaticPopups()
   }
 
   StaticPopupDialogs["SIFT_IMPORT_OVERWRITE"] = {
-    text = "Import includes entries that are already allowlisted. Overwrite matching entries?",
-    button1 = "Overwrite",
-    button2 = "Cancel",
     OnAccept = function()
       if pendingImport then
         ApplyImport(pendingImport, true)
@@ -1462,9 +1452,6 @@ local function RegisterStaticPopups()
   }
 
   StaticPopupDialogs["SIFT_TRIM_HISTORY"] = {
-    text = "Trim history on every character down to the new maximum?",
-    button1 = "Trim",
-    button2 = "Cancel",
     OnAccept = function()
       local max = pendingHistoryMax
       pendingHistoryMax = nil
@@ -1472,9 +1459,9 @@ local function RegisterStaticPopups()
         SetSetting("historyMaxEntries", max)
         if NS.History and NS.History.TrimAllCharacters then
           NS.History.TrimAllCharacters()
-          sectionStatus.History = "History trimmed to " .. tostring(max) .. " entries per character."
+          sectionStatus.History = L["History trimmed to %s entries per character."]:format(tostring(max))
         else
-          sectionStatus.History = "History trim API is unavailable."
+          sectionStatus.History = L["History trim API is unavailable."]
         end
       end
       if activeSection == "History" and frame and frame:IsShown() then
@@ -1493,9 +1480,6 @@ local function RegisterStaticPopups()
   }
 
   StaticPopupDialogs["SIFT_TRIM_HISTORY_GLOBAL"] = {
-    text = "Trim history across all characters down to the new account-wide maximum?",
-    button1 = "Trim",
-    button2 = "Cancel",
     OnAccept = function()
       local max = pendingHistoryGlobalMax
       pendingHistoryGlobalMax = nil
@@ -1503,9 +1487,9 @@ local function RegisterStaticPopups()
         SetSetting("historyGlobalMaxEntries", max)
         if NS.History and NS.History.TrimAllCharacters then
           NS.History.TrimAllCharacters()
-          sectionStatus.History = "History trimmed account-wide to " .. tostring(max) .. " total entries."
+          sectionStatus.History = L["History trimmed account-wide to %s total entries."]:format(tostring(max))
         else
-          sectionStatus.History = "History trim API is unavailable."
+          sectionStatus.History = L["History trim API is unavailable."]
         end
       end
       if activeSection == "History" and frame and frame:IsShown() then
@@ -1524,6 +1508,49 @@ local function RegisterStaticPopups()
   }
 end
 
+function ConfigPanel.ShowPopup(which, ...)
+  local dialog = StaticPopupDialogs and StaticPopupDialogs[which]
+  if not dialog or type(StaticPopup_Show) ~= "function" then return end
+  if which == "SIFT_CLEAR_HISTORY" then
+    dialog.text = L["Clear all Sift history?"]
+    dialog.button1 = L["Clear"]
+    dialog.button2 = L["Cancel"]
+  elseif which == "SIFT_CLEAR_BLOCKED" then
+    dialog.text = L["Clear all blocked actors?"]
+    dialog.button1 = L["Clear"]
+    dialog.button2 = L["Cancel"]
+  elseif which == "SIFT_CLEAR_SHADOWLOG" then
+    dialog.text = L["Clear the captured false-negative log?"]
+    dialog.button1 = L["Clear"]
+    dialog.button2 = L["Cancel"]
+  elseif which == "SIFT_REMOVE_ALL_KEYWORDS" then
+    dialog.text = L["Remove every phrase from your keyword block list (%d in total)? This cannot be undone."]
+    dialog.button1 = L["Remove All"]
+    dialog.button2 = L["Cancel"]
+  elseif which == "SIFT_REMOVE_ALL_ALLOW_KEYWORDS" then
+    dialog.text = L["Remove every phrase from your never-block list (%d in total)? This cannot be undone."]
+    dialog.button1 = L["Remove All"]
+    dialog.button2 = L["Cancel"]
+  elseif which == "SIFT_RESET_SETTINGS" then
+    dialog.text = L["Reset Sift settings to defaults?"]
+    dialog.button1 = L["Reset"]
+    dialog.button2 = L["Cancel"]
+  elseif which == "SIFT_IMPORT_OVERWRITE" then
+    dialog.text = L["Import includes entries that are already allowlisted. Overwrite matching entries?"]
+    dialog.button1 = L["Overwrite"]
+    dialog.button2 = L["Cancel"]
+  elseif which == "SIFT_TRIM_HISTORY" then
+    dialog.text = L["Trim history on every character down to the new maximum?"]
+    dialog.button1 = L["Trim"]
+    dialog.button2 = L["Cancel"]
+  elseif which == "SIFT_TRIM_HISTORY_GLOBAL" then
+    dialog.text = L["Trim history across all characters down to the new account-wide maximum?"]
+    dialog.button1 = L["Trim"]
+    dialog.button2 = L["Cancel"]
+  end
+  return StaticPopup_Show(which, ...)
+end
+
 local function RegisterInterfaceOptions()
   if type(CreateFrame) ~= "function" then
     return
@@ -1540,6 +1567,10 @@ local function RegisterInterfaceOptions()
   button:SetSize(190, 24)
   button:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -18)
   button:SetText(L["Open Sift Config..."])
+  panel:SetScript("OnShow", function()
+    title:SetText(L["Sift Configuration"])
+    button:SetText(L["Open Sift Config..."])
+  end)
   button:SetScript("OnClick", function()
     -- Never close the Settings panel from addon code: SettingsPanel:Close
     -- reaches a protected function and raises ADDON_ACTION_FORBIDDEN, which
@@ -1706,7 +1737,7 @@ local function AddAxisPauseRow(axis, key, displayLabel, y)
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:AddLine(L[displayLabel])
     GameTooltip:AddLine(L[stateBody], 1.00, 1.00, 1.00, true)
-    GameTooltip:AddLine(L["Left-click cycles forward \194\183 Right-click cycles back."],
+    GameTooltip:AddLine(L["Left-click cycles forward · Right-click cycles back."],
       0.70, 0.70, 0.70, true)
     GameTooltip:Show()
   end)
@@ -1733,7 +1764,7 @@ local function AddDetectionReset(rowY, defaultValue, applyDefault)
   AddNativeButton("Reset", CONTENT_PAD + 344, rowY, 52, function()
     applyDefault()
     ConfigPanel.ShowSection(activeSection)
-  end, "Reset this setting to its default (" .. tostring(defaultValue) .. ").")
+  end, L["Reset this setting to its default (%s)."]:format(tostring(defaultValue)))
 end
 
 RenderDetection = function()
@@ -1751,7 +1782,7 @@ RenderDetection = function()
   local minWindow, maxWindow, defaultWindow = NS.Frequency.GetFloodWindowBounds()
   rowY = y
   AddSlider("Spam wave window (seconds)", "floodWindow", minWindow, maxWindow, 30, y,
-    string.format("How long Sift watches for the same spam showing up again and again. A longer window catches slower spam waves, and a shorter one only catches quick bursts. Leave at %d unless spam waves are getting through.", defaultWindow))
+    L["How long Sift watches for the same spam showing up again and again. A longer window catches slower spam waves, and a shorter one only catches quick bursts. Leave at %d unless spam waves are getting through."]:format(defaultWindow))
   AddDetectionReset(rowY - 10, defaultWindow, function()
     SetSetting("floodWindow", defaultWindow)
   end)
@@ -1826,7 +1857,7 @@ RenderAllowlist = function()
   y = y - 34
 
   if removedAllowlistEntry then
-    AddText("Removed " .. SenderLabel(removedAllowlistEntry.entry) .. ".", "GameFontHighlightSmall", CONTENT_PAD, y)
+    AddText(L["Removed %s."]:format(SenderLabel(removedAllowlistEntry.entry)), "GameFontHighlightSmall", CONTENT_PAD, y)
     AddNativeButton("Undo", CONTENT_PAD + 210, y + 4, 70, UndoAllowlistRemove,
       "Restore the entry you just removed.")
     y = y - 30
@@ -1838,11 +1869,11 @@ RenderAllowlist = function()
   local startIndex = (listState.allowlistPage - 1) * PAGE_ROWS + 1
   local endIndex = math.min(startIndex + PAGE_ROWS - 1, #entries)
 
-  AddText("Entries: " .. tostring(#entries), "GameFontNormalSmall", CONTENT_PAD, y)
+  AddText(L["Entries: %s"]:format(tostring(#entries)), "GameFontNormalSmall", CONTENT_PAD, y)
   y = y - 20
 
   if #entries == 0 then
-    AddDisabledRow("No allowlist entries", "Use History restore + allow, or import.", y)
+    AddDisabledRow("No allowlist entries", "Use Restore + Always allow in History, or import.", y)
     return
   end
 
@@ -1865,8 +1896,8 @@ RenderAllowlist = function()
 
     local meta = TrackNative(row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"))
     meta:SetPoint("LEFT", row, "LEFT", 8, -8)
-    meta:SetText((rowData.entry.source or "manual") .. " - added " .. RelativeTime(rowData.entry.addedAt)
-      .. " - seen " .. RelativeTime(rowData.entry.lastSeenAt))
+    meta:SetText(L["%s - added %s - seen %s"]:format(ConfigPanel.SourceLabel(rowData.entry.source or "manual"),
+      RelativeTime(rowData.entry.addedAt), RelativeTime(rowData.entry.lastSeenAt)))
     meta:Show()
 
     local remove = TrackNative(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
@@ -1883,7 +1914,7 @@ RenderAllowlist = function()
     y = y - (ROW_HEIGHT + 4)
   end
 
-  AddText("Page " .. tostring(listState.allowlistPage) .. " of " .. tostring(maxPage),
+  AddText(L["Page %s of %s"]:format(tostring(listState.allowlistPage), tostring(maxPage)),
     "GameFontDisableSmall", CONTENT_PAD, y)
   AddNativeButton("Prev", CONTENT_PAD + 170, y + 4, 60, function()
     if listState.allowlistPage > 1 then
@@ -1924,7 +1955,7 @@ RenderBlocked = function()
   local startIndex = (listState.blockedPage - 1) * PAGE_ROWS + 1
   local endIndex = math.min(startIndex + PAGE_ROWS - 1, #entries)
 
-  AddText("Blocked actors: " .. tostring(#entries), "GameFontNormalSmall", CONTENT_PAD, y)
+  AddText(L["Blocked actors: %s"]:format(tostring(#entries)), "GameFontNormalSmall", CONTENT_PAD, y)
   y = y - 20
 
   if #entries == 0 then
@@ -1960,9 +1991,13 @@ RenderBlocked = function()
     local meta = TrackNative(row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"))
     meta:SetPoint("LEFT", row, "LEFT", 8, -8)
     -- A manual block can have zero recorded blocks; say who added it.
-    local origin = isManualBlock and "blocked by you - " or "blocked by Sift - "
-    meta:SetText(origin .. "blocks " .. tostring(BlockedEntryCount(rowData.entry))
-      .. " - last " .. RelativeTime(BlockedEntryLastSeen(rowData.entry)))
+    local blockCount = tostring(BlockedEntryCount(rowData.entry))
+    local lastSeen = RelativeTime(BlockedEntryLastSeen(rowData.entry))
+    if isManualBlock then
+      meta:SetText(L["blocked by you - blocks %s - last %s"]:format(blockCount, lastSeen))
+    else
+      meta:SetText(L["blocked by Sift - blocks %s - last %s"]:format(blockCount, lastSeen))
+    end
     meta:Show()
 
     local remove = TrackNative(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
@@ -1984,7 +2019,7 @@ RenderBlocked = function()
     y = y - (ROW_HEIGHT + 4)
   end
 
-  AddText("Page " .. tostring(listState.blockedPage) .. " of " .. tostring(maxPage),
+  AddText(L["Page %s of %s"]:format(tostring(listState.blockedPage), tostring(maxPage)),
     "GameFontDisableSmall", CONTENT_PAD, y)
   AddNativeButton("Prev", CONTENT_PAD + 170, y + 4, 60, function()
     if listState.blockedPage > 1 then
@@ -2029,15 +2064,6 @@ local KEYWORD_SECTIONS = {
   },
 }
 
-local ADD_STATUS_TEXT = {
-  added          = "Added \"%s\".",
-  empty          = "Enter a word or phrase.",
-  too_short      = "That phrase is too short. Try a longer one.",
-  already_exists = "That matches \"%s\", already in this list.",
-  full           = "This list is full (%d maximum). Remove something first.",
-  unavailable    = "Keyword rules are unavailable.",
-}
-
 local function FilteredKeywords(kind, search)
   local entries = NS.UserRules and NS.UserRules.List(kind) or {}
   search = Lower(search)
@@ -2057,20 +2083,24 @@ end
 local function AddKeywordFromText(section, config, text)
   local rules = NS.UserRules
   if not rules then
-    sectionStatus[section] = ADD_STATUS_TEXT.unavailable
+    sectionStatus[section] = L["Keyword rules are unavailable."]
     return
   end
 
   local status, entry = rules.Add(config.kind, text)
   if status == "added" then
-    sectionStatus[section] = string.format(ADD_STATUS_TEXT.added, entry.raw)
+    sectionStatus[section] = L['Added "%s".']:format(entry.raw)
     listState.keywordAddText[config.kind] = ""
   elseif status == "already_exists" then
-    sectionStatus[section] = string.format(ADD_STATUS_TEXT.already_exists, entry.raw)
+    sectionStatus[section] = L['That matches "%s", already in this list.']:format(entry.raw)
   elseif status == "full" then
-    sectionStatus[section] = string.format(ADD_STATUS_TEXT.full, rules.GetCap(config.kind))
+    sectionStatus[section] = L["This list is full (%d maximum). Remove something first."]:format(rules.GetCap(config.kind))
+  elseif status == "empty" then
+    sectionStatus[section] = L["Enter a word or phrase."]
+  elseif status == "too_short" then
+    sectionStatus[section] = L["That phrase is too short. Try a longer one."]
   else
-    sectionStatus[section] = ADD_STATUS_TEXT[status] or ADD_STATUS_TEXT.unavailable
+    sectionStatus[section] = L["Keyword rules are unavailable."]
   end
 end
 
@@ -2098,11 +2128,11 @@ local function RenderKeywordSection(section)
   AddNativeButton("Remove All", CONTENT_PAD + 300, y + 6, 90, function()
     local count = rules.Count(kind)
     if count == 0 then
-      sectionStatus[section] = "Nothing to remove."
+      sectionStatus[section] = L["Nothing to remove."]
       ConfigPanel.ShowSection(section)
       return
     end
-    if StaticPopup_Show then StaticPopup_Show(config.popup, count) end
+    ConfigPanel.ShowPopup(config.popup, count)
   end, "Remove every phrase in this list. Asks for confirmation first.")
   y = y - 34
 
@@ -2158,7 +2188,7 @@ local function RenderKeywordSection(section)
 
     local meta = TrackNative(row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"))
     meta:SetPoint("LEFT", row, "LEFT", 8, -8)
-    local metaText = "added " .. RelativeTime(entry.added)
+    local metaText = L["added %s"]:format(RelativeTime(entry.added))
     if showCleansed then
       metaText = "matches \"" .. entry.cleansed .. "\" - " .. metaText
     end
@@ -2173,19 +2203,19 @@ local function RenderKeywordSection(section)
       -- Remove by phrase, not row number: under a search, `entries` is filtered
       -- and its numbering does not match the store's. A failure must say so.
       if rules.Remove(kind, entry.raw) then
-        sectionStatus[section] = "Removed \"" .. entry.raw .. "\"."
+        sectionStatus[section] = L['Removed "%s".']:format(entry.raw)
       else
-        sectionStatus[section] = "Could not remove \"" .. entry.raw .. "\"."
+        sectionStatus[section] = L['Could not remove "%s".']:format(entry.raw)
       end
       ConfigPanel.ShowSection(section)
     end)
-    AttachTooltip(remove, "Remove", L["Take \"%s\" out of this list."]:format(entry.raw))
+    AttachTooltip(remove, "Remove", L['Take "%s" out of this list.']:format(entry.raw))
     remove:Show()
 
     y = y - (ROW_HEIGHT + 4)
   end
 
-  AddText("Page " .. tostring(listState.keywordPage[kind]) .. " of " .. tostring(maxPage),
+  AddText(L["Page %s of %s"]:format(tostring(listState.keywordPage[kind]), tostring(maxPage)),
     "GameFontDisableSmall", CONTENT_PAD, y)
   AddNativeButton("Prev", CONTENT_PAD + 170, y + 4, 60, function()
     if listState.keywordPage[kind] > 1 then
@@ -2221,7 +2251,7 @@ RenderHistory = function()
   y = AddDisabledRow("Total restores", tostring(tonumber(lifetime.restored) or 0), y,
     "Total restores",
     "Blocked messages you restored in History on this character.")
-  AddText("Retained entries: " .. tostring(tonumber(retained.detections) or #entries),
+  AddText(L["Retained entries: %s"]:format(tostring(tonumber(retained.detections) or #entries)),
     "GameFontNormalSmall", CONTENT_PAD, y)
   y = y - 28
 
@@ -2242,9 +2272,7 @@ RenderHistory = function()
     end
     if value < maxLen then
       pendingHistoryMax = value
-      if StaticPopup_Show then
-        StaticPopup_Show("SIFT_TRIM_HISTORY")
-      end
+      ConfigPanel.ShowPopup("SIFT_TRIM_HISTORY")
     else
       SetSetting("historyMaxEntries", value)
     end
@@ -2255,7 +2283,7 @@ RenderHistory = function()
   y = y - 52
 
   -- Shown on every render, not only after the slider below is dragged.
-  AddText("Account-wide records: " .. tostring(GetAccountHistoryTotal()),
+  AddText(L["Account-wide records: %s"]:format(tostring(GetAccountHistoryTotal())),
     "GameFontNormalSmall", CONTENT_PAD, y)
   y = y - 20
 
@@ -2267,9 +2295,7 @@ RenderHistory = function()
     local total = GetAccountHistoryTotal()
     if value < total then
       pendingHistoryGlobalMax = value
-      if StaticPopup_Show then
-        StaticPopup_Show("SIFT_TRIM_HISTORY_GLOBAL")
-      end
+      ConfigPanel.ShowPopup("SIFT_TRIM_HISTORY_GLOBAL")
     else
       SetSetting("historyGlobalMaxEntries", value)
     end
@@ -2295,16 +2321,16 @@ RenderUI = function()
   AddNativeButton("Reset History Panel", CONTENT_PAD, y, 150, function()
     if NS.HistoryPanel and NS.HistoryPanel.ResetPosition then
       NS.HistoryPanel.ResetPosition()
-      sectionStatus.UI = "History panel position reset."
+      sectionStatus.UI = L["History panel position reset."]
     else
-      sectionStatus.UI = "History panel reset API is unavailable."
+      sectionStatus.UI = L["History panel reset API is unavailable."]
     end
     ConfigPanel.ShowSection("UI")
   end, "Move this panel back to the middle of the screen at its normal size. History " ..
     "and Config share one panel, so this resets both.")
   AddNativeButton("Reset Config Panel", CONTENT_PAD + 160, y, 150, function()
     ConfigPanel.ResetPosition()
-    sectionStatus.UI = "Config panel position reset."
+    sectionStatus.UI = L["Config panel position reset."]
     ConfigPanel.ShowSection("UI")
   end, "Move this panel back to the middle of the screen at its normal size. Config " ..
     "and History share one panel, so this does the same as Reset History Panel.")
@@ -2321,9 +2347,7 @@ RenderDev = function()
     "data so missed spam can be reviewed later. Also turns on extra logging and " ..
     "the /bdev diagnostic commands. Leave off unless you are helping test.")
   AddNativeButton("Reset Settings", CONTENT_PAD, y, 120, function()
-    if StaticPopup_Show then
-      StaticPopup_Show("SIFT_RESET_SETTINGS")
-    end
+    ConfigPanel.ShowPopup("SIFT_RESET_SETTINGS")
   end, "Puts every setting back to its default, and asks first. Your Allowlist, Blocked " ..
     "list, My Keywords, and Never Block are kept, but if you had raised Maximum history " ..
     "entries or Account total, History entries over the default limit are removed right " ..
@@ -2340,9 +2364,7 @@ RenderDev = function()
   -- Second row: a fourth button on the row above would start at x=460 and end at
   -- 580, past the right edge of the content region at MIN_WIDTH.
   AddNativeButton("Clear FN log", CONTENT_PAD, y - ROW_HEIGHT, 120, function()
-    if StaticPopup_Show then
-      StaticPopup_Show("SIFT_CLEAR_SHADOWLOG")
-    end
+    ConfigPanel.ShowPopup("SIFT_CLEAR_SHADOWLOG")
   end, "Discard every captured false-negative candidate. Equivalent to " ..
     "/bdev fnx clear. Confirmation required.")
   -- Dev mode only.
@@ -3077,12 +3099,12 @@ end
 
 function ConfigPanel.OpenExportDialog()
   ConfigPanel.Initialize()
-  ShowTextDialog("Sift Allowlist Export", ExportAllowlistText(), "Close", nil)
+  ShowTextDialog(L["Sift Allowlist Export"], ExportAllowlistText(), L["Close"], nil)
 end
 
 function ConfigPanel.OpenImportDialog()
   ConfigPanel.Initialize()
-  ShowTextDialog("Sift Allowlist Import", "", "Import", function(text)
+  ShowTextDialog(L["Sift Allowlist Import"], "", L["Import"], function(text)
     local entries, err = ParseImportText(text)
     if not entries then
       if dialogFrame and dialogFrame.status then
@@ -3094,7 +3116,7 @@ function ConfigPanel.OpenImportDialog()
     CloseDialog()
     pendingImport = entries
     if ImportNeedsOverwrite(entries) and StaticPopup_Show then
-      StaticPopup_Show("SIFT_IMPORT_OVERWRITE")
+      ConfigPanel.ShowPopup("SIFT_IMPORT_OVERWRITE")
     else
       ApplyImport(entries, false)
     end
@@ -3103,16 +3125,12 @@ end
 
 function ConfigPanel.ConfirmClearHistory()
   ConfigPanel.Initialize()
-  if StaticPopup_Show then
-    StaticPopup_Show("SIFT_CLEAR_HISTORY")
-  end
+  ConfigPanel.ShowPopup("SIFT_CLEAR_HISTORY")
 end
 
 function ConfigPanel.ConfirmClearBlocked()
   ConfigPanel.Initialize()
-  if StaticPopup_Show then
-    StaticPopup_Show("SIFT_CLEAR_BLOCKED")
-  end
+  ConfigPanel.ShowPopup("SIFT_CLEAR_BLOCKED")
 end
 
 -- HistoryPanel's embedded auto-resize registers here to hear section changes.

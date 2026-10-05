@@ -12,7 +12,6 @@ if not F then
   error("Sift requires Foundry-1.0. Please install or enable it.")
 end
 
--- Only the /bdev pseudolocale messages below are localized.
 local L = NS.L
 
 local initialized = false
@@ -111,7 +110,7 @@ local function ToggleHistory()
   if NS.HistoryPanel and NS.HistoryPanel.Toggle then
     NS.HistoryPanel.Toggle()
   else
-    Print("history panel is unavailable.")
+    Print(L["history panel is unavailable."])
 	end
 end
 
@@ -119,7 +118,7 @@ local function OpenConfig(section)
 	if NS.ConfigPanel and NS.ConfigPanel.Open then
 		NS.ConfigPanel.Open(section)
 	else
-		Print("config panel is unavailable.")
+		Print(L["config panel is unavailable."])
 	end
 end
 
@@ -197,22 +196,22 @@ end
 local function AllowFromHistory(rest)
 	local guid, name, realm = ResolveHistorySender(rest)
 	if not guid then
-		Print(IsRegionalNames() and "allow requires a sender from History, by their full name."
-			or "allow requires a sender from History, formatted as Name-Realm.")
+		Print(IsRegionalNames() and L["allow requires a sender from History, by their full name."]
+			or L["allow requires a sender from History, formatted as Name-Realm."])
 		return
 	end
 
 	if not NS.Trust or not NS.Trust.AddAllowlist then
-		Print("sender is already allowlisted or cannot be allowlisted.")
+		Print(L["sender is already allowlisted or cannot be allowlisted."])
 		return
 	end
 
 	local added, clearedManualBlock = NS.Trust.AddAllowlist(guid, name, realm, "manual")
-	local unblocked = clearedManualBlock and " Your manual block on them was removed." or ""
+	local unblocked = clearedManualBlock and L[" Your manual block on them was removed."] or ""
 	if added then
-		Print("allowlisted " .. tostring(name or rest) .. "." .. unblocked)
+		Print(L["allowlisted %s."]:format(tostring(name or rest)) .. unblocked)
 	else
-		Print("sender is already allowlisted or cannot be allowlisted." .. unblocked)
+		Print(L["sender is already allowlisted or cannot be allowlisted."] .. unblocked)
 	end
 end
 
@@ -236,7 +235,7 @@ local function ConfirmClearHistory()
 	if NS.ConfigPanel and NS.ConfigPanel.ConfirmClearHistory then
 		NS.ConfigPanel.ConfirmClearHistory()
 	else
-		Print("config panel is unavailable.")
+		Print(L["config panel is unavailable."])
 	end
 end
 
@@ -244,17 +243,17 @@ local function ConfirmClearBlocked()
 	if NS.ConfigPanel and NS.ConfigPanel.ConfirmClearBlocked then
 		NS.ConfigPanel.ConfirmClearBlocked()
 	else
-		Print("config panel is unavailable.")
+		Print(L["config panel is unavailable."])
 	end
 end
 
 local function RebuildStats()
 	if not NS.History or not NS.History.RebuildByCategory then
-		Print("rebuild API unavailable.")
+		Print(L["rebuild API unavailable."])
 		return
 	end
 	local total = NS.History.RebuildByCategory()
-	Print("byCategory rebuilt from retained history: " .. tostring(total) .. " entries categorized. Reload or reopen History panel to refresh stats display.")
+	Print(L["stats rebuilt from retained history: %s entries counted. Reload or reopen the History panel to refresh the stats display."]:format(tostring(total)))
 end
 
 -- /bdev fpx [N]: false-positive export dialog, limited to the last N restored
@@ -400,7 +399,7 @@ local COMMANDS = {
 }
 
 local function PrintUsage()
-	Print("usage: /sift [history|config|options|allow|export|import|clearhistory|clearblocked|rebuildstats]")
+	Print(L["usage: %s"]:format("/sift [history|config|options|allow|export|import|clearhistory|clearblocked|rebuildstats]"))
 end
 
 local function SlashHandler(msg)
@@ -499,9 +498,9 @@ local function ImportLegacyDataOnLogin()
     local global = NS.DB and NS.DB.GetGlobal and NS.DB.GetGlobal()
     local imported = global and global.legacyImport ~= nil
     if imported then
-      Print("brought your BawrSpam data back, but a follow-up step failed. A /reload should finish it.")
+      Print(L["brought your BawrSpam data back, but a follow-up step failed. A /reload should finish it."])
     else
-      Print("could not bring back your BawrSpam data this time. It will try again next login.")
+      Print(L["could not bring back your BawrSpam data this time. It will try again next login."])
     end
     if NS.DB and NS.DB.DevLog then
       NS.DB.DevLog("legacy import/refresh error: " .. tostring(err))
