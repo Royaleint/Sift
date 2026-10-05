@@ -10,11 +10,12 @@
 // Requires: `unzip` on PATH (preinstalled on GitHub ubuntu runners).
 //
 // Scope: TOC-level references only. XML files can include further files;
-// transitive XML resolution is deliberately out of scope: the
-// original incident class was TOC-level, and XML include errors surface at packaging
-// time far more often than ignore-stripping does.
+// transitive XML resolution is deliberately out of scope: the failure class
+// above is TOC-level, and XML include errors surface at packaging time far
+// more often than ignore-stripping does.
 //
-// Shared release check: per-repo copies live at .github/scripts/. Edit the master copy and re-copy; do not let copies drift.
+// Shared release check: per-repo copies live at .github/scripts/. Edit the
+// master copy and re-copy; do not let copies drift.
 
 import { execFileSync } from "node:child_process";
 import { readdirSync, existsSync } from "node:fs";

@@ -21,7 +21,8 @@
 // Test hook: --files-json <path> bypasses the network and reads the API
 // response shape from a fixture file.
 //
-// Shared release check: per-repo copies live at .github/scripts/. Edit the master copy and re-copy; do not let copies drift.
+// Shared release check: per-repo copies live at .github/scripts/. Edit the
+// master copy and re-copy; do not let copies drift.
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
@@ -121,7 +122,7 @@ if (matches.length === 0) {
   process.exit(1);
 }
 if (matches.length > 1) {
-  console.error(`::error::check-cf-upload: ${matches.length} files match ${tag} — duplicate upload detected (FND-015 class). Delete the extra file on CF's file management page and investigate the run log.`);
+  console.error(`::error::check-cf-upload: ${matches.length} files match ${tag} — duplicate upload detected. Delete the extra file on CF's file management page and investigate the run log.`);
   process.exit(1);
 }
 console.log("check-cf-upload: PASSED — exactly one file for this release.");
