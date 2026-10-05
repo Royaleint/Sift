@@ -396,13 +396,9 @@ local function AddStatus(y, message, good)
     return y
   end
 
-  -- GameFontHighlight (not the Small variant) so the line is actually
-  -- noticeable. An explicit width makes GetStringHeight() measure at the
-  -- same width AddText would otherwise only reach via a TOPLEFT+RIGHT point
-  -- pair, which needs a layout pass to resolve -- GetStringHeight() runs
-  -- immediately after SetText, before that pass. The offset below is then
-  -- sized off the real (possibly wrapped) height instead of a fixed guess,
-  -- since the bigger font wraps some of the longer messages to two lines.
+  -- Keep the explicit width: GetStringHeight runs right after SetText, before a
+  -- TOPLEFT+RIGHT anchor pair would resolve, so it needs a fixed width to report
+  -- the wrapped height.
   local text = good and "|cff5ad080" or "|cffffd100"
   local width = ContentWidth() - (2 * CONTENT_PAD)
   local fs = AddText(text .. message .. "|r", "GameFontHighlight", CONTENT_PAD, y, width)
@@ -942,6 +938,7 @@ end
 local function EscapeField(value)
   value = tostring(value or "")
   value = string.gsub(value, "\\", "\\\\")
+  -- '|' is the field separator (and a WoW escape char), so it is written as \p; the parsers accept only \\ \p \n \r.
   value = string.gsub(value, "|", "\\p")
   value = string.gsub(value, "\r", "\\r")
   value = string.gsub(value, "\n", "\\n")
@@ -1057,6 +1054,7 @@ local function ParseImportText(text)
         exportedAt = tonumber(value)
       elseif key == "entry" then
         local fields = SplitPipeFields(value)
+        -- lastSeenAt is optional: a five-field entry is valid and must still import.
         if fields and #fields == 5 then
           fields[6] = ""
         end
@@ -1596,9 +1594,6 @@ end
 -- Shared 3-state pause-pill row for Categories and Surfaces.
 -- Retail uses atlas icons; Classic-family clients use color textures because
 -- some Retail atlas names are absent and can leave stale glyphs behind.
--- LevelUp-Dot-Green                  -> green dot
--- CreditsScreen-Assets-Buttons-Pause -> media pause icon
--- communities-icon-redx              -> red X
 local PAUSE_ROW_ATLAS = {
   active = "LevelUp-Dot-Green",
   paused = "CreditsScreen-Assets-Buttons-Pause",
@@ -1803,7 +1798,7 @@ RenderSurfaces = function()
     local label = SURFACE_LABELS[surface] or surface
     y = AddAxisPauseRow("surface", surface, label, y)
   end
-  -- Preserved settings (live toggles, not part of the pause taxonomy).
+  -- A plain on/off setting, not a pause state.
   AddCheckbox("Filter bubbles", "filterBubbles", y, SetFilterBubblesEnabled,
     "Also hides the chat bubble for blocked Say and Yell messages. To do this, Sift " ..
     "briefly turns off the game's chat bubbles, then turns them back on with the next " ..
@@ -2487,10 +2482,8 @@ local function CreateConfigFrame(parent)
   return CreatePortraitConfigFrame(parent)
 end
 
--- Post-processor: applies PortraitFrameTemplate-specific customization
--- (layout, portrait hide, title set, title centering). No-op on the Plain
--- path because every method is method-existence-guarded; the Plain path
--- already wires title + close button inline in CreatePlainConfigFrame.
+-- PortraitFrameTemplate customization. Template calls are existence-guarded so this
+-- is safe on the Plain frame too, which still needs the strata/clamp/hide at the end.
 local function ApplyConfigChrome(f)
   f.layoutType = "ButtonFrameTemplateNoPortrait"
   if f.SetBorder then
@@ -3048,7 +3041,6 @@ local function BuildFNExportText(limit)
   for i = 1, #order do
     local entry = order[i]
     local originals = type(entry.originals) == "table" and entry.originals or {}
-    -- Capture tags, if any.
     local tagLabel = ""
     if type(entry.tags) == "table" and #entry.tags > 0 then
       tagLabel = " [" .. table.concat(entry.tags, ",") .. "]"
