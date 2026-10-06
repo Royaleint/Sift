@@ -246,9 +246,7 @@ L["Never Block"] = "Never Block"
 L["Your own words and phrases that let a message through, even past Sift's filter. They don't override players you blocked yourself."] = "Your own words and phrases that let a message through, even past Sift's filter. They don't override players you blocked yourself."
 L["How much History Sift keeps, your lifetime totals, and the button to clear it."] = "How much History Sift keeps, your lifetime totals, and the button to clear it."
 L["UI"] = "UI"
-L["Show or hide the minimap button, and reset the Config and History panels to their default size and position."] = "Show or hide the minimap button, and reset the Config and History panels to their default size and position."
-L["Dev"] = "Dev"
-L["Developer-only diagnostics and full settings reset."] = "Developer-only diagnostics and full settings reset."
+L["Show or hide the minimap button, reset the Config and History panels to their default size and position, or put every setting back to its default."] = "Show or hide the minimap button, reset the Config and History panels to their default size and position, or put every setting back to its default."
 
 -- Config panel: Detection section sliders
 L["Block threshold"] = "Block threshold"
@@ -432,34 +430,14 @@ L["Move this panel back to the middle of the screen at its normal size. Config a
 L["History panel position reset."] = "History panel position reset."
 L["History panel reset API is unavailable."] = "History panel reset API is unavailable."
 L["Config panel position reset."] = "Config panel position reset."
-L["Panel position and minimap controls."] = "Panel position and minimap controls."
+L["Panel size and position, the minimap button, and resetting all settings."] = "Panel size and position, the minimap button, and resetting all settings."
 
--- Config panel: Dev section
-L["Enable dev mode"] = "Enable dev mode"
-L["Records recent chat from other players, whispers included, into your saved data so missed spam can be reviewed later. Also turns on extra logging and the /bdev diagnostic commands. Leave off unless you are helping test."] = "Records recent chat from other players, whispers included, into your saved data so missed spam can be reviewed later. Also turns on extra logging and the /bdev diagnostic commands. Leave off unless you are helping test."
+-- Config panel: UI section, Reset Settings
 L["Reset Settings"] = "Reset Settings"
 L["Puts every setting back to its default, and asks first. Your Allowlist, Blocked list, My Keywords, and Never Block are kept, but if you had raised Maximum history entries or Account total, History entries over the default limit are removed right away, oldest first."] = "Puts every setting back to its default, and asks first. Your Allowlist, Blocked list, My Keywords, and Never Block are kept, but if you had raised Maximum history entries or Account total, History entries over the default limit are removed right away, oldest first."
-L["Export FP fixtures"] = "Export FP fixtures"
-L["Save the false-positive entries in History to a copy-paste window. Equivalent to /bdev fpx. Requires dev mode."] = "Save the false-positive entries in History to a copy-paste window. Equivalent to /bdev fpx. Requires dev mode."
-L["Export FN candidates"] = "Export FN candidates"
-L["Save the recent chat captured while dev mode is on to a copy-paste window for review. Equivalent to /bdev fnx. Requires dev mode."] = "Save the recent chat captured while dev mode is on to a copy-paste window for review. Equivalent to /bdev fnx. Requires dev mode."
-L["Clear FN log"] = "Clear FN log"
-L["Discard every captured false-negative candidate. Equivalent to /bdev fnx clear. Confirmation required."] = "Discard every captured false-negative candidate. Equivalent to /bdev fnx clear. Confirmation required."
-L["Shadow log cleared: %s entries removed."] = "Shadow log cleared: %s entries removed."
-L["Shadow log clear API is unavailable."] = "Shadow log clear API is unavailable."
 L["Settings reset to defaults."] = "Settings reset to defaults."
 L["Settings API is unavailable."] = "Settings API is unavailable."
-L["Clear the captured false-negative log?"] = "Clear the captured false-negative log?"
 L["Reset Sift settings to defaults?"] = "Reset Sift settings to defaults?"
-L["Developer-only diagnostics and reset controls."] = "Developer-only diagnostics and reset controls."
-
--- Config panel: Dev section, shown only in dev mode
-L["Anti-signal cap"] = "Anti-signal cap"
-L["Some wording makes a message less likely to be spam and lowers its score. This sets the most that wording can lower a score, all together. Closer to 0 makes Sift stricter."] = "Some wording makes a message less likely to be spam and lowers its score. This sets the most that wording can lower a score, all together. Closer to 0 makes Sift stricter."
-L["Mixed-script weight"] = "Mixed-script weight"
-L["Adds this much to the score of a message that already looks like spam when its words mix alphabets, such as Latin letters swapped for look-alike Cyrillic or Greek ones. Set to 0 to turn this off."] = "Adds this much to the score of a message that already looks like spam when its words mix alphabets, such as Latin letters swapped for look-alike Cyrillic or Greek ones. Set to 0 to turn this off."
-L["Use mixed-script detection"] = "Use mixed-script detection"
-L["Watch for words that mix alphabets, such as Latin letters swapped for look-alike Cyrillic ones. When this is off, Mixed-script weight has no effect."] = "Watch for words that mix alphabets, such as Latin letters swapped for look-alike Cyrillic ones. When this is off, Mixed-script weight has no effect."
 
 -- Config panel: resize handle
 L["Resize panel"] = "Resize panel"
@@ -483,12 +461,6 @@ L["%s is already blocked."] = "%s is already blocked."
 L["Block (Sift) - unavailable for this message"] = "Block (Sift) - unavailable for this message"
 L["Blocked (Sift)"] = "Blocked (Sift)"
 L["Block (Sift)"] = "Block (Sift)"
-
--- Init.lua: /bdev pseudolocale command
-L["pseudo-locale applied. Open a Sift panel now; a panel you already opened this session needs /reload, then run this again first."] = "pseudo-locale applied. Open a Sift panel now; a panel you already opened this session needs /reload, then run this again first."
-L["pseudo-locale is already active this session. /reload to restore English, then run it again."] = "pseudo-locale is already active this session. /reload to restore English, then run it again."
-L["the pseudolocale command is only available when devMode is enabled."] = "the pseudolocale command is only available when devMode is enabled."
-L["pseudo-locale tool is unavailable (locale table not loaded)."] = "pseudo-locale tool is unavailable (locale table not loaded)."
 
 -- DB.lua: keyword-phrase merge notice
 L["%d of your %s phrases matched another phrase already in the list, so we combined the duplicates. What gets filtered has not changed."] = "%d of your %s phrases matched another phrase already in the list, so we combined the duplicates. What gets filtered has not changed."

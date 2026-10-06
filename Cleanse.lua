@@ -350,8 +350,8 @@ local function _scriptOf(cp)
 end
 
 -- Script-island shape: a mostly-CJK message carrying an embedded Latin run.
--- Measured here because this walk already decodes every codepoint; Signals
--- decides what it means.
+-- Measured here because this walk already decodes every codepoint; the reader
+-- of analysis.signals decides what it means.
 local ISLAND_MIN_CJK = 4  -- ignore a stray ideograph or two
 local ISLAND_MIN_RUN = 4  -- a handle-length run, not an incidental letter
 

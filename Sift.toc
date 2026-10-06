@@ -24,9 +24,6 @@ Trust.lua
 Frequency.lua
 BubbleSuppressor.lua
 History.lua
-Signals.lua
-ShadowLog.lua
-PseudoLocale.lua
 ReportFlow.lua
 ChatScanner.lua
 PlayerMenu.lua

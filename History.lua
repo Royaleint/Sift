@@ -7,8 +7,8 @@ local History = {}
 
 local DEFAULT_RECENT_LIMIT = 10
 local MAX_PRINT_LIMIT = 25
--- Meta keys, never a category. Copies in ChatScanner, History, HistoryPanel,
--- ShadowLog, Signals, ConfigPanel: keep all six in step.
+-- Meta keys, never a category. Copies in ChatScanner, History and HistoryPanel:
+-- keep all three in step.
 local IGNORED_BREAKDOWN_KEYS = {
   MixedScript = true,
   BlockedActor = true,

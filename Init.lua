@@ -1,6 +1,6 @@
 -- Sift/Init.lua
 -- Bootstrap: module initialization order, the login-time installers, and the
--- /sift and /bdev slash commands.
+-- /sift slash command.
 
 local ADDON_NAME, NS = ...
 
@@ -49,11 +49,6 @@ local function Initialize()
   -- character on each load; per-append trimming never reaches other alts.
   if NS.History and NS.History.TrimAllCharacters then
     NS.History.TrimAllCharacters()
-  end
-
-  -- The same for the shadow log: Capture only evicts one entry at a time.
-  if NS.ShadowLog and NS.ShadowLog.TrimToCap then
-    NS.ShadowLog.TrimToCap()
   end
 
   -- Repeat counting is always on; settings.throttle.enabled is intentionally
@@ -131,36 +126,6 @@ local function OpenConfig(section)
 	else
 		Print(L["config panel is unavailable."])
 	end
-end
-
-local function RunSyntheticTest(message)
-  if not NS.DB or not NS.DB.IsDevMode or not NS.DB.IsDevMode() then
-    Print("test command is only available when devMode is enabled.")
-    return
-  end
-
-  if type(message) ~= "string" or message == "" then
-    message = "wts gold cheap"
-  end
-
-  local blocked = NS.ChatScanner and NS.ChatScanner.Filter and NS.ChatScanner.Filter(
-    "CHAT_MSG_CHANNEL",
-    message,
-    "TestSpammer-TestRealm",
-    nil,
-    "Trade",
-    nil,
-    nil,
-    nil,
-    2,
-    "Trade",
-    nil,
-    -- Non-numeric line ID on purpose: keeps the test out of the decision cache and sender ring.
-    "SiftTestLine",
-    "Player-9999-FFFFFFFF"
-  )
-
-	Print("synthetic test " .. (blocked and "blocked" or "passed") .. ".")
 end
 
 local function NormalizeSender(value)
@@ -268,132 +233,6 @@ local function RebuildStats()
 	Print(L["stats rebuilt from retained history: %s entries counted. Reload or reopen the History panel to refresh the stats display."]:format(tostring(total)))
 end
 
--- /bdev fpx [N]: false-positive export dialog, limited to the last N restored
--- entries. Reads the first token only, so "/bdev fpx 20 extra" still honors 20.
-local function ExportFP(rest)
-  local firstToken = string.match(rest or "", "^(%S+)")
-  local limit = firstToken and tonumber(firstToken) or nil
-  if NS.ConfigPanel and NS.ConfigPanel.OpenFPExportDialog then
-    NS.ConfigPanel.OpenFPExportDialog(limit)
-  else
-    Print("FP export unavailable (ConfigPanel not loaded).")
-  end
-end
-
--- /bdev hx [N]: export of every History original, deduped and sorted by count,
--- optionally capped to the top N. Read-only.
-local function ExportHistory(rest)
-  local firstToken = string.match(rest or "", "^(%S+)")
-  local limit = firstToken and tonumber(firstToken) or nil
-  if NS.ConfigPanel and NS.ConfigPanel.OpenHistoryExportDialog then
-    NS.ConfigPanel.OpenHistoryExportDialog(limit)
-  else
-    Print("history export unavailable (ConfigPanel not loaded).")
-  end
-end
-
--- /bdev fnx [N|clear]: export the shadow log of messages the filter let
--- through, optionally capped to the top N; `clear` empties it.
-local function ExportFN(rest)
-  local firstToken = string.match(rest or "", "^(%S+)")
-  if firstToken and string.lower(firstToken) == "clear" then
-    local cleared = NS.ShadowLog and NS.ShadowLog.Clear and NS.ShadowLog.Clear() or 0
-    Print("shadow log cleared: " .. tostring(cleared) .. " entries removed.")
-    return
-  end
-  local limit = firstToken and tonumber(firstToken) or nil
-  if NS.ConfigPanel and NS.ConfigPanel.OpenFNExportDialog then
-    NS.ConfigPanel.OpenFNExportDialog(limit)
-  else
-    Print("FN export unavailable (ConfigPanel not loaded).")
-  end
-end
-
--- /bdev perf [label]: one-shot memory, CPU and history-size snapshot, tagged
--- with the optional label. The forced full GC costs a one-frame hitch; it is
--- how retained memory is separated from churn.
-local function RunPerf(rest)
-  local label = string.match(rest or "", "^(%S+)") or ""
-
-  -- Memory: read after UpdateAddOnMemoryUsage(), force a full GC, then read
-  -- again. pre - retained = churn (transient garbage that GC reclaimed).
-  UpdateAddOnMemoryUsage()
-  local preGC = GetAddOnMemoryUsage(ADDON_NAME) or 0
-  collectgarbage("collect")
-  UpdateAddOnMemoryUsage()
-  local retained = GetAddOnMemoryUsage(ADDON_NAME) or 0
-  local churn = preGC - retained
-  Print(format(
-    "perf %s: mem %d KB pre-GC | %d KB retained | %d KB churn",
-    label, preGC, retained, churn
-  ))
-
-  -- C_AddOnProfiler is missing on older clients; print a notice instead.
-  if C_AddOnProfiler and C_AddOnProfiler.GetAddOnMetric
-    and Enum and Enum.AddOnProfilerMetric then
-    local M = Enum.AddOnProfilerMetric
-    local recent  = C_AddOnProfiler.GetAddOnMetric(ADDON_NAME, M.RecentAverageTime) or 0
-    local peak    = C_AddOnProfiler.GetAddOnMetric(ADDON_NAME, M.PeakTime) or 0
-    local session = C_AddOnProfiler.GetAddOnMetric(ADDON_NAME, M.SessionAverageTime) or 0
-    local over1   = C_AddOnProfiler.GetAddOnMetric(ADDON_NAME, M.CountTimeOver1Ms) or 0
-    local over5   = C_AddOnProfiler.GetAddOnMetric(ADDON_NAME, M.CountTimeOver5Ms) or 0
-    local over10  = C_AddOnProfiler.GetAddOnMetric(ADDON_NAME, M.CountTimeOver10Ms) or 0
-    Print(format(
-      "perf %s: ms recent=%.3f peak=%.3f session=%.3f | spikes >1ms=%d >5ms=%d >10ms=%d",
-      label, recent, peak, session, over1, over5, over10
-    ))
-  else
-    Print("perf: C_AddOnProfiler unavailable on this client")
-  end
-
-  -- History size for this character and across all characters, against the
-  -- caps. Prints "?" for anything missing rather than erroring.
-  local current, global, perCharCap, globalCap = "?", "?", "?", "?"
-  local settings = NS.DB and NS.DB.GetSettings and NS.DB.GetSettings()
-  if settings then
-    perCharCap = tonumber(settings.historyMaxEntries) or 300
-    globalCap  = tonumber(settings.historyGlobalMaxEntries) or 1000
-  end
-  local charView = NS.DB and NS.DB.GetChar and NS.DB.GetChar()
-  if type(charView) == "table" and type(charView.history) == "table" then
-    current = #charView.history
-  end
-  -- The raw store, because DB.GetChar() returns only the current character.
-  if NS.DB and NS.DB.db and type(NS.DB.db.sv) == "table"
-    and type(NS.DB.db.sv.char) == "table" then
-    local total = 0
-    for _, charData in pairs(NS.DB.db.sv.char) do
-      if type(charData) == "table" and type(charData.history) == "table" then
-        total = total + #charData.history
-      end
-    end
-    global = total
-  end
-  Print(format(
-    "perf %s: history current=%s global=%s (cap perChar=%s, global=%s)",
-    label, tostring(current), tostring(global),
-    tostring(perCharCap), tostring(globalCap)
-  ))
-end
-
--- /bdev pseudolocale: dev-only i18n smoke check (see PseudoLocale.lua).
-local function RunPseudoLocale()
-  if not (NS.PseudoLocale and NS.PseudoLocale.Apply) then
-    Print(L["pseudo-locale tool is unavailable (locale table not loaded)."])
-    return
-  end
-  local ok, reason = NS.PseudoLocale.Apply()
-  if ok then
-    Print(L["pseudo-locale applied. Open a Sift panel now; a panel you already opened this session needs /reload, then run this again first."])
-  elseif reason == "already-applied" then
-    Print(L["pseudo-locale is already active this session. /reload to restore English, then run it again."])
-  elseif reason == "devMode" then
-    Print(L["the pseudolocale command is only available when devMode is enabled."])
-  else
-    Print(L["pseudo-locale tool is unavailable (locale table not loaded)."])
-  end
-end
-
 local COMMANDS = {
 	[""] = function() ToggleHistory() end,
 	history = function() ToggleHistory() end,
@@ -405,10 +244,6 @@ local COMMANDS = {
 	clearhistory = ConfirmClearHistory,
 	clearblocked = ConfirmClearBlocked,
 	rebuildstats = RebuildStats,
-	-- Kept so /sift test points users to /bdev test.
-	test = function()
-		Print("/sift test moved to /bdev test (requires devMode).")
-	end,
 }
 
 local function PrintUsage()
@@ -425,54 +260,6 @@ local function SlashHandler(msg)
 		handler(rest)
 	else
 		PrintUsage()
-	end
-end
-
--- /bdev chooser: preview the first-run chooser. Display ignores the seen set,
--- but Apply/Keep still run the real write paths.
-local function RunChooserPreview()
-  if NS.FirstRunChooser and NS.FirstRunChooser.Show then
-    NS.FirstRunChooser.Show(true)
-  else
-    Print("first-run chooser is unavailable.")
-  end
-end
-
--- /bdev <subcommand>: dev-mode commands, gated in BdevSlashHandler; handlers
--- may re-check.
-local DEV_COMMANDS = {
-	test = RunSyntheticTest,
-	fpx  = ExportFP,
-	fnx  = ExportFN,
-	hx   = ExportHistory,
-	perf = RunPerf,
-	pseudolocale = RunPseudoLocale,
-	chooser = RunChooserPreview,
-}
-
-local function PrintDevUsage()
-	Print("usage: /bdev [test|fpx [N]|fnx [N|clear]|hx [N]|perf [label]|pseudolocale|chooser]")
-end
-
-local function BdevSlashHandler(msg)
-	if not NS.DB or not NS.DB.IsDevMode or not NS.DB.IsDevMode() then
-		Print("These commands need dev mode. Turn it on in Config \194\187 Dev.")
-		return
-	end
-	msg = msg or ""
-	local command, rest = string.match(msg, "^(%S*)%s*(.-)%s*$")
-	command = string.lower(command or "")
-
-	if command == "" then
-		PrintDevUsage()
-		return
-	end
-
-	local handler = DEV_COMMANDS[command]
-	if handler then
-		handler(rest)
-	else
-		PrintDevUsage()
 	end
 end
 
@@ -529,7 +316,9 @@ end
 local controller = F:RequireModule("Lifecycle", 1):New(NS, ADDON_NAME)
 controller:OnAddonLoaded(function() Initialize() end)
 controller:OnLogin(function()
-	pcall(NS.DB.PruneOnLogin, ADDON_NAME == "Sift_DevBuild" or NS.extension ~= nil)
+	if NS.DB and NS.DB.PruneOnLogin then
+		pcall(NS.DB.PruneOnLogin, ADDON_NAME == "Sift_DevBuild" or NS.extension ~= nil)
+	end
 	ImportLegacyDataOnLogin()
 	InstallScanner()
 	InstallPlayerMenu()
@@ -538,8 +327,3 @@ end)
 
 SLASH_SIFT1 = "/sift"
 SlashCmdList.SIFT = SlashHandler
-
-SLASH_BDEV1 = "/bdev"
--- Fallback alias in case another addon also claims /bdev.
-SLASH_BDEV2 = "/siftdev"
-SlashCmdList.BDEV = BdevSlashHandler

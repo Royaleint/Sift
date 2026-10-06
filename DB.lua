@@ -164,7 +164,8 @@ local function Print(message)
 end
 
 local function DevLog(message)
-  if DB.IsDevMode and DB.IsDevMode() then
+  local ext = NS.extension
+  if ext and ext.enabled then
     Print(message)
   end
 end
@@ -486,7 +487,7 @@ function DB.SetSetting(key, value)
       settings.enabledCategories[category] = resolved
     end
   elseif key == "mixedScriptEnabled" or key == "filterBubbles"
-    or key == "showMinimapButton" or key == "devMode" then
+    or key == "showMinimapButton" then
     settings[key] = value == true
   else
     return nil
@@ -711,11 +712,6 @@ function DB.ResetSettings()
     NS.Frequency.SetFloodWindow(global.settings.floodWindow)
   end
   return global.settings
-end
-
-function DB.IsDevMode()
-  local ext = NS.extension
-  return ext ~= nil and ext.enabled == true
 end
 
 -- Tidies saved data. `keep` is true when this load must leave it alone.
