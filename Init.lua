@@ -25,6 +25,17 @@ local function Print(message)
   end
 end
 
+-- One optional add-on may attach here. Not offered by the released build.
+if ADDON_NAME == "Sift_DevBuild" then
+  function Sift_RegisterExtension(ext)
+    if type(ext) ~= "table" or NS.extension ~= nil then
+      return nil
+    end
+    NS.extension = ext
+    return NS, ADDON_NAME
+  end
+end
+
 local function Initialize()
   if initialized then
     return
@@ -518,6 +529,7 @@ end
 local controller = F:RequireModule("Lifecycle", 1):New(NS, ADDON_NAME)
 controller:OnAddonLoaded(function() Initialize() end)
 controller:OnLogin(function()
+	pcall(NS.DB.PruneOnLogin, ADDON_NAME == "Sift_DevBuild" or NS.extension ~= nil)
 	ImportLegacyDataOnLogin()
 	InstallScanner()
 	InstallPlayerMenu()

@@ -58,8 +58,6 @@ local defaults = {
     -- Keyword rules: arrays so display order is stable; managed by UserRules.lua.
     customBlocks = {},
     allowKeywords = {},
-    -- Dev-only shadow log. Outside `settings` so it survives ResetSettings.
-    shadowLog = {},
     -- First-run chooser rows already decided, keyed by registry key; only `true`
     -- counts. Never seed a key here: defaults are copied into a fresh install,
     -- which would mark the row seen without ever showing it.
@@ -90,7 +88,6 @@ local defaults = {
       showMinimapButton = true,
       historyMaxEntries = 300,
       historyGlobalMaxEntries = 1000,
-      devMode = false,
       -- Repeat dedupe. `enabled` is kept in the saved shape but not read.
       throttle = {
         enabled = true,
@@ -324,7 +321,6 @@ local function RepairSettings(settings)
   for _, key in ipairs(DEFUNCT_SETTING_KEYS) do
     settings[key] = nil
   end
-  settings.devMode = settings.devMode == true
   settings.enabledCategories = type(settings.enabledCategories) == "table" and settings.enabledCategories or {}
   for category, defaultState in pairs(defaultSettings.enabledCategories) do
     local current = settings.enabledCategories[category]
@@ -370,7 +366,6 @@ local function RepairShape(global, char)
       DevLog("Dropped " .. dropped .. " malformed keyword rule(s).")
     end
   end
-  global.shadowLog = global.shadowLog or {}
   -- Type-checked, not just presence-checked, so a junk saved value is repaired.
   global.chooserSeen = type(global.chooserSeen) == "table" and global.chooserSeen or {}
   global.settings = global.settings or {}
@@ -719,8 +714,59 @@ function DB.ResetSettings()
 end
 
 function DB.IsDevMode()
-  local settings = DB.GetSettings()
-  return settings and settings.devMode == true
+  local ext = NS.extension
+  return ext ~= nil and ext.enabled == true
+end
+
+-- Tidies saved data. `keep` is true when this load must leave it alone.
+-- Returns whether anything changed.
+function DB.PruneOnLogin(keep)
+  if keep then
+    return false
+  end
+  local global = DB.db and DB.db.global
+  local settings = type(global) == "table" and global.settings
+  if type(settings) ~= "table" then
+    return false
+  end
+
+  local changed = false
+  local wasOn = settings.devMode == true
+
+  if global.shadowLog ~= nil then
+    global.shadowLog = nil
+    changed = true
+  end
+
+  if wasOn then
+    local defaultSettings = defaults.global.settings
+    settings.antiSignalCap = defaultSettings.antiSignalCap
+    settings.mixedScriptWeight = defaultSettings.mixedScriptWeight
+    settings.mixedScriptEnabled = defaultSettings.mixedScriptEnabled
+    changed = true
+
+    local chars = DB.db.sv and DB.db.sv.char
+    if type(chars) == "table" then
+      for _, char in pairs(chars) do
+        local history = type(char) == "table" and char.history
+        if type(history) == "table" then
+          for _, record in pairs(history) do
+            if type(record) == "table" and record.cleansed ~= nil then
+              record.cleansed = nil
+            end
+          end
+        end
+      end
+    end
+  end
+
+  -- Last: it is the flag that makes the steps above run, so a failure partway
+  -- through leaves it set and the next login retries.
+  if settings.devMode ~= nil then
+    settings.devMode = nil
+    changed = true
+  end
+  return changed
 end
 
 -- Returns the live table, or a disposable {} if the saved value is malformed.

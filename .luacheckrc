@@ -14,6 +14,7 @@ globals = {
     -- Slash registration
     "SlashCmdList",
     "SLASH_SIFT1",
+    "Sift_RegisterExtension",
     "SLASH_BDEV1",
     "SLASH_BDEV2",
     -- StaticPopupDialogs is read-only at the table level but addons mutate it
