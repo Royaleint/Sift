@@ -33,8 +33,8 @@ local EVENT_TO_SURFACE = {
 local filterInstalled = {}
 local filterAdd = nil
 local BLOCKED_ACTOR_BOOST = 2
--- Meta keys, never a category. Copies in ChatScanner, History, HistoryPanel,
--- ShadowLog, Signals, ConfigPanel: keep all six in step.
+-- Meta keys, never a category. Copies in ChatScanner, History and HistoryPanel:
+-- keep all three in step.
 local IGNORED_BREAKDOWN_KEYS = {
   MixedScript = true,
   BlockedActor = true,
@@ -126,12 +126,12 @@ local function SameSettings(slot, settings)
   if type(settings) ~= "table" then return false end
   return slot.threshold == settings.threshold and slot.mixedScriptEnabled == settings.mixedScriptEnabled
     and slot.mixedScriptWeight == settings.mixedScriptWeight and slot.antiSignalCap == settings.antiSignalCap
-    and slot.filterBubbles == settings.filterBubbles and slot.devMode == settings.devMode
+    and slot.filterBubbles == settings.filterBubbles
 end
 
 local function CopyState(slot, settings, categories)
   slot.threshold, slot.mixedScriptEnabled, slot.mixedScriptWeight = settings.threshold, settings.mixedScriptEnabled, settings.mixedScriptWeight
-  slot.antiSignalCap, slot.filterBubbles, slot.devMode = settings.antiSignalCap, settings.filterBubbles, settings.devMode
+  slot.antiSignalCap, slot.filterBubbles = settings.antiSignalCap, settings.filterBubbles
   local categoryCopy = slot.categories or {}
   slot.categories = categoryCopy
   for key in pairs(categoryCopy) do categoryCopy[key] = nil end
@@ -312,7 +312,8 @@ local function BuildHistoryRecord(event, message, sender, channelName, guid, ana
     record.customRule = { raw = customRule.raw, cleansed = customRule.cleansed }
   end
 
-  if settings.devMode == true then
+  local ext = NS.extension
+  if ext and ext.enabled then
     record.cleansed = analysis.normalized
   end
 
@@ -462,7 +463,8 @@ local function Pipeline(
     manualBlocked = IsUsableString(guid) and NS.DB and NS.DB.IsManuallyBlocked and NS.DB.IsManuallyBlocked(guid)
   end
   if manualBlocked then
-    if NS.DB.IsDevMode and NS.DB.IsDevMode() then
+    local ext = NS.extension
+    if ext and ext.enabled then
       DevLog("Manual block: " .. tostring(sender))
     end
 
@@ -511,8 +513,9 @@ local function Pipeline(
     trusted = NS.Trust and NS.Trust.IsTrusted and NS.Trust.IsTrusted(guid, sender, flags)
   end
   if trusted then
-    -- Dev diagnostic: name the trust source that skipped this sender.
-    if NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode() then
+    -- Name the trust source that skipped this sender.
+    local ext = NS.extension
+    if ext and ext.enabled then
       local reason = (NS.Trust.TrustReason and NS.Trust.TrustReason(guid, sender, flags)) or "?"
       DevLog("Trust skip [" .. reason .. "]: " .. tostring(sender))
     end
@@ -530,23 +533,23 @@ local function Pipeline(
   ApplyFloodBoost(score, analysis.normalized)
   local customRule = ApplyCustomBlock(score, analysis.normalized)
   if not score or not score.blocked then
-    -- Shadow capture of everything let through, score 0 included. Capture gates
-    -- itself on devMode, so the check is deliberately not repeated here.
-    if NS.ShadowLog then
-      NS.ShadowLog.Capture(message, analysis, surface, score)
+    -- Offered to the attached add-on: every message that was let through.
+    local ext = NS.extension
+    if ext and ext.enabled then
+      ext.OnPassed(message, analysis, surface, score, channelName)
     end
     return false
   end
 
-  -- Precedence 3: an allow keyword overrides a corpus block. It is a bypass
-  -- surface, so the override is captured to the shadow log rather than silent.
+  -- Precedence 3: an allow keyword overrides a corpus block. The override is
+  -- offered to the attached add-on rather than passing silently.
   local allowRule = NS.UserRules and NS.UserRules.Match
     and NS.UserRules.Match(NS.UserRules.ALLOW, analysis.normalized)
   if allowRule then
-    -- Self-gated on devMode like Capture above.
-    if NS.ShadowLog then
+    local ext = NS.extension
+    if ext and ext.enabled then
       -- The phrase as the player typed it, not its cleansed form.
-      NS.ShadowLog.CaptureAllowThrough(message, analysis, surface, score, allowRule.raw)
+      ext.OnAllowed(message, analysis, surface, score, allowRule.raw, channelName)
     end
     return false
   end
@@ -629,7 +632,8 @@ local function Pipeline(
 end
 
 local function ErrorHandler(err)
-  if NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode() then
+  local ext = NS.extension
+  if ext and ext.enabled then
     print("[Sift] filter error: " .. tostring(err))
   end
   return err

@@ -1,6 +1,6 @@
 -- Sift/ConfigPanel.lua
 -- The Config panel: detection settings, pause rows, allowlist, blocked senders,
--- keyword lists, history caps, and the import/export and dev dialogs.
+-- keyword lists, history caps, and the import/export dialogs.
 
 local _, NS = ...
 local L = NS.L
@@ -46,7 +46,6 @@ local SECTIONS = {
   "Never Block",
   "History",
   "UI",
-  "Dev",
 }
 
 -- PauseState loads ahead of this file, so its lists are available at file scope.
@@ -81,7 +80,6 @@ local DEFAULT_SETTINGS = {
   historyMaxEntries = 300,
   historyGlobalMaxEntries = 1000,
   showMinimapButton = true,
-  devMode = false,
 }
 
 local frame
@@ -119,15 +117,6 @@ local listState = {
   keywordPage = { block = 1, allow = 1 },
   keywordAddText = { block = "", allow = "" },
 }
-
-local function Print(message)
-  message = "|cff33ff99Sift|r " .. tostring(message)
-  if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
-    DEFAULT_CHAT_FRAME:AddMessage(message)
-  else
-    print(message)
-  end
-end
 
 local function Now()
   if type(GetServerTime) == "function" then
@@ -1374,23 +1363,6 @@ local function RegisterStaticPopups()
     hideOnEscape = true,
   }
 
-  StaticPopupDialogs["SIFT_CLEAR_SHADOWLOG"] = {
-    OnAccept = function()
-      if NS.ShadowLog and NS.ShadowLog.Clear then
-        local cleared = NS.ShadowLog.Clear()
-        sectionStatus.Dev = L["Shadow log cleared: %s entries removed."]:format(tostring(cleared))
-      else
-        sectionStatus.Dev = L["Shadow log clear API is unavailable."]
-      end
-      if activeSection == "Dev" and frame and frame:IsShown() then
-        ConfigPanel.ShowSection("Dev")
-      end
-    end,
-    timeout = 0,
-    whileDead = true,
-    hideOnEscape = true,
-  }
-
   -- Clearing a keyword list has no undo, so it asks first. The count fills %d.
   StaticPopupDialogs["SIFT_REMOVE_ALL_KEYWORDS"] = {
     OnAccept = function()
@@ -1421,13 +1393,13 @@ local function RegisterStaticPopups()
   StaticPopupDialogs["SIFT_RESET_SETTINGS"] = {
     OnAccept = function()
       if ResetSettings() then
-        sectionStatus.Dev = L["Settings reset to defaults."]
+        sectionStatus.UI = L["Settings reset to defaults."]
         SetHistoryPanelMinimapShown(SettingValue("showMinimapButton") ~= false)
       else
-        sectionStatus.Dev = L["Settings API is unavailable."]
+        sectionStatus.UI = L["Settings API is unavailable."]
       end
-      if activeSection == "Dev" and frame and frame:IsShown() then
-        ConfigPanel.ShowSection("Dev")
+      if activeSection == "UI" and frame and frame:IsShown() then
+        ConfigPanel.ShowSection("UI")
       end
     end,
     timeout = 0,
@@ -1515,10 +1487,6 @@ function ConfigPanel.ShowPopup(which, ...)
     dialog.button2 = L["Cancel"]
   elseif which == "SIFT_CLEAR_BLOCKED" then
     dialog.text = L["Clear all blocked actors?"]
-    dialog.button1 = L["Clear"]
-    dialog.button2 = L["Cancel"]
-  elseif which == "SIFT_CLEAR_SHADOWLOG" then
-    dialog.text = L["Clear the captured false-negative log?"]
     dialog.button1 = L["Clear"]
     dialog.button2 = L["Cancel"]
   elseif which == "SIFT_REMOVE_ALL_KEYWORDS" then
@@ -1751,9 +1719,8 @@ local RenderAllowlist
 local RenderBlocked
 local RenderHistory
 local RenderUI
-local RenderDev
 
--- Per-setting reset button for the Detection and Dev sliders. It re-renders the
+-- Per-setting reset button for the sliders. It re-renders the
 -- current section, since the widgets have no per-widget refresh.
 local function AddDetectionReset(rowY, defaultValue, applyDefault)
   AddNativeButton("Reset", CONTENT_PAD + 344, rowY, 52, function()
@@ -2163,7 +2130,8 @@ local function RenderKeywordSection(section)
     return
   end
 
-  local showCleansed = NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode()
+  local ext = NS.extension
+  local showCleansed = ext and ext.enabled
   for index = startIndex, endIndex do
     local entry = entries[index]
     local row = TrackNative(CreateFrame("Frame", nil, content, "BackdropTemplate"))
@@ -2306,7 +2274,7 @@ RenderHistory = function()
 end
 
 RenderUI = function()
-  local y = AddSectionTitle("UI", "Panel position and minimap controls.")
+  local y = AddSectionTitle("UI", "Panel size and position, the minimap button, and resetting all settings.")
   y = AddStatus(y, sectionStatus.UI)
   y = AddCheckbox("Show minimap button", "showMinimapButton", y, function(value)
     SetSetting("showMinimapButton", value)
@@ -2329,60 +2297,14 @@ RenderUI = function()
     ConfigPanel.ShowSection("UI")
   end, "Move this panel back to the middle of the screen at its normal size. Config " ..
     "and History share one panel, so this does the same as Reset History Panel.")
-end
-
-RenderDev = function()
-  local y = AddSectionTitle("Dev", "Developer-only diagnostics and reset controls.")
-  y = AddStatus(y, sectionStatus.Dev)
-  y = AddCheckbox("Enable dev mode", "devMode", y, function(value)
-    SetSetting("devMode", value)
-    ConfigPanel.ShowSection("Dev")
-  end,
-    "Records recent chat from other players, whispers included, into your saved " ..
-    "data so missed spam can be reviewed later. Also turns on extra logging and " ..
-    "the /bdev diagnostic commands. Leave off unless you are helping test.")
-  AddNativeButton("Reset Settings", CONTENT_PAD, y, 120, function()
+  -- Second row: a third button on the row above would end at x=454, past the
+  -- content region's right edge (444 wide at MIN_WIDTH).
+  AddNativeButton("Reset Settings", CONTENT_PAD, y - ROW_HEIGHT, 120, function()
     ConfigPanel.ShowPopup("SIFT_RESET_SETTINGS")
   end, "Puts every setting back to its default, and asks first. Your Allowlist, Blocked " ..
     "list, My Keywords, and Never Block are kept, but if you had raised Maximum history " ..
     "entries or Account total, History entries over the default limit are removed right " ..
     "away, oldest first.")
-  -- Always visible; OpenFPExportDialog itself checks devMode.
-  AddNativeButton("Export FP fixtures", CONTENT_PAD + 130, y, 150, function()
-    ConfigPanel.OpenFPExportDialog(nil)
-  end, "Save the false-positive entries in History to a copy-paste window. " ..
-    "Equivalent to /bdev fpx. Requires dev mode.")
-  AddNativeButton("Export FN candidates", CONTENT_PAD + 290, y, 160, function()
-    ConfigPanel.OpenFNExportDialog(nil)
-  end, "Save the recent chat captured while dev mode is on to a copy-paste " ..
-    "window for review. Equivalent to /bdev fnx. Requires dev mode.")
-  -- Second row: a fourth button on the row above would start at x=460 and end at
-  -- 580, past the right edge of the content region at MIN_WIDTH.
-  AddNativeButton("Clear FN log", CONTENT_PAD, y - ROW_HEIGHT, 120, function()
-    ConfigPanel.ShowPopup("SIFT_CLEAR_SHADOWLOG")
-  end, "Discard every captured false-negative candidate. Equivalent to " ..
-    "/bdev fnx clear. Confirmation required.")
-  -- Dev mode only.
-  if not (NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode()) then return end
-  y = y - ROW_HEIGHT - 24 - 16
-  local rowY = y
-  y = AddSlider("Anti-signal cap", "antiSignalCap", -10, -1, 1, y,
-    "Some wording makes a message less likely to be spam and lowers its score. This sets " ..
-    "the most that wording can lower a score, all together. Closer to 0 makes Sift stricter.")
-  AddDetectionReset(rowY - 10, DEFAULT_SETTINGS.antiSignalCap, function()
-    SetSetting("antiSignalCap", DEFAULT_SETTINGS.antiSignalCap)
-  end)
-  rowY = y
-  y = AddSlider("Mixed-script weight", "mixedScriptWeight", 0, 3, 1, y,
-    "Adds this much to the score of a message that already looks like spam when its words " ..
-    "mix alphabets, such as Latin letters swapped for look-alike Cyrillic or Greek ones. " ..
-    "Set to 0 to turn this off.")
-  AddDetectionReset(rowY - 10, DEFAULT_SETTINGS.mixedScriptWeight, function()
-    SetSetting("mixedScriptWeight", DEFAULT_SETTINGS.mixedScriptWeight)
-  end)
-  AddCheckbox("Use mixed-script detection", "mixedScriptEnabled", y, nil,
-    "Watch for words that mix alphabets, such as Latin letters swapped for look-alike " ..
-    "Cyrillic ones. When this is off, Mixed-script weight has no effect.")
 end
 
 local RENDERERS = {
@@ -2395,7 +2317,6 @@ local RENDERERS = {
   ["Never Block"] = RenderKeywordSection,
   History = RenderHistory,
   UI = RenderUI,
-  Dev = RenderDev,
 }
 
 -- Chrome: PortraitFrameTemplate where available, otherwise a BackdropTemplate
@@ -2539,9 +2460,43 @@ local NAV_TOOLTIPS = {
   ["My Keywords"] = "Your own words and phrases to block, on top of Sift's filter.",
   ["Never Block"] = "Your own words and phrases that let a message through, even past Sift's filter. They don't override players you blocked yourself.",
   History    = "How much History Sift keeps, your lifetime totals, and the button to clear it.",
-  UI         = "Show or hide the minimap button, and reset the Config and History panels to their default size and position.",
-  Dev        = "Developer-only diagnostics and full settings reset.",
+  UI         = "Show or hide the minimap button, reset the Config and History panels to their default size and position, or put every setting back to its default.",
 }
+
+-- An optional add-on may append sections. Refused once the panel is built,
+-- for a name already in use, or for bad arguments. `render` receives the
+-- helpers the built-in sections use, so its widgets are released on redraw
+-- like theirs.
+function ConfigPanel.AddSection(name, render, tooltip)
+  if frame or type(name) ~= "string" or name == "" or type(render) ~= "function"
+    or (tooltip ~= nil and type(tooltip) ~= "string") or SectionExists(name) then
+    return false
+  end
+
+  local ui = {
+    AddSectionTitle = AddSectionTitle,
+    AddStatus = AddStatus,
+    AddCheckbox = AddCheckbox,
+    AddSlider = AddSlider,
+    AddNativeButton = AddNativeButton,
+    AddDetectionReset = AddDetectionReset,
+    SetSetting = SetSetting,
+    DEFAULT_SETTINGS = DEFAULT_SETTINGS,
+    ROW_HEIGHT = ROW_HEIGHT,
+    CONTENT_PAD = CONTENT_PAD,
+  }
+  -- Only when this section is the one on screen.
+  ui.Redraw = function()
+    if activeSection == name and frame and frame:IsShown() then
+      ConfigPanel.ShowSection(name)
+    end
+  end
+
+  SECTIONS[#SECTIONS + 1] = name
+  RENDERERS[name] = function() render(ui) end
+  NAV_TOOLTIPS[name] = tooltip
+  return true
+end
 
 local function CreateNav(parent)
   local nav = CreateFrame("Frame", nil, parent)
@@ -2732,362 +2687,7 @@ function ConfigPanel.ShowSection(section)
   end
 end
 
--- Escapes a string as a Lua double-quoted literal. Backslash must be escaped
--- first, or later replacements would double their own backslashes. UTF-8 passes
--- through; control bytes become decimal \NNN escapes.
-local function EscapeLuaString(value)
-  value = tostring(value or "")
-  value = string.gsub(value, "\\", "\\\\")
-  value = string.gsub(value, "\"", "\\\"")
-  value = string.gsub(value, "\n", "\\n")
-  value = string.gsub(value, "\r", "\\r")
-  value = string.gsub(value, "\t", "\\t")
-  value = string.gsub(value, "[%z\1-\8\11\12\14-\31]", function(c)
-    return string.format("\\%d", string.byte(c))
-  end)
-  return value
-end
-
--- Builds a paste-ready Lua block of restored History entries, newest first,
--- optionally limited to the first N.
-local function BuildFPExportText(limit)
-  -- A non-positive limit means no limit.
-  if limit and limit <= 0 then limit = nil end
-
-  local entries = NS.History and NS.History.GetAll and NS.History.GetAll() or {}
-  local restored = {}
-  for i = 1, #entries do
-    if entries[i].outcome == "restored" then
-      restored[#restored + 1] = entries[i]
-    end
-  end
-  if limit and #restored > limit then
-    local trimmed = {}
-    for i = 1, limit do trimmed[i] = restored[i] end
-    restored = trimmed
-  end
-
-  local lines = {
-    "-- Sift FP-export (negative fixtures)",
-    "-- Exported: " .. (date and date("%Y-%m-%d %H:%M:%S") or "?"),
-    "-- Entries:  " .. tostring(#restored)
-      .. (limit and (" (limited to last " .. tostring(limit) .. ")") or ""),
-    "",
-  }
-
-  if #restored == 0 then
-    lines[#lines + 1] = "-- No restored entries in History. Use the Restore button on false-positive blocks first."
-  end
-
-  for i = 1, #restored do
-    local entry = restored[i]
-    local senderLabel = entry.name or "?"
-    if entry.realm and entry.realm ~= "" then
-      senderLabel = senderLabel .. "-" .. entry.realm
-    end
-    local dateStr = (entry.ts and date) and date("%Y-%m-%d", entry.ts) or "?"
-    lines[#lines + 1] = string.format("  -- [%s] %s  score=%s  %s",
-      tostring(entry.surface or "?"),
-      senderLabel,
-      tostring(entry.score or "?"),
-      dateStr)
-    lines[#lines + 1] = string.format("  \"%s\",", EscapeLuaString(entry.original))
-  end
-
-  return table.concat(lines, "\n")
-end
-
-function ConfigPanel.OpenFPExportDialog(limit)
-  ConfigPanel.Initialize()
-  if NS.DB and NS.DB.IsDevMode and not NS.DB.IsDevMode() then
-    Print("These commands need dev mode. Turn it on in Config \194\187 Dev.")
-    return
-  end
-  -- Same clamp as BuildFPExportText, so the title matches the body.
-  if limit and limit <= 0 then limit = nil end
-  local count = 0
-  local entries = NS.History and NS.History.GetAll and NS.History.GetAll() or {}
-  for i = 1, #entries do
-    if entries[i].outcome == "restored" then count = count + 1 end
-  end
-  if limit and count > limit then count = limit end
-  ShowTextDialog(
-    "Sift FP Fixture Export (" .. tostring(count) .. " entries)",
-    BuildFPExportText(limit),
-    "Close", nil)
-end
-
--- Meta breakdown keys, never a content category. Copies in ChatScanner,
--- History, HistoryPanel, ShadowLog, Signals, ConfigPanel: keep all six in step.
-local HISTORY_EXPORT_IGNORED_KEYS = {
-  MixedScript = true,
-  BlockedActor = true,
-  Flood = true,
-  Throttle = true,
-  ManualBlock = true,
-}
-
--- Plain-text export of every History entry, deduped by exact original, with
--- count, dominant category, max score and outcomes; sorted by count, optionally
--- capped to the top N. Read-only: History.GetAll returns live records.
-local function BuildHistoryExportText(limit)
-  if limit and limit <= 0 then limit = nil end
-
-  local entries = NS.History and NS.History.GetAll and NS.History.GetAll() or {}
-  local totalRecords = #entries
-
-  -- Dedup by exact original string. uniques[original] = aggregate; order[]
-  -- preserves first-seen order for stable sorting of equal-count entries.
-  local uniques, order = {}, {}
-  for i = 1, #entries do
-    local record = entries[i]
-    local original = record.original
-    if type(original) == "string" and original ~= "" then
-      local agg = uniques[original]
-      if not agg then
-        agg = {
-          original = original,
-          count = 0,
-          maxScore = nil,
-          catWeights = {},
-          outcomes = {},
-        }
-        uniques[original] = agg
-        order[#order + 1] = agg
-      end
-      agg.count = agg.count + 1
-
-      local score = tonumber(record.score)
-      if score and (not agg.maxScore or score > agg.maxScore) then
-        agg.maxScore = score
-      end
-
-      -- Accumulate category weight across occurrences so the dominant
-      -- category reflects the strongest signal this text ever produced.
-      local breakdown = record.breakdown
-      if type(breakdown) == "table" then
-        for cat, val in pairs(breakdown) do
-          local numeric = tonumber(val) or 0
-          if not HISTORY_EXPORT_IGNORED_KEYS[cat] and numeric > 0 then
-            agg.catWeights[cat] = math.max(agg.catWeights[cat] or 0, numeric)
-          end
-        end
-      end
-
-      agg.outcomes[record.outcome or "blocked"] = true
-    end
-  end
-
-  local uniqueCount = #order
-
-  -- Sort by count descending; ties keep first-seen (newest-first) order via
-  -- the stored index so the sort is deterministic.
-  for index, agg in ipairs(order) do
-    agg.sortIndex = index
-  end
-  table.sort(order, function(a, b)
-    if a.count ~= b.count then
-      return a.count > b.count
-    end
-    return a.sortIndex < b.sortIndex
-  end)
-
-  if limit and #order > limit then
-    local trimmed = {}
-    for i = 1, limit do trimmed[i] = order[i] end
-    order = trimmed
-  end
-
-  local lines = {
-    string.format("-- Sift history export: %d records, %d unique%s",
-      totalRecords, uniqueCount,
-      limit and (" (top " .. tostring(limit) .. " shown)") or ""),
-    "-- Exported: " .. (date and date("%Y-%m-%d %H:%M:%S") or "?"),
-    "-- Format: [<count>x] <category>/<maxScore> <outcomes> | <raw original>",
-    "",
-  }
-
-  if uniqueCount == 0 then
-    lines[#lines + 1] = "-- No history records found."
-  end
-
-  for i = 1, #order do
-    local agg = order[i]
-
-    -- Dominant category across the accumulated per-category max weights.
-    local bestCat, bestVal
-    for cat, val in pairs(agg.catWeights) do
-      if not bestVal or val > bestVal then
-        bestCat, bestVal = cat, val
-      end
-    end
-
-    -- Stable, sorted outcome list (blocked / pass-thru / restored).
-    local outcomeList = {}
-    for outcome in pairs(agg.outcomes) do
-      outcomeList[#outcomeList + 1] = outcome
-    end
-    table.sort(outcomeList)
-
-    lines[#lines + 1] = string.format("[%dx] %s/%s %s | %s",
-      agg.count,
-      bestCat or "?",
-      agg.maxScore and tostring(agg.maxScore) or "?",
-      table.concat(outcomeList, ","),
-      agg.original)
-  end
-
-  return table.concat(lines, "\n")
-end
-
-function ConfigPanel.OpenHistoryExportDialog(limit)
-  ConfigPanel.Initialize()
-  if NS.DB and NS.DB.IsDevMode and not NS.DB.IsDevMode() then
-    Print("These commands need dev mode. Turn it on in Config \194\187 Dev.")
-    return
-  end
-  if limit and limit <= 0 then limit = nil end
-
-  -- Count unique originals for the title; mirrors BuildHistoryExportText's
-  -- dedup so the displayed count matches the body.
-  local entries = NS.History and NS.History.GetAll and NS.History.GetAll() or {}
-  local seen, uniqueCount = {}, 0
-  for i = 1, #entries do
-    local original = entries[i].original
-    if type(original) == "string" and original ~= "" and not seen[original] then
-      seen[original] = true
-      uniqueCount = uniqueCount + 1
-    end
-  end
-  local shown = uniqueCount
-  if limit and shown > limit then shown = limit end
-
-  ShowTextDialog(
-    "Sift History Corpus Export (" .. tostring(shown) .. " unique)",
-    BuildHistoryExportText(limit),
-    "Close", nil)
-end
-
--- Plain-text export of the shadow log, ordered by ShadowLog.Rank, optionally
--- capped to N entries. ShadowLog.GetAll returns live records, so the sort runs
--- over a local copy.
-local function BuildFNExportText(limit)
-  if limit and limit <= 0 then limit = nil end
-
-  local store = NS.ShadowLog and NS.ShadowLog.GetAll and NS.ShadowLog.GetAll() or {}
-  local order = {}
-  for i = 1, #store do
-    order[i] = store[i]
-  end
-  local totalEntries = #order
-
-  -- Rank, then score, then repeat count, then capture order, so the sort is
-  -- deterministic.
-  local captureIndex = {}
-  for i = 1, #order do
-    captureIndex[order[i]] = i
-  end
-  local Rank = NS.ShadowLog and NS.ShadowLog.Rank
-  table.sort(order, function(a, b)
-    local aRank, bRank = Rank(a), Rank(b)
-    if aRank ~= bRank then
-      return aRank > bRank
-    end
-    local aScore, bScore = tonumber(a.score) or 0, tonumber(b.score) or 0
-    if aScore ~= bScore then
-      return aScore > bScore
-    end
-    local aCount, bCount = tonumber(a.count) or 0, tonumber(b.count) or 0
-    if aCount ~= bCount then
-      return aCount > bCount
-    end
-    return captureIndex[a] < captureIndex[b]
-  end)
-
-  if limit and #order > limit then
-    local trimmed = {}
-    for i = 1, limit do trimmed[i] = order[i] end
-    order = trimmed
-  end
-
-  local params = NS.ShadowLog and NS.ShadowLog._Params and NS.ShadowLog._Params() or {}
-  local ordinarySource = params.sourceFnCandidate
-
-  -- How many entries carry a capture signal, for the header.
-  local candidates = 0
-  for i = 1, #order do
-    local tags = order[i].tags
-    if type(tags) == "table" and #tags > 0 then
-      candidates = candidates + 1
-    end
-  end
-
-  local lines = {
-    string.format("-- Sift false-negative export: %d distinct messages%s",
-      totalEntries,
-      limit and (" (top " .. tostring(limit) .. " shown)") or ""),
-    string.format("-- %d of the %d listed below carry a capture signal, and lead the list.",
-      candidates, #order),
-    "-- Exported: " .. (date and date("%Y-%m-%d %H:%M:%S") or "?"),
-    "-- Format: [<count>x] <category>/<score> <surface> <last seen> [tags] | <raw original>",
-    "-- Additional spellings that cleansed to the same text follow indented.",
-    "",
-  }
-
-  if totalEntries == 0 then
-    lines[#lines + 1] = "-- Nothing captured. Enable devMode and let chat run."
-  end
-
-  for i = 1, #order do
-    local entry = order[i]
-    local originals = type(entry.originals) == "table" and entry.originals or {}
-    local tagLabel = ""
-    if type(entry.tags) == "table" and #entry.tags > 0 then
-      tagLabel = " [" .. table.concat(entry.tags, ",") .. "]"
-    end
-    -- Provenance, shown only when it is not just the ordinary lane.
-    local sources = type(entry.sources) == "table" and entry.sources or {}
-    for s = 1, #sources do
-      if sources[s] ~= ordinarySource then
-        tagLabel = tagLabel .. " {" .. tostring(sources[s]) .. "}"
-      end
-    end
-    -- The allow phrases that let this line through.
-    if type(entry.allowPhrases) == "table" and #entry.allowPhrases > 0 then
-      tagLabel = tagLabel .. " {allowed by: " .. table.concat(entry.allowPhrases, ", ") .. "}"
-    end
-
-    lines[#lines + 1] = string.format("[%dx] %s/%s %s %s%s | %s",
-      tonumber(entry.count) or 1,
-      entry.category or "-",
-      tostring(entry.score or 0),
-      tostring(entry.surface or "?"),
-      (entry.ts and date) and date("%Y-%m-%d", entry.ts) or "?",
-      tagLabel,
-      tostring(originals[1] or entry.cleansed or "?"))
-    for variant = 2, #originals do
-      lines[#lines + 1] = "     | " .. originals[variant]
-    end
-  end
-
-  return table.concat(lines, "\n")
-end
-
-function ConfigPanel.OpenFNExportDialog(limit)
-  ConfigPanel.Initialize()
-  if NS.DB and NS.DB.IsDevMode and not NS.DB.IsDevMode() then
-    Print("These commands need dev mode. Turn it on in Config \194\187 Dev.")
-    return
-  end
-  if limit and limit <= 0 then limit = nil end
-  local shown = NS.ShadowLog and NS.ShadowLog.Count and NS.ShadowLog.Count() or 0
-  if limit and shown > limit then shown = limit end
-
-  ShowTextDialog(
-    "Sift FN Candidate Export (" .. tostring(shown) .. " entries)",
-    BuildFNExportText(limit),
-    "Close", nil)
-end
+ConfigPanel.ShowTextDialog = ShowTextDialog
 
 function ConfigPanel.OpenExportDialog()
   ConfigPanel.Initialize()

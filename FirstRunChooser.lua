@@ -4,7 +4,7 @@
 -- seen set changes only on Apply or Keep current settings. Dismissal writes
 -- nothing.
 --
--- Shown only when LIVE is true or dev mode is on; /bdev chooser previews it.
+-- Shown only when LIVE is true or the attached add-on is enabled.
 local addonName, NS = ...
 local L = NS.L
 
@@ -79,7 +79,11 @@ function Chooser.IsLive()
   if Chooser.LIVE then
     return true
   end
-  return NS.DB ~= nil and NS.DB.IsDevMode ~= nil and NS.DB.IsDevMode() == true
+  local ext = NS.extension
+  if ext and ext.enabled then
+    return true
+  end
+  return false
 end
 
 -- ---------------------------------------------------------------------------
@@ -359,7 +363,7 @@ local function BuildFrame()
   return panel
 end
 
--- force = true (the /bdev chooser preview) ignores the seen set for display,
+-- force = true (a preview) ignores the seen set for display,
 -- but Apply/Keep still write the real seen set.
 function Chooser.Show(force)
   local frame = BuildFrame()
@@ -395,7 +399,7 @@ function Chooser.Show(force)
   frame:Show()
 end
 
--- Every gate is re-checked here, not once in OnLogin: dev mode, LIVE and the
+-- Every gate is re-checked here, not once in OnLogin: the add-on state, LIVE and the
 -- seen set can all change before the deferred show lands.
 local function AttemptShow()
   if shownThisSession or not Chooser.IsLive() then

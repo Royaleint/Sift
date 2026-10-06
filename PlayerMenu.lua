@@ -337,7 +337,7 @@ function PlayerMenu.Initialize()
   local count = 0
   local function RegisterTags(tags, callback)
     for _, which in ipairs(tags) do
-      -- Patch churn is silent: a failed tag registration is a devMode diagnostic only.
+      -- Patch churn is silent: a failed tag registration is only logged when the attached add-on is on.
       if pcall(Menu.ModifyMenu, "MENU_UNIT_" .. which, callback) then
         count = count + 1
       else

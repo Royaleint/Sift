@@ -26,8 +26,7 @@
     "SiftContextMenu",
     "SlashCmdList",
     "SLASH_SIFT1",
-    "SLASH_BDEV1",
-    "SLASH_BDEV2",
+    "Sift_RegisterExtension",
     "StaticPopupDialogs",
 
     "tinsert", "tremove", "wipe", "strsplit", "format",

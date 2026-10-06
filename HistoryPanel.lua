@@ -103,8 +103,7 @@ local CHIP_FULL_NAMES = {
 }
 -- Keys that say why a message was caught, not what kind of spam it is; they
 -- never win "dominant category" but still show as breakdown chips. Copies in
--- ChatScanner, History, HistoryPanel, ShadowLog, Signals, ConfigPanel: keep all
--- six in step.
+-- ChatScanner, History and HistoryPanel: keep all three in step.
 local IGNORED_BREAKDOWN_KEYS = {
   MixedScript = true,
   BlockedActor = true,
@@ -1405,7 +1404,8 @@ function HistoryDetailMixin:RenderBreakdownChips(breakdown)
   end
   table.sort(sorted, function(a, b) return (a.val or 0) > (b.val or 0) end)
 
-  local showPoints = NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode()
+  local ext = NS.extension
+  local showPoints = ext and ext.enabled
   local xOffset = 0
   for index, item in ipairs(sorted) do
     local chip = row.chips[index]
@@ -1472,6 +1472,7 @@ function HistoryDetailMixin:RefreshDetail()
   local outcome = entry.outcome or "blocked"
   local statusText
   local pauseReason = ""
+  local ext = NS.extension
   if outcome == "restored" then
     statusText = "|cff5ad080" .. L["RESTORED"] .. "|r"
   elseif outcome == "pass-thru" then
@@ -1486,7 +1487,7 @@ function HistoryDetailMixin:RefreshDetail()
   end
   if entry.reason == "manual-block" then
     statusText = statusText .. "   " .. L["blocked by you"]
-  elseif NS.DB and NS.DB.IsDevMode and NS.DB.IsDevMode() then
+  elseif ext and ext.enabled then
     statusText = statusText .. string.format("   %d / %d",
       tonumber(entry.score) or 0, tonumber(entry.threshold) or 0)
   end

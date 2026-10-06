@@ -14,8 +14,8 @@ globals = {
     -- Slash registration
     "SlashCmdList",
     "SLASH_SIFT1",
-    "SLASH_BDEV1",
-    "SLASH_BDEV2",
+    -- Attach point for one optional add-on; not defined by the released build.
+    "Sift_RegisterExtension",
     -- StaticPopupDialogs is read-only at the table level but addons mutate it
     -- to register their own dialog tables.
     "StaticPopupDialogs",
