@@ -76,6 +76,7 @@ read_globals = {
     "C_BattleNet",
     "C_ChatInfo",
     "C_CVar",
+    "C_EventUtils",
     "C_FriendList",
     "C_ReportSystem",
     "C_Timer",

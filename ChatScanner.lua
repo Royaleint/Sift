@@ -15,7 +15,12 @@ local CHAT_EVENTS = {
   "CHAT_MSG_EMOTE",
   "CHAT_MSG_DND",
   "CHAT_MSG_AFK",
+  "CHAT_MSG_GUILD",
+  "CHAT_MSG_OFFICER",
+  "CHAT_MSG_COMMUNITIES_CHANNEL",
 }
+
+local GUILD_DISCORD_EVENT = "CHAT_MSG_GUILD_DISCORD"
 
 -- Surface for each event, used by the pause gate and stamped on history records.
 local EVENT_TO_SURFACE = {
@@ -27,6 +32,27 @@ local EVENT_TO_SURFACE = {
   CHAT_MSG_AFK        = "chat",
   CHAT_MSG_WHISPER    = "whisper",
   CHAT_MSG_BN_WHISPER = "bn-whisper",
+  CHAT_MSG_GUILD      = "guild",
+  CHAT_MSG_OFFICER    = "guild",
+  CHAT_MSG_COMMUNITIES_CHANNEL = "guild",
+  CHAT_MSG_GUILD_DISCORD = "guild",
+}
+
+-- Events that hide a manually blocked sender and nothing else: no trust, scoring
+-- or pause state. "optin" events also need settings.hideBlockedInGuildDiscord.
+local IDENTITY_ONLY_EVENTS = {
+  CHAT_MSG_GUILD = true,
+  CHAT_MSG_OFFICER = true,
+  CHAT_MSG_COMMUNITIES_CHANNEL = true,
+  CHAT_MSG_GUILD_DISCORD = "optin",
+}
+
+-- Lines the right-click Block menu can look up by lineID. A community sender
+-- link carries no lineID, so remembering those would only evict older lines.
+local REMEMBER_SENDER_EVENTS = {
+  CHAT_MSG_GUILD = true,
+  CHAT_MSG_OFFICER = true,
+  CHAT_MSG_GUILD_DISCORD = true,
 }
 
 -- One filter per event: a second add would stack a duplicate on the chat chain.
@@ -639,31 +665,9 @@ local function ErrorHandler(err)
   return err
 end
 
--- File-scope on purpose: an inline closure in Filter would allocate on every
--- delivery to every chat frame.
-local function FilterBody(event, message, sender, language, channelString, target, flags, unknown, channelNumber, channelName, unknown2, counter, guid)
-  -- Before Pipeline, which returns early for trusted senders (the players most
-  -- likely to be blocked by hand). Inside the protected call so a failure only
-  -- loses the menu entry.
-  RememberSender(counter, guid)
-
-  local settings = GetSettings()
-  local surface = EVENT_TO_SURFACE[event] or "chat"
-  local surfaceState = (NS.PauseState and NS.PauseState.GetSurface and NS.PauseState.GetSurface(surface)) or "active"
-  if surfaceState == "off" then
-    -- The false, false are placeholders: Pipeline returns at the off gate before reading them.
-    return Pipeline(event, message, sender, language, channelString, target, flags, unknown,
-      channelNumber, channelName, unknown2, counter, guid, settings, false, false, surface, surfaceState)
-  end
-  -- Coerced to false, never nil: Pipeline treats nil as "not checked" and looks it up again.
-  local manualBlocked = IsUsableString(guid) and NS.DB and NS.DB.IsManuallyBlocked
-    and NS.DB.IsManuallyBlocked(guid) == true or false
-  local trusted = not manualBlocked and NS.Trust and NS.Trust.IsTrusted
-    and NS.Trust.IsTrusted(guid, sender, flags) == true or false
-  if trusted then
-    return Pipeline(event, message, sender, language, channelString, target, flags, unknown,
-      channelNumber, channelName, unknown2, counter, guid, settings, manualBlocked, trusted, surface, surfaceState)
-  end
+-- The decision cache around Pipeline: the filter runs once per chat frame
+-- showing a line, and only the first call for a lineID runs the pipeline.
+local function RunCached(event, message, sender, language, channelString, target, flags, unknown, channelNumber, channelName, unknown2, counter, guid, settings, manualBlocked, trusted, surface, surfaceState)
   local lineID = IsFinitePositiveNumber(counter)
   local stamp = GetFrameStamp()
   local cacheable = lineID and stamp and type(event) == "string" and IsSafePayloadValue(message)
@@ -709,6 +713,51 @@ local function FilterBody(event, message, sender, language, channelString, targe
     slot.inProgress = false
   end
   return decision
+end
+
+-- File-scope on purpose: an inline closure in Filter would allocate on every
+-- delivery to every chat frame.
+local function FilterBody(event, message, sender, language, channelString, target, flags, unknown, channelNumber, channelName, unknown2, counter, guid)
+  local lane = IDENTITY_ONLY_EVENTS[event]
+  if lane then
+    local settings
+    if lane == "optin" then
+      settings = NS.DB and NS.DB.GetSettings and NS.DB.GetSettings()
+      if not settings or settings.hideBlockedInGuildDiscord ~= true then return false end
+    end
+    if REMEMBER_SENDER_EVENTS[event] then RememberSender(counter, guid) end
+    if not (IsUsableString(guid) and NS.DB and NS.DB.IsManuallyBlocked and NS.DB.IsManuallyBlocked(guid) == true) then
+      return false
+    end
+    -- Not pausable: the surface state is passed as "active", never read.
+    return RunCached(event, message, sender, language, channelString, target, flags, unknown,
+      channelNumber, channelName, unknown2, counter, guid, settings or GetSettings(), true, false, "guild", "active")
+  end
+
+  -- Before Pipeline, which returns early for trusted senders (the players most
+  -- likely to be blocked by hand). Inside the protected call so a failure only
+  -- loses the menu entry.
+  RememberSender(counter, guid)
+
+  local settings = GetSettings()
+  local surface = EVENT_TO_SURFACE[event] or "chat"
+  local surfaceState = (NS.PauseState and NS.PauseState.GetSurface and NS.PauseState.GetSurface(surface)) or "active"
+  if surfaceState == "off" then
+    -- The false, false are placeholders: Pipeline returns at the off gate before reading them.
+    return Pipeline(event, message, sender, language, channelString, target, flags, unknown,
+      channelNumber, channelName, unknown2, counter, guid, settings, false, false, surface, surfaceState)
+  end
+  -- Coerced to false, never nil: Pipeline treats nil as "not checked" and looks it up again.
+  local manualBlocked = IsUsableString(guid) and NS.DB and NS.DB.IsManuallyBlocked
+    and NS.DB.IsManuallyBlocked(guid) == true or false
+  local trusted = not manualBlocked and NS.Trust and NS.Trust.IsTrusted
+    and NS.Trust.IsTrusted(guid, sender, flags) == true or false
+  if trusted then
+    return Pipeline(event, message, sender, language, channelString, target, flags, unknown,
+      channelNumber, channelName, unknown2, counter, guid, settings, manualBlocked, trusted, surface, surfaceState)
+  end
+  return RunCached(event, message, sender, language, channelString, target, flags, unknown,
+    channelNumber, channelName, unknown2, counter, guid, settings, manualBlocked, trusted, surface, surfaceState)
 end
 
 function ChatScanner.Filter(
@@ -775,6 +824,17 @@ local function ChatFrameFilter(
   )
 end
 
+-- Read at call time, never at file scope. Not cached: callers use it once per
+-- Install or Config render, never on the message path.
+local function IsGuildDiscordAvailable()
+  if type(C_EventUtils) ~= "table" or type(C_EventUtils.IsEventValid) ~= "function" then
+    return false
+  end
+  local ok, valid = pcall(C_EventUtils.IsEventValid, GUILD_DISCORD_EVENT)
+  return ok and valid == true
+end
+ChatScanner.IsGuildDiscordAvailable = IsGuildDiscordAvailable
+
 function ChatScanner.Install()
   filterAdd = filterAdd or ResolveAddFilter()
   if not filterAdd then
@@ -791,6 +851,16 @@ function ChatScanner.Install()
       else
         DevLog("failed to install chat filter for " .. event .. ".")
       end
+    end
+  end
+
+  -- Opt-in event, absent on Classic clients. The filter stays installed; the
+  -- setting is read per message, so toggling it needs no add or remove.
+  if not filterInstalled[GUILD_DISCORD_EVENT] and IsGuildDiscordAvailable() then
+    if pcall(filterAdd, GUILD_DISCORD_EVENT, ChatFrameFilter) then
+      filterInstalled[GUILD_DISCORD_EVENT] = true
+    else
+      DevLog("failed to install chat filter for " .. GUILD_DISCORD_EVENT .. ".")
     end
   end
 
