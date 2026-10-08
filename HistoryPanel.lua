@@ -159,17 +159,15 @@ local CHAT_EVENT_LABELS = {
 }
 
 -- A community line's channelName is the internal "Community:<clubId>:<streamId>"
--- string, which is stored as is and never shown. The game builds the resolved
--- name as "<community> - <stream>" and leaves a side empty when the club data
--- is missing, so a name with an empty side is not shown.
+-- string, which is stored as is and never shown. The game resolves it to a bare
+-- stream name (guild streams), a bare community name (General), or
+-- "<community> - <stream>", and leaves a side empty when it has no club data.
 local function ResolveCommunityName(raw)
   if ChatFrameUtil and type(ChatFrameUtil.ResolveChannelName) == "function" then
     local ok, name = pcall(ChatFrameUtil.ResolveChannelName, raw)
-    if ok and type(name) == "string" and not name:find("^Community:") then
-      local sepStart, sepEnd = name:find(" - ", 1, true)
-      if sepStart and name:sub(1, sepStart - 1):find("%S") and name:sub(sepEnd + 1):find("%S") then
-        return name
-      end
+    if ok and type(name) == "string" and name:find("%S") and not name:find("^Community:")
+       and not name:find("^%s*%- ") and not name:find(" %-%s*$") then
+      return name
     end
   end
   return L[CHAT_EVENT_LABELS.CHAT_MSG_COMMUNITIES_CHANNEL]
