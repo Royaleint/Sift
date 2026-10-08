@@ -458,7 +458,8 @@ L["%s (paused)"] = "%s (paused)"
 L["Filter choices not saved. Sift will ask again next login; change them any time with /sift config."] = "Filter choices not saved. Sift will ask again next login; change them any time with /sift config."
 
 -- Player menu: block confirmation on a guild or character-community roster row
-L["Block %s? Sift will hide their messages in say, yell, whispers, emotes and channels. Guild, community, party, raid and instance chat is not hidden."] = "Block %s? Sift will hide their messages in say, yell, whispers, emotes and channels. Guild, community, party, raid and instance chat is not hidden."
+L["Block %s? Sift will hide their messages in your chat windows: say, yell, whispers, emotes, channels, and guild, officer and community chat. Their messages still show in the chat inside the guild and Communities window, and in party, raid and instance chat."] = "Block %s? Sift will hide their messages in your chat windows: say, yell, whispers, emotes, channels, and guild, officer and community chat. Their messages still show in the chat inside the guild and Communities window, and in party, raid and instance chat."
+L["Guild Discord chat stays visible unless you turn it on in /sift config > Blocked."] = "Guild Discord chat stays visible unless you turn it on in /sift config > Blocked."
 L["Block"] = "Block"
 L["Cancel"] = "Cancel"
 L["this player"] = "this player"

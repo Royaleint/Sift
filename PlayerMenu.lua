@@ -267,7 +267,11 @@ function PlayerMenu.ShowPopup(which, ...)
   local dialog = StaticPopupDialogs and StaticPopupDialogs[which]
   if not dialog or type(StaticPopup_Show) ~= "function" then return end
   if which == CONFIRM_DIALOG then
-    dialog.text = L["Block %s? Sift will hide their messages in say, yell, whispers, emotes and channels. Guild, community, party, raid and instance chat is not hidden."]
+    if NS.ChatScanner and NS.ChatScanner.IsGuildDiscordAvailable and NS.ChatScanner.IsGuildDiscordAvailable() then
+      dialog.text = L["Block %s? Sift will hide their messages in your chat windows: say, yell, whispers, emotes, channels, and guild, officer and community chat. Their messages still show in the chat inside the guild and Communities window, and in party, raid and instance chat."] .. " " .. L["Guild Discord chat stays visible unless you turn it on in /sift config > Blocked."]
+    else
+      dialog.text = L["Block %s? Sift will hide their messages in your chat windows: say, yell, whispers, emotes, channels, and guild, officer and community chat. Their messages still show in the chat inside the guild and Communities window, and in party, raid and instance chat."]
+    end
     dialog.button1 = L["Block"]
     dialog.button2 = CANCEL or L["Cancel"]
   end
