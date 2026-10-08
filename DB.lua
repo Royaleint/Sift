@@ -85,6 +85,8 @@ local defaults = {
       -- Seconds. Only the seed value; the band is owned by Frequency.lua.
       floodWindow = 180,
       filterBubbles = false,
+      -- Opt-in: also hide hand-blocked players in guild Discord chat.
+      hideBlockedInGuildDiscord = false,
       showMinimapButton = true,
       historyMaxEntries = 300,
       historyGlobalMaxEntries = 1000,
@@ -317,6 +319,7 @@ local function RepairSettings(settings)
   settings.historyGlobalMaxEntries = ClampNumber(settings.historyGlobalMaxEntries, 100, 5000, defaultSettings.historyGlobalMaxEntries)
   settings.mixedScriptEnabled = settings.mixedScriptEnabled ~= false
   settings.filterBubbles = settings.filterBubbles == true
+  settings.hideBlockedInGuildDiscord = settings.hideBlockedInGuildDiscord == true
   settings.showMinimapButton = settings.showMinimapButton ~= false
   -- Prune defunct setting keys (see DEFUNCT_SETTING_KEYS).
   for _, key in ipairs(DEFUNCT_SETTING_KEYS) do
@@ -487,7 +490,7 @@ function DB.SetSetting(key, value)
       settings.enabledCategories[category] = resolved
     end
   elseif key == "mixedScriptEnabled" or key == "filterBubbles"
-    or key == "showMinimapButton" then
+    or key == "hideBlockedInGuildDiscord" or key == "showMinimapButton" then
     settings[key] = value == true
   else
     return nil

@@ -133,12 +133,13 @@ end
 
 -- Lowercase surface keys, as ChatScanner writes them. An unmapped saved surface
 -- key displays as its raw string rather than erroring.
-local SURFACE_VALUES = { "All", "chat", "whisper", "bn-whisper" }
+local SURFACE_VALUES = { "All", "chat", "whisper", "bn-whisper", "guild" }
 local SURFACE_LABELS = {
   All               = "All",
   chat              = "Chat",
   whisper           = "Whisper",
   ["bn-whisper"]    = "Bnet whisper",
+  guild             = "Guild",
 }
 
 -- Labels for entry.channel, used when the entry has no channelName.
@@ -151,10 +152,32 @@ local CHAT_EVENT_LABELS = {
   CHAT_MSG_DND        = "DND auto-response",
   CHAT_MSG_AFK        = "AFK auto-response",
   CHAT_MSG_CHANNEL    = "Channel",
+  CHAT_MSG_GUILD      = "Guild",
+  CHAT_MSG_OFFICER    = "Officer",
+  CHAT_MSG_COMMUNITIES_CHANNEL = "Community",
+  CHAT_MSG_GUILD_DISCORD = "Guild (Discord)",
 }
+
+-- A community line's channelName is the internal "Community:<clubId>:<streamId>"
+-- string, which is stored as is and never shown. The game resolves it to a bare
+-- stream name (guild streams), a bare community name (General), or
+-- "<community> - <stream>", and leaves a side empty when it has no club data.
+local function ResolveCommunityName(raw)
+  if ChatFrameUtil and type(ChatFrameUtil.ResolveChannelName) == "function" then
+    local ok, name = pcall(ChatFrameUtil.ResolveChannelName, raw)
+    if ok and type(name) == "string" and name:find("%S") and not name:find("^Community:")
+       and not name:find("^%s*%- ") and not name:find(" %-%s*$") then
+      return name
+    end
+  end
+  return L[CHAT_EVENT_LABELS.CHAT_MSG_COMMUNITIES_CHANNEL]
+end
 
 function Data.FormatChannel(entry)
   if entry.channelName and entry.channelName ~= "" then
+    if entry.channel == "CHAT_MSG_COMMUNITIES_CHANNEL" then
+      return ResolveCommunityName(entry.channelName)
+    end
     return entry.channelName
   end
   if entry.channel and CHAT_EVENT_LABELS[entry.channel] then
@@ -743,7 +766,7 @@ local TIPS = {
   CHIP_REPEAT       = "This message repeated one Sift had already caught from the same sender.",
   SPAM_WAVE_SWATCH  = "Gray marks messages Sift caught as part of a spam wave, with no spam category of their own. Players you blocked yourself, and entries marked ?, also show in gray.",
 
-  STAT_SURFACE  = "Lifetime detections split by where they came from: Chat, Whisper, and Bnet whisper. Shows this character or the whole account, depending on the Character or Account button.",
+  STAT_SURFACE  = "Lifetime detections split by where they came from: Chat, Whisper, Bnet whisper, and Guild. Guild also covers officer and community chat, and only counts players you blocked yourself. Shows this character or the whole account, depending on the Character or Account button.",
   STAT_CATEGORY = "Lifetime detections split by spam category, for this character or the whole account. A gray number means that category is currently Paused or Off.",
   STAT_PIPELINE = "Repeats counts messages that repeat spam Sift already caught from the same sender. Bubbles suppressed counts the times Sift hid a chat bubble for a blocked Say or Yell. Spam wave (recent) counts blocked messages still in your History that were caught only as part of a spam wave, so it drops as old entries are removed.",
 }
@@ -1042,7 +1065,7 @@ function Actions.ContextEntryRestorable(entry)
 end
 
 function Actions.ContextEntryCanAllowlist(entry)
-  if entry.surface ~= "chat" then return false end
+  if entry.surface ~= "chat" and entry.surface ~= "guild" then return false end
   if not entry.guid or entry.guid == "" then return false end
   if NS.Trust and NS.Trust.IsAllowlisted and NS.Trust.IsAllowlisted(entry.guid) then
     return false
@@ -1137,7 +1160,8 @@ function HistoryDetailMixin:RenderActions(entry)
     actions.btn1.tipTitle = "Block retroactively"
     actions.btn1.tipBody  = "Mark this message as blocked. It already appeared in chat and " ..
       "stays there, but Sift opens Blizzard's report window for it when it can."
-    local allowable = (entry.surface == "chat" or entry.surface == "whisper" or entry.surface == "bn-whisper")
+    local allowable = (entry.surface == "chat" or entry.surface == "whisper" or entry.surface == "bn-whisper"
+      or entry.surface == "guild")
       and entry.guid and entry.guid ~= ""
     if allowable and not (NS.Trust and NS.Trust.IsAllowlisted and NS.Trust.IsAllowlisted(entry.guid)) then
       actions.btn2:SetText(L["Always allow"])
@@ -1168,7 +1192,8 @@ function HistoryDetailMixin:RenderActions(entry)
     return
   end
 
-  local allowable = (entry.surface == "chat" or entry.surface == "whisper" or entry.surface == "bn-whisper")
+  local allowable = (entry.surface == "chat" or entry.surface == "whisper" or entry.surface == "bn-whisper"
+    or entry.surface == "guild")
     and entry.guid and entry.guid ~= ""
   if allowable then
     local already = NS.Trust and NS.Trust.IsAllowlisted and NS.Trust.IsAllowlisted(entry.guid)
@@ -1311,7 +1336,7 @@ function HistoryStatsMixin:RefreshStatsArea()
   local bySurface = lifetime.bySurface or {}
   -- Inline, relying on word-wrap; the stats ScrollFrame handles overflow.
   local surfaceParts = {}
-  local surfaceOrder = { "chat", "whisper", "bn-whisper" }
+  local surfaceOrder = { "chat", "whisper", "bn-whisper", "guild" }
   for _, s in ipairs(surfaceOrder) do
     local label = SURFACE_LABELS[s] or s
     surfaceParts[#surfaceParts + 1] = string.format("%s |cffffffff%d|r", L[label], tonumber(bySurface[s]) or 0)
