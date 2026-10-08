@@ -1,5 +1,10 @@
 # Sift Changelog
 
+## v1.5.1 (2026-10-07)
+
+- Removed the developer section from Config and the /bdev commands. They were meant for testing Sift.
+- Reset Settings now sits in the UI section of Config.
+
 ## v1.5.0 (2026-10-05)
 
 - Reworded the Config and History tooltips, help text and navigation hints in plainer English, and the History stats line label now reads OTHER.

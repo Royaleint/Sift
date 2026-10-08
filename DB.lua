@@ -39,7 +39,7 @@ local SV_NAME_ERROR = (not SV_NAME) and SV_LEGACY_NAME or nil
 -- at the next login; a permanently deferred migration would block every
 -- later one, which is unreachable in the shipped load order.
 local CURRENT_SCHEMA_VERSION = 6
-local ADDON_VERSION = "1.5.0"
+local ADDON_VERSION = "1.5.1"
 local BLOCKED_ACTOR_CAP = 5000
 
 -- Bumped by every write to global.blockedActors (scanner block, manual
