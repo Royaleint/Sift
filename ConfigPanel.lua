@@ -77,6 +77,7 @@ local DEFAULT_SETTINGS = {
   -- at file scope. The live slider bounds come from GetFloodWindowBounds.
   floodWindow = 180,
   filterBubbles = false,
+  hideBlockedInGuildDiscord = false,
   historyMaxEntries = 300,
   historyGlobalMaxEntries = 1000,
   showMinimapButton = true,
@@ -1910,6 +1911,11 @@ RenderBlocked = function()
   y = y - 34
 
   y = AddDisabledRow("Add a manual block", "Right-click a player name in chat and choose Block (Sift).", y)
+  if NS.ChatScanner and NS.ChatScanner.IsGuildDiscordAvailable and NS.ChatScanner.IsGuildDiscordAvailable() then
+    y = AddCheckbox("Hide players you blocked in guild Discord chat", "hideBlockedInGuildDiscord", y, nil,
+      "Guild Discord chat from players you blocked yourself is hidden too. " ..
+      "Off by default, so those messages still show until you turn this on.")
+  end
 
   local entries = SortedBlockedActors()
   local maxPage = MaxPage(#entries)
