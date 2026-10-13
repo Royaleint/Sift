@@ -1,5 +1,13 @@
 # Sift Changelog
 
+## v1.6.0 (2026-10-13)
+
+- Blocking a player by hand now also hides their guild, officer and community chat in your chat windows. Their messages still show in the guild and Communities window.
+- Guild Discord chat from a blocked player stays visible unless you turn on "Hide players you blocked in guild Discord chat" in Config > Blocked. It is off by default and only appears on clients that have guild Discord chat.
+- History labels these rows Guild, Officer and Guild (Discord). Community rows show the community's name, or Community when the name is not available. The stats line now counts Guild.
+- The block confirmation on the guild and community roster now says which chats are hidden and which still show.
+- Updated for patch 12.1.5.
+
 ## v1.5.1 (2026-10-07)
 
 - Removed the developer section from Config and the /bdev commands. They were meant for testing Sift.
