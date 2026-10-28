@@ -16,6 +16,7 @@ ignore:
   - .gitattributes
   - .github
   - .pkgmeta
+  - Libs/Foundry-1.0/PIN
   - .release
   - .worktrees
   - .claude

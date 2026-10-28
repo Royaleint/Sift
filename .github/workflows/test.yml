@@ -19,3 +19,18 @@ jobs:
 
       - name: Text coverage
         run: lua5.1 tests/locale_coverage.lua
+
+  foundry-pin:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Verify Foundry PIN
+        working-directory: Libs/Foundry-1.0
+        run: |
+          sha256sum -c PIN
+          expected="$(grep -E '^[0-9a-f]{64}  ' PIN | cut -c67- | sort)"
+          actual="$(find . -type f ! -path './PIN' -printf '%P\n' | sort)"
+          extra="$(comm -23 <(printf '%s\n' "$actual") <(printf '%s\n' "$expected"))"
+          test -z "$extra" || { printf 'Unpinned vendored files:\n%s\n' "$extra" >&2; exit 1; }
