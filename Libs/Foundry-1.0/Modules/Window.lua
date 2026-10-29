@@ -1,24 +1,18 @@
 -- Foundry.Window
 --
 -- Attaches drag movement and persisted position to a caller-created,
--- UIParent-parented frame. The caller owns the frame and its drag handle;
--- Foundry owns SetMovable/StartMoving/StopMovingOrSizing, SetClampedToScreen,
--- validated restore/save of a caller-owned geometry table, and Reset. There
--- is no frame factory, no resize, no size persistence, no scale management,
--- and no Detach in v1 -- the caller already holds the raw frame and handle.
+-- UIParent-parented frame. The caller owns the frame and its drag handle.
 --
--- :Attach(win, config) validates atomically and applies the caller's saved
--- geometry (or the default) immediately, so it must be called after the
--- caller's own SavedVariables exist. :Reset(win) clears the saved record and
--- re-applies the default without a reload.
+-- :Attach(win, config) applies the caller's saved geometry (or the default)
+-- immediately, so call it after the caller's own SavedVariables exist.
+-- :Reset(win) re-applies the default without a reload.
 
 local F = _G.Foundry_1_0
 if not F then
     error("Foundry-1.0: Window.lua requires the Foundry-1.0 bootstrap (Foundry.lua) "
         .. "to have loaded first; _G.Foundry_1_0 is missing.", 0)
 end
--- Guarded-embedding stand-down (§2.2b): if this module is already registered on the
--- winning copy, this is a redundant embedded copy — load nothing.
+-- Another copy of the library already registered this module: load nothing.
 if F:HasModule("Window") then return end
 
 local Window = {}
@@ -38,8 +32,6 @@ local function isFiniteNumber(n)
     return type(n) == "number" and n == n and n ~= math.huge and n ~= -math.huge
 end
 
--- A well-formed geometry table: four keys present, point/relPoint whitelisted,
--- x/y finite numbers. Also used (with named fields) to validate config.default.
 local function isValidGeometry(t)
     return type(t) == "table"
         and VALID_ANCHOR_POINTS[t.point] == true
@@ -48,8 +40,6 @@ local function isValidGeometry(t)
         and isFiniteNumber(t.y)
 end
 
--- True if any of the four geometry keys is present (a garbage-but-nonempty
--- record, distinct from a fresh/absent one).
 local function hasAnyGeometryKey(t)
     return t.point ~= nil or t.relPoint ~= nil or t.x ~= nil or t.y ~= nil
 end
@@ -64,9 +54,7 @@ local function apply(win, point, relPoint, x, y)
 end
 
 --------------------------------------------------------------------------------
--- Module-local registry
--- Maps frame → record. Keyed by frame: the frame is the owner identity, and
--- there is no per-consumer controller to hold it instead.
+-- Module-local registry (frame -> record)
 --------------------------------------------------------------------------------
 
 local attached = {}
@@ -75,12 +63,9 @@ local attached = {}
 -- Save (OnDragStop)
 --------------------------------------------------------------------------------
 
--- Re-checks the UIParent precondition before writing: a caller reparenting
--- win after Attach, or a client where the frame's only anchor is not
--- relative to UIParent, each leave win without a UIParent-relative sole
--- anchor. Either way the write is skipped and a dev error raised (single
--- message; the two causes are indistinguishable from here) -- the frame
--- keeps wherever the drag left it, but nothing persists.
+-- Skips the save (dev error) when, at drag stop, win is no longer parented
+-- to UIParent or its first anchor is relative to another frame. A nil
+-- relativeTo counts as UIParent-relative.
 local NOT_UIPARENT_RELATIVE = "Window: attached frame's parent or anchor is no longer "
     .. "UIParent-relative; geometry not saved"
 
@@ -101,21 +86,18 @@ end
 -- Attach
 --------------------------------------------------------------------------------
 
--- Wires movement and persisted position onto win. Validation is atomic:
--- nothing on win or config.handle is touched until every check passes. Each
--- failure is F:RaiseDevError + return nil (dev build raises, release build
--- prints and refuses, Foundry.lua:44-51).
+-- Wires movement and persisted position onto win.
 --
 -- Config fields:
---   handle   (required) — frame receiving the drag scripts; win itself or any
---                         frame the caller chooses. Foundry does not verify
---                         descent from win.
---   geometry (required) — caller-owned table; Foundry reads/writes the four
---                         keys point/relPoint/x/y in place, held by reference.
---   default  (required) — {point, relPoint, x, y} relative to UIParent, applied
---                         when geometry is empty or malformed. Copied at Attach
---                         so a caller mutating its own literal afterward cannot
---                         change what Reset applies.
+--   handle   (required) -- frame receiving the drag scripts; win itself or any
+--                          frame the caller chooses. Foundry does not verify
+--                          descent from win.
+--   geometry (required) -- caller-owned table; Foundry reads/writes the four
+--                          keys point/relPoint/x/y in place, held by reference.
+--   default  (required) -- {point, relPoint, x, y} relative to UIParent, applied
+--                          when geometry is empty or malformed. Copied at Attach
+--                          so a caller mutating its own literal afterward cannot
+--                          change what Reset applies.
 --
 -- Returns win on success, nil after a refused call.
 function Window:Attach(win, config)
@@ -182,10 +164,10 @@ function Window:Attach(win, config)
         return nil
     end
 
-    -- Every check passed; nothing above touched win or handle.
-
+    -- Every check runs above this line; nothing on win or handle is touched
+    -- until all pass.
     win:SetMovable(true)
-    win:SetUserPlaced(false) -- clears any position the game's layout cache saved for this frame, before restore
+    win:SetUserPlaced(false) -- clears any position the game's layout cache saved, before restore
     win:SetClampedToScreen(true)
 
     handle:EnableMouse(true)
@@ -195,6 +177,7 @@ function Window:Attach(win, config)
     end)
     handle:SetScript("OnDragStop", function()
         win:StopMovingOrSizing()
+        -- Again after every drag, so the game's layout cache does not take over the position.
         win:SetUserPlaced(false)
         saveGeometry(win, geometry)
     end)
