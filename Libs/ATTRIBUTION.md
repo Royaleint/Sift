@@ -7,7 +7,7 @@ Sift vendors a small set of WoW Lua libraries to avoid a fetch step at install t
 - **Source:** https://github.com/Royaleint/Foundry.git
 - **License:** MIT
 - **Purpose:** SavedVariables layer (Foundry.DB), addon lifecycle, slash command registry, and event dispatch. Sift's core dependency — replaces AceDB-3.0 (BSP-062), AceAddon-3.0 (BSP-060), and related Ace3 modules.
-- **Vendored at:** BSP-064 (FND-007 embedded-copy guard); consolidated to the v1.0.102 tag (SFT-076). Standalone Foundry-1.0 wins when installed; this embed is the fallback for distributions without a separate Foundry install.
+- **Vendored at:** the v1.0.106 tag (pinned in `Libs/Foundry-1.0/PIN`). Standalone Foundry-1.0 wins when installed; this embed is the fallback for distributions without a separate Foundry install.
 - **Update policy:** Re-vendor from source tag when a new Foundry release is needed. Pin the tag — do not track HEAD.
 
 ## LibStub
