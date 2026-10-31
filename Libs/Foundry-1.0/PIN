@@ -1,4 +1,4 @@
-# Foundry 68ba5c6 (pre-release; re-pin to the v1.0.114 tag before this addon releases)
+# Foundry v1.0.114
 539a1bd17d0a1ea0fecb498ac9998f5d8e83140a51a2fdaad23c001e52df4c1f  Foundry.lua
 54beeca65010a24554ccedafc677c18ff6023134fce598bc5001a438c3c6edd4  Modules/Commands.lua
 e385e40d5636f08a2e7c8742f7bf675f3fe61a11db06d71ef889f794b3d3f67e  Modules/DB.lua
