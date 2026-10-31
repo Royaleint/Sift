@@ -1,5 +1,9 @@
 # Sift Changelog
 
+## v1.6.1 (2026-10-31)
+
+- Updated the bundled Foundry-1.0 library to v1.0.114.
+
 ## v1.6.0 (2026-10-13)
 
 - Blocking a player by hand now also hides their guild, officer and community chat in your chat windows. Their messages still show in the guild and Communities window.
