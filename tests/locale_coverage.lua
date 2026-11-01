@@ -10,7 +10,7 @@
 --   - listed in tests/locale_coverage_exempt.lua with a valid category.
 --
 -- Failure ids:
---   (a) uncovered group      (b) bad or missing exempt category
+--   (a) uncovered group      (b) invalid or duplicate exempt entry
 --   (c) stale exempt entry   (d) L[...] literal that is not an enUS key
 --   (input) a required input is missing, unreadable or empty
 -- Prints "RESULT: OK" and exits 0 only when nothing failed.
@@ -273,7 +273,12 @@ local function run()
         fail("b", where, "bad or missing category for " .. show(entry.text))
       end
       local id = normalize(entry.file) .. "\0" .. entry.text
-      exemptIndex[id] = { used = false, where = where, file = entry.file, text = entry.text }
+      local previous = exemptIndex[id]
+      if previous then
+        fail("b", where, "duplicate of " .. previous.where .. " for " .. normalize(entry.file) .. " / " .. show(entry.text))
+      else
+        exemptIndex[id] = { used = false, where = where, file = entry.file, text = entry.text }
+      end
     end
   end
 
