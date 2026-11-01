@@ -1116,6 +1116,49 @@ function Actions.OpenRowContextMenu(anchor, entry)
   end
 end
 
+local function SizeLabelButton(button, minWidth, maxWidth)
+  local label = button:GetFontString()
+  local naturalWidth = (label and label:GetUnboundedStringWidth() or button:GetTextWidth()) + 24
+  local width = math.min(math.max(naturalWidth, minWidth), maxWidth)
+  button:SetWidth(width)
+  if label then
+    label:SetWordWrap(false)
+    label:SetWidth(naturalWidth > maxWidth and math.max(1, width - 24) or 0)
+  end
+  return width
+end
+
+function HistoryDetailMixin:PlaceActionButtons()
+  local actions = self.actions
+  local available = self.footer:GetWidth() - 12
+  local first, second = actions.btn1, actions.btn2
+  if available <= 0 then
+    first:SetWidth(0)
+    second:SetWidth(0)
+    return
+  end
+  local paired = first:IsShown() and second:IsShown()
+  if paired then
+    available = available - 4
+    if available <= 0 then
+      first:SetWidth(0)
+      second:SetWidth(0)
+      return
+    end
+    local firstWanted = math.max(first:GetFontString():GetUnboundedStringWidth() + 24, 70)
+    local secondWanted = math.max(second:GetFontString():GetUnboundedStringWidth() + 24, 70)
+    local firstCap = math.min(firstWanted, math.max(0, available - math.min(secondWanted, math.floor(available / 2))))
+    SizeLabelButton(first, math.min(70, firstCap), firstCap)
+    SizeLabelButton(second, math.min(70, available - firstCap), available - firstCap)
+  elseif first:IsShown() then
+    SizeLabelButton(first, math.min(70, available), available)
+    second:SetWidth(0)
+  else
+    first:SetWidth(0)
+    second:SetWidth(0)
+  end
+end
+
 function HistoryDetailMixin:RenderActions(entry)
   local actions = self and self.actions
   if not actions or not actions.btn1 or not actions.btn2 then return end
@@ -1130,7 +1173,7 @@ function HistoryDetailMixin:RenderActions(entry)
   actions.btn1.tipTitle, actions.btn1.tipBody = nil, nil
   actions.btn2.tipTitle, actions.btn2.tipBody = nil, nil
 
-  if not entry then return end
+  if not entry then self:PlaceActionButtons(); return end
 
   local outcome = entry.outcome or "blocked"
 
@@ -1148,6 +1191,7 @@ function HistoryDetailMixin:RenderActions(entry)
       actions.btn2.tipTitle = "Allowlisted"
       actions.btn2.tipBody  = "This sender is on the allowlist. Sift won't block messages from them."
     end
+    self:PlaceActionButtons()
     return
   end
 
@@ -1170,6 +1214,7 @@ function HistoryDetailMixin:RenderActions(entry)
       actions.btn2.tipTitle = "Always allow"
       actions.btn2.tipBody  = "Add this sender to the allowlist. Sift won't block messages from them."
     end
+    self:PlaceActionButtons()
     return
   end
 
@@ -1189,6 +1234,7 @@ function HistoryDetailMixin:RenderActions(entry)
     actions.btn2:Show()
     actions.btn2.tipTitle = reportLabel
     actions.btn2.tipBody  = "Open Blizzard's report window for this message."
+    self:PlaceActionButtons()
     return
   end
 
@@ -1228,6 +1274,7 @@ function HistoryDetailMixin:RenderActions(entry)
     actions.btn1.tipBody  = "Undo this block. The message won't reappear in chat, and this " ..
       "surface can't be allowlisted."
   end
+  self:PlaceActionButtons()
 end
 
 -- Shared by the per-category legend items and the Flood swatch.
@@ -1657,6 +1704,7 @@ function HistoryRowMixin:InitListRow()
   self.badgeText:SetPoint("RIGHT", self, "RIGHT", -69, 0)
   self.badgeText:SetWidth(54)
   self.badgeText:SetJustifyH("CENTER")
+  self.badgeText:SetWordWrap(false)
 
   self.scoreText = self:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   self.scoreText:SetPoint("RIGHT", self, "RIGHT", -16, 0)
@@ -1895,10 +1943,25 @@ function HistoryStatsMixin:PlaceStatsTiles()
   end
 end
 
+function HistoryStatsMixin:PlaceStatsScope()
+  local available = self:GetWidth() - 16
+  if available <= 4 then
+    self.scopeCharBtn:SetWidth(0)
+    self.scopeAccountBtn:SetWidth(0)
+    return
+  end
+  local cap = math.floor((available - 4) / 2)
+  SizeLabelButton(self.scopeCharBtn, math.min(70, cap), cap)
+  SizeLabelButton(self.scopeAccountBtn, math.min(70, cap), cap)
+end
+
 function HistoryStatsMixin:BuildStatsArea()
   self.titleLabel = self:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   self.titleLabel:SetPoint("TOPLEFT", self, "TOPLEFT", 10, -6)
+  self.titleLabel:SetPoint("TOPRIGHT", self, "TOPRIGHT", -10, -6)
   self.titleLabel:SetText(L["DETECTION STATS"])
+  self.titleLabel:SetWordWrap(false)
+  self.titleLabel:SetJustifyH("LEFT")
 
   -- This-character / account-wide scope toggle for the stat boxes.
   local function SetStatsScope(scope)
@@ -1910,7 +1973,7 @@ function HistoryStatsMixin:BuildStatsArea()
 
   self.scopeCharBtn = CreateFrame("Button", nil, self, "UIPanelButtonTemplate")
   self.scopeCharBtn:SetSize(70, 16)
-  self.scopeCharBtn:SetPoint("TOPRIGHT", self, "TOPRIGHT", -6, -4)
+  self.scopeCharBtn:SetPoint("TOPRIGHT", self, "TOPRIGHT", -6, -24)
   self.scopeCharBtn:SetText(L["Character"])
   self.scopeCharBtn:SetScript("OnClick", function() SetStatsScope("char") end)
   Chrome.AttachTooltip(self.scopeCharBtn, "Character",
@@ -1927,11 +1990,13 @@ function HistoryStatsMixin:BuildStatsArea()
   -- Default view is per-character; the char button starts disabled to show
   -- it's the active scope.
   self.scopeCharBtn:SetEnabled(false)
+  self:SetScript("OnSizeChanged", function() self:PlaceStatsScope() end)
+  self:PlaceStatsScope()
 
   self.tilesRow = CreateFrame("Frame", nil, self)
   self.tilesRow:SetHeight(38)
-  self.tilesRow:SetPoint("TOPLEFT",  self, "TOPLEFT",  6, -22)
-  self.tilesRow:SetPoint("TOPRIGHT", self, "TOPRIGHT", -6, -22)
+  self.tilesRow:SetPoint("TOPLEFT",  self, "TOPLEFT",  6, -44)
+  self.tilesRow:SetPoint("TOPRIGHT", self, "TOPRIGHT", -6, -44)
 
   self.tiles = {}
   for _, key in ipairs(STATS_TILE_KEYS) do
@@ -1943,10 +2008,13 @@ function HistoryStatsMixin:BuildStatsArea()
     tile.valueText = tile:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     tile.valueText:SetPoint("TOP", tile, "TOP", 0, -2)
     tile.labelText = tile:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    tile.labelText:SetPoint("BOTTOM", tile, "BOTTOM", 0, 4)
+    tile.labelText:SetPoint("BOTTOMLEFT", tile, "BOTTOMLEFT", 3, 4)
+    tile.labelText:SetPoint("BOTTOMRIGHT", tile, "BOTTOMRIGHT", -3, 4)
     tile.labelText:SetText(L[STATS_TILE_LABELS[key]])
+    tile.labelText:SetWordWrap(false)
+    tile.labelText:SetJustifyH("CENTER")
     local meta = STATS_TILE_TOOLTIPS[key]
-    if meta then Chrome.AttachTooltip(tile, meta.title, meta.body) end
+    if meta then Chrome.AttachTooltip(tile, STATS_TILE_LABELS[key], meta.body) end
     self.tiles[key] = tile
   end
   self.tilesRow:SetScript("OnSizeChanged", function() self:PlaceStatsTiles() end)
@@ -2113,6 +2181,7 @@ function HistoryDetailMixin:CreateDetailPane()
   self.footer = footer
   self.actions = { btn1 = footer.btn1, btn2 = footer.btn2 }
   self.sections.footer = footer
+  footer:SetScript("OnSizeChanged", function() self:PlaceActionButtons() end)
 
   -- The stats area scrolls rather than clipping into the tab strip. The
   -- scrollChild's width tracks the viewport so the text re-wraps.
@@ -2127,7 +2196,7 @@ function HistoryDetailMixin:CreateDetailPane()
   -- initial value matches the typical panel width so first-frame layout
   -- does not collapse to zero. Height is a worst-case envelope (tiles row
   -- + 3 wrapped data rows + labels + margins); scrollbar engages above it.
-  stats:SetSize(540, 280)
+  stats:SetSize(540, 302)
   Mixin(stats, HistoryStatsMixin)
   stats:BuildStatsArea()
   statsScroll:SetScrollChild(stats)
