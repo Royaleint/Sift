@@ -308,11 +308,11 @@ local function ImportLegacyDataOnLogin()
   end
 end
 
--- Bootstrap via Foundry.Lifecycle. Subscription order is load-bearing:
--- OnAddonLoaded (Initialize) must be registered before OnLogin, because the
--- installers no-op until `initialized` is set and a late load replays both
--- hooks in registration order. No Lifecycle OnLogout; BubbleSuppressor registers
--- its own logout restore.
+-- Bootstrap via Foundry.Lifecycle. Loading Sift after login is unsupported:
+-- Lifecycle then runs the OnLogin hook while this file is still loading,
+-- before Initialize, so the installers below no-op and never run again. Sift
+-- is not load-on-demand, so a normal login always runs Initialize first.
+-- No Lifecycle OnLogout; BubbleSuppressor registers its own logout restore.
 local controller = F:RequireModule("Lifecycle", 1):New(NS, ADDON_NAME)
 controller:OnAddonLoaded(function() Initialize() end)
 controller:OnLogin(function()
