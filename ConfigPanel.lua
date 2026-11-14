@@ -1770,7 +1770,6 @@ end
 
 RenderAllowlist = function()
   local y = AddSectionTitle("Allowlist", "Manage senders that Sift should trust.")
-  y = AddStatus(y, sectionStatus.Allowlist)
 
   local regional = IsRegionalNames()
 
@@ -1813,6 +1812,14 @@ RenderAllowlist = function()
     regional and "Add the player named in the box to the allowlist."
       or "Add the Name-Realm in the box to the allowlist.")
   y = y - 34
+
+  -- The Undo row below already says "Removed X.", so skip the same text here.
+  local status = sectionStatus.Allowlist
+  if removedAllowlistEntry
+    and status == L["Removed %s."]:format(SenderLabel(removedAllowlistEntry.entry)) then
+    status = nil
+  end
+  y = AddStatus(y, status)
 
   if removedAllowlistEntry then
     AddText(L["Removed %s."]:format(SenderLabel(removedAllowlistEntry.entry)), "GameFontHighlightSmall", CONTENT_PAD, y)
@@ -1890,7 +1897,6 @@ end
 
 RenderBlocked = function()
   local y = AddSectionTitle("Blocked", "Review actors currently tracked as blocked.")
-  y = AddStatus(y, sectionStatus.Blocked)
 
   AddText("Search", "GameFontNormalSmall", CONTENT_PAD, y + 2, 48)
   local search = AddEditBox(CONTENT_PAD + 54, y + 5, 160, listState.blockedSearch,
@@ -1911,6 +1917,8 @@ RenderBlocked = function()
       "Guild Discord chat from players you blocked yourself is hidden too. " ..
       "Off by default, so those messages still show until you turn this on.")
   end
+
+  y = AddStatus(y, sectionStatus.Blocked)
 
   local entries = SortedBlockedActors()
   local maxPage = MaxPage(#entries)
