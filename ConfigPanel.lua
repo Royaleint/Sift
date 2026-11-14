@@ -1541,13 +1541,8 @@ local function RegisterInterfaceOptions()
   button:SetScript("OnClick", function()
     -- Never close the Settings panel from addon code: SettingsPanel:Close
     -- reaches a protected function and raises ADDON_ACTION_FORBIDDEN, which
-    -- pcall does not catch. The C_Timer defer lets secure context unwind
-    -- before our frame is created.
-    if C_Timer and C_Timer.After then
-      C_Timer.After(0, ConfigPanel.Open)
-    else
-      ConfigPanel.Open()
-    end
+    -- pcall does not catch.
+    ConfigPanel.Open()
   end)
 
   -- Registered through Foundry.Settings, which covers the modern and legacy
