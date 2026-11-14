@@ -2938,12 +2938,14 @@ function HistoryPanel.Show()
   HistoryPanel.ShowHistoryContent()
   if listPane then listPane:RefreshList() end
   frame:Show()
+  frame:Raise()
 end
 
 function HistoryPanel.ShowConfig(section)
   Chrome.BuildFrame()
   HistoryPanel.ShowConfigContent(section)
   frame:Show()
+  frame:Raise()
 end
 
 function HistoryPanel.Hide()
