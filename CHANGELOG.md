@@ -1,5 +1,15 @@
 # Sift Changelog
 
+## v1.6.2 (2026-11-27)
+
+- **The next version of Sift will require the Foundry-1.0 addon to be installed.** Sift includes its own copy today and lists the standalone Foundry-1.0 addon as optional. From the next version it will use the standalone addon instead. You can install Foundry-1.0 from CurseForge now to be ready.
+- Fixed Sift not starting on WoW Forever.
+- The Blocked list search now narrows as you type. A Clear button and Escape undo the search, and a search that matches nothing says so.
+- Config messages in Allowlist and Blocked now appear next to the control you used.
+- The Sift window now opens in front of the game's Options panel.
+- History labels and buttons no longer overlap when text is long.
+- Updated the bundled Foundry-1.0 library to v1.0.116.
+
 ## v1.6.1 (2026-10-31)
 
 - Updated the bundled Foundry-1.0 library to v1.0.114.
