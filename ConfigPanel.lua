@@ -17,7 +17,9 @@ local function AttachTooltip(widget, title, body, hint)
     if not GameTooltip then return end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     if title then GameTooltip:AddLine(L[title]) end
-    if body  then GameTooltip:AddLine(L[body],  1.00, 1.00, 1.00, true) end
+    if body  then
+      GameTooltip:AddLine(L[type(body) == "function" and body() or body], 1.00, 1.00, 1.00, true)
+    end
     if hint  then GameTooltip:AddLine(L[hint],  0.70, 0.70, 0.70, true) end
     GameTooltip:Show()
   end)
@@ -108,12 +110,17 @@ local listState = {
   allowlistAddText = "",
   blockedSearch = "",
   blockedPage = 1,
-  -- SortedBlockedActors' cache. blockedCache is nil whenever it is not
-  -- valid; blockedCacheSearch/blockedCacheRevision are only meaningful
-  -- while blockedCache is set.
+  -- SortedBlockedActors' caches. blockedCache (the whole list, sorted) is nil
+  -- whenever it is not valid; blockedCacheRevision is only meaningful while it
+  -- is set. blockedFiltered is the search result drawn from that exact table.
   blockedCache = nil,
-  blockedCacheSearch = nil,
   blockedCacheRevision = nil,
+  blockedFiltered = nil,
+  blockedFilteredSearch = nil,
+  blockedFilteredSource = nil,
+  -- Set when the panel hid and the search was cleared, so the next show can
+  -- redraw the Blocked section to match.
+  blockedRedrawOnShow = false,
   keywordSearch = { block = "", allow = "" },
   keywordPage = { block = 1, allow = 1 },
   keywordAddText = { block = "", allow = "" },
@@ -339,7 +346,12 @@ local function ReleaseNativeChild(child)
   if child.ClearAllPoints then child:ClearAllPoints() end
 end
 
+-- Bumped on every redraw; handlers captured by an earlier render compare
+-- against it and stand down.
+local contentToken = 0
+
 local function ReleaseContent()
+  contentToken = contentToken + 1
   for _, child in ipairs(nativeChildren) do
     ReleaseNativeChild(child)
   end
@@ -418,7 +430,8 @@ local function AddEditBox(x, y, width, initialText, tooltipTitle, tooltipBody)
 end
 
 -- tooltipTitle/tooltipBody are optional; when given, the hover attaches to the
--- row frame itself, the only mouse-enabled frame on a disabled row.
+-- row frame itself, the only mouse-enabled frame on a disabled row. Returns
+-- the next y, then the row frame and its left and right texts.
 local function AddDisabledRow(label, value, y, tooltipTitle, tooltipBody)
   local row = TrackNative(CreateFrame("Frame", nil, content, "BackdropTemplate"))
   row:SetHeight(30)
@@ -446,7 +459,7 @@ local function AddDisabledRow(label, value, y, tooltipTitle, tooltipBody)
     AttachTooltip(row, tooltipTitle, tooltipBody)
   end
 
-  return y - 36
+  return y - 36, row, left, right
 end
 
 -- Native sliders, two paths: MinimalSliderWithSteppersTemplate (MWS) where the
@@ -764,38 +777,54 @@ local function BlockedEntryLastSeen(entry)
   return nil
 end
 
--- Cached sort, valid while the search text and DB.GetBlockedActorsRevision()
--- are unchanged. Any write that bypasses DB must clear the cache itself.
+-- The sorted whole list is cached until DB.GetBlockedActorsRevision() changes;
+-- a search filters it in one pass without re-sorting. Any write that bypasses
+-- DB must set listState.blockedCache to nil itself.
 local function SortedBlockedActors()
   local search = Lower(listState.blockedSearch)
   local revision = NS.DB and NS.DB.GetBlockedActorsRevision and NS.DB.GetBlockedActorsRevision()
-  if listState.blockedCache and listState.blockedCacheSearch == search
-     and revision ~= nil and listState.blockedCacheRevision == revision then
-    return listState.blockedCache
+  local all = listState.blockedCache
+  if not (all and revision ~= nil and listState.blockedCacheRevision == revision) then
+    all = {}
+    for key, entry in pairs(GetBlockedActors()) do
+      local label = BlockedEntryLabel(key, entry)
+      all[#all + 1] = { key = key, entry = entry, label = label,
+        lowerKey = Lower(key), lowerLabel = Lower(label) }
+    end
+    table.sort(all, function(a, b)
+      local ats = tonumber(BlockedEntryLastSeen(a.entry)) or 0
+      local bts = tonumber(BlockedEntryLastSeen(b.entry)) or 0
+      if ats ~= bts then
+        return ats > bts
+      end
+      return a.lowerLabel < b.lowerLabel
+    end)
+    listState.blockedCache = all
+    listState.blockedCacheRevision = revision
   end
 
-  local blocked = GetBlockedActors()
+  if search == "" then
+    return all
+  end
+  if listState.blockedFilteredSource == all and listState.blockedFilteredSearch == search then
+    return listState.blockedFiltered
+  end
   local out = {}
-  for key, entry in pairs(blocked) do
-    local label = BlockedEntryLabel(key, entry)
-    if search == "" or string.find(Lower(key), search, 1, true)
-       or string.find(Lower(label), search, 1, true) then
-      out[#out + 1] = { key = key, entry = entry, label = label }
+  for _, item in ipairs(all) do
+    if string.find(item.lowerKey, search, 1, true) or string.find(item.lowerLabel, search, 1, true) then
+      out[#out + 1] = item
     end
   end
-  table.sort(out, function(a, b)
-    local ats = tonumber(BlockedEntryLastSeen(a.entry)) or 0
-    local bts = tonumber(BlockedEntryLastSeen(b.entry)) or 0
-    if ats ~= bts then
-      return ats > bts
-    end
-    return Lower(a.label) < Lower(b.label)
-  end)
-
-  listState.blockedCache = out
-  listState.blockedCacheSearch = search
-  listState.blockedCacheRevision = revision
+  listState.blockedFiltered = out
+  listState.blockedFilteredSearch = search
+  listState.blockedFilteredSource = all
   return out
+end
+
+local function ResetBlockedSearch()
+  listState.blockedSearch = ""
+  listState.blockedPage = 1
+  listState.blockedCache = nil
 end
 
 local function MaxPage(total)
@@ -1897,16 +1926,14 @@ end
 
 RenderBlocked = function()
   local y = AddSectionTitle("Blocked", "Review actors currently tracked as blocked.")
+  local token = contentToken
 
   AddText("Search", "GameFontNormalSmall", CONTENT_PAD, y + 2, 48)
   local search = AddEditBox(CONTENT_PAD + 54, y + 5, 160, listState.blockedSearch,
     "Search",
-    "Type part of a name to filter the list below, then click Apply.")
-  AddNativeButton("Apply", CONTENT_PAD + 222, y + 6, 70, function()
-    listState.blockedSearch = search:GetText() or ""
-    listState.blockedPage = 1
-    ConfigPanel.ShowSection("Blocked")
-  end, "Apply the search box to the Blocked list and reset to page 1.")
+    "Type part of a name to filter the list below. Press Escape to clear the search.")
+  local clearSearch = AddNativeButton("Clear", CONTENT_PAD + 222, y + 6, 60, nil,
+    "Clear the search and show the whole Blocked list.")
   AddNativeButton("Clear All", CONTENT_PAD + 300, y + 6, 90, ConfigPanel.ConfirmClearBlocked,
     "Remove every player from the Blocked list. Confirmation required.")
   y = y - 34
@@ -1920,55 +1947,35 @@ RenderBlocked = function()
 
   y = AddStatus(y, sectionStatus.Blocked)
 
-  local entries = SortedBlockedActors()
-  local maxPage = MaxPage(#entries)
-  if listState.blockedPage > maxPage then listState.blockedPage = maxPage end
-  local startIndex = (listState.blockedPage - 1) * PAGE_ROWS + 1
-  local endIndex = math.min(startIndex + PAGE_ROWS - 1, #entries)
+  -- The list widgets are all built here, once. A search or page change only
+  -- sets their text, handlers and visibility, so the search box keeps focus
+  -- and typing creates no frames.
+  local listTop = y
+  local rowsTop = listTop - 20
+  local rowStep = ROW_HEIGHT + 4
+  local UpdateList
 
-  AddText(L["Blocked actors: %s"]:format(tostring(#entries)), "GameFontNormalSmall", CONTENT_PAD, y)
-  y = y - 20
+  local countText = AddText("", "GameFontNormalSmall", CONTENT_PAD, listTop)
 
-  if #entries == 0 then
-    AddDisabledRow("No blocked actors", "Nothing to manage.", y)
-    return
-  end
-
-  for index = startIndex, endIndex do
-    local rowData = entries[index]
+  local rows = {}
+  for i = 1, PAGE_ROWS do
     local row = TrackNative(CreateFrame("Frame", nil, content, "BackdropTemplate"))
     row:SetHeight(ROW_HEIGHT)
-    row:SetPoint("TOPLEFT", content, "TOPLEFT", CONTENT_PAD, y)
+    row:SetPoint("TOPLEFT", content, "TOPLEFT", CONTENT_PAD, rowsTop - (i - 1) * rowStep)
     row:SetPoint("RIGHT", content, "RIGHT", -CONTENT_PAD, 0)
     if row.SetBackdrop then
       row:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
       row:SetBackdropColor(0.10, 0.11, 0.13, 0.6)
     end
-    row:Show()
-
-    local isManualBlock = type(rowData.entry) == "table" and rowData.entry.manual == true
 
     local label = TrackNative(row:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
     label:SetPoint("LEFT", row, "LEFT", 8, 6)
     label:SetJustifyH("LEFT")
     label:SetWordWrap(false)
-    if isManualBlock then
-      label:SetText(L["%s (blocked by you)"]:format(rowData.label))
-    else
-      label:SetText(L["%s (blocked by Sift)"]:format(rowData.label))
-    end
     label:Show()
 
     local meta = TrackNative(row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"))
     meta:SetPoint("LEFT", row, "LEFT", 8, -8)
-    -- A manual block can have zero recorded blocks; say who added it.
-    local blockCount = tostring(BlockedEntryCount(rowData.entry))
-    local lastSeen = RelativeTime(BlockedEntryLastSeen(rowData.entry))
-    if isManualBlock then
-      meta:SetText(L["blocked by you - blocks %s - last %s"]:format(blockCount, lastSeen))
-    else
-      meta:SetText(L["blocked by Sift - blocks %s - last %s"]:format(blockCount, lastSeen))
-    end
     meta:Show()
 
     local remove = TrackNative(CreateFrame("Button", nil, row, "UIPanelButtonTemplate"))
@@ -1976,34 +1983,142 @@ RenderBlocked = function()
     remove:SetPoint("RIGHT", row, "RIGHT", -6, 0)
     remove:SetText(L["Remove"])
     remove:SetScript("OnClick", function()
-      RemoveBlocked(rowData.key)
+      if token == contentToken and row.key then
+        RemoveBlocked(row.key)
+      end
     end)
-    AttachTooltip(remove, "Remove",
-      L["Take %s off the Blocked list."]:format(rowData.label))
+    AttachTooltip(remove, "Remove", function()
+      return L["Take %s off the Blocked list."]:format(row.labelText or "")
+    end)
     remove:Show()
 
-    -- The label has no width of its own, so pin its right edge to the
-    -- button now that it exists: a long name truncates instead of running
-    -- underneath Remove.
+    -- A long name truncates instead of running underneath Remove.
     label:SetPoint("RIGHT", remove, "LEFT", -6, 6)
 
-    y = y - (ROW_HEIGHT + 4)
+    row.label, row.meta, row.remove = label, meta, remove
+    rows[i] = row
   end
 
-  AddText(L["Page %s of %s"]:format(tostring(listState.blockedPage), tostring(maxPage)),
-    "GameFontDisableSmall", CONTENT_PAD, y)
-  AddNativeButton("Prev", CONTENT_PAD + 170, y + 4, 60, function()
-    if listState.blockedPage > 1 then
+  -- Shown instead of the rows: the list is empty, or the search matches
+  -- nothing. A hidden row hides its texts too: the embedded height
+  -- measurement looks at each tracked child's own shown flag.
+  local function SetAllShown(shown, ...)
+    for i = 1, select("#", ...) do
+      (select(i, ...)):SetShown(shown)
+    end
+  end
+  local _, emptyRow, emptyLeft, emptyRight = AddDisabledRow("No blocked actors", "Nothing to manage.", rowsTop)
+  local _, noMatchRow, noMatchLeft, noMatchRight =
+    AddDisabledRow("", "Clear the search to see the whole list.", rowsTop)
+  noMatchLeft:SetPoint("RIGHT", noMatchRight, "LEFT", -8, 0)
+  noMatchLeft:SetWordWrap(false)
+
+  local pageText = AddText("", "GameFontDisableSmall", CONTENT_PAD, rowsTop, 120)
+  local prevButton = AddNativeButton("Prev", CONTENT_PAD + 170, rowsTop + 4, 60, function()
+    if token == contentToken and listState.blockedPage > 1 then
       listState.blockedPage = listState.blockedPage - 1
-      ConfigPanel.ShowSection("Blocked")
+      UpdateList()
     end
   end, "Show the previous page of the Blocked list.")
-  AddNativeButton("Next", CONTENT_PAD + 236, y + 4, 60, function()
-    if listState.blockedPage < maxPage then
+  local nextButton = AddNativeButton("Next", CONTENT_PAD + 236, rowsTop + 4, 60, function()
+    if token == contentToken then
       listState.blockedPage = listState.blockedPage + 1
-      ConfigPanel.ShowSection("Blocked")
+      UpdateList()
     end
   end, "Show the next page of the Blocked list.")
+
+  UpdateList = function()
+    local entries = SortedBlockedActors()
+    local maxPage = MaxPage(#entries)
+    if listState.blockedPage > maxPage then listState.blockedPage = maxPage end
+    local startIndex = (listState.blockedPage - 1) * PAGE_ROWS + 1
+    local endIndex = math.min(startIndex + PAGE_ROWS - 1, #entries)
+    local searching = listState.blockedSearch ~= ""
+
+    local total = #entries
+    if searching then
+      total = #listState.blockedCache
+      countText:SetText(L["Blocked actors: %s of %s"]:format(tostring(#entries), tostring(total)))
+    else
+      countText:SetText(L["Blocked actors: %s"]:format(tostring(#entries)))
+    end
+
+    SetAllShown(#entries == 0 and total == 0, emptyRow, emptyLeft, emptyRight)
+    SetAllShown(#entries == 0 and total > 0, noMatchRow, noMatchLeft, noMatchRight)
+    if #entries == 0 and total > 0 then
+      noMatchLeft:SetText(L["No blocked players match \"%s\""]:format((string.gsub(listState.blockedSearch, "|", "||"))))
+    end
+
+    for i = 1, PAGE_ROWS do
+      local row = rows[i]
+      local rowData = entries[startIndex + i - 1]
+      if rowData and startIndex + i - 1 <= endIndex then
+        local isManualBlock = type(rowData.entry) == "table" and rowData.entry.manual == true
+        local blockCount = tostring(BlockedEntryCount(rowData.entry))
+        local lastSeen = RelativeTime(BlockedEntryLastSeen(rowData.entry))
+        row.key, row.labelText = rowData.key, rowData.label
+        if isManualBlock then
+          row.label:SetText(L["%s (blocked by you)"]:format(rowData.label))
+          row.meta:SetText(L["blocked by you - blocks %s - last %s"]:format(blockCount, lastSeen))
+        else
+          row.label:SetText(L["%s (blocked by Sift)"]:format(rowData.label))
+          row.meta:SetText(L["blocked by Sift - blocks %s - last %s"]:format(blockCount, lastSeen))
+        end
+        SetAllShown(true, row, row.label, row.meta, row.remove)
+      else
+        row.key, row.labelText = nil, nil
+        SetAllShown(false, row, row.label, row.meta, row.remove)
+      end
+    end
+
+    local shownRows = math.max(endIndex - startIndex + 1, 0)
+    local pagerY = rowsTop - shownRows * rowStep
+    pageText:ClearAllPoints()
+    pageText:SetPoint("TOPLEFT", content, "TOPLEFT", CONTENT_PAD, pagerY)
+    pageText:SetText(L["Page %s of %s"]:format(tostring(listState.blockedPage), tostring(maxPage)))
+    prevButton:ClearAllPoints()
+    prevButton:SetPoint("TOPLEFT", content, "TOPLEFT", CONTENT_PAD + 170, pagerY + 4)
+    nextButton:ClearAllPoints()
+    nextButton:SetPoint("TOPLEFT", content, "TOPLEFT", CONTENT_PAD + 236, pagerY + 4)
+    pageText:SetShown(#entries > 0)
+    prevButton:SetShown(#entries > 0)
+    nextButton:SetShown(#entries > 0)
+
+    clearSearch:SetShown(searching)
+    if embeddedMode and embeddedSectionCallback then
+      embeddedSectionCallback()
+    end
+  end
+
+  local function SetSearch(text)
+    listState.blockedSearch = string.match(text or "", "^%s*(.-)%s*$")
+    listState.blockedPage = 1
+    UpdateList()
+  end
+
+  clearSearch:SetScript("OnClick", function()
+    if token ~= contentToken then return end
+    search:SetText("")
+    SetSearch("")
+    search:ClearFocus()
+  end)
+  search:SetScript("OnTextChanged", function(self, userInput)
+    if userInput and token == contentToken then
+      SetSearch(self:GetText())
+    end
+  end)
+  search:SetScript("OnEscapePressed", function(self)
+    if token == contentToken and self:GetText() ~= "" then
+      self:SetText("")
+      SetSearch("")
+    end
+    self:ClearFocus()
+  end)
+  search:SetScript("OnEnterPressed", function(self)
+    self:ClearFocus()
+  end)
+
+  UpdateList()
 end
 
 -- Both keyword lists render through one function; they differ only in wording.
@@ -2585,12 +2700,27 @@ local function BuildFrame(parent)
     end)
     ApplyStoredGeometry()
   end
-  -- Both modes, so the Blocked list cache never outlives the panel.
+  -- Both modes: the Blocked list cache never outlives the panel, and a Blocked search is cleared.
   frame:SetScript("OnHide", function()
     if not embedded and sizeDirty then
       SaveSize()
     end
-    listState.blockedCache = nil
+    -- Hiding the parent hides this frame too and shows it again unchanged,
+    -- so the cleared search is redrawn on the next show.
+    if listState.blockedSearch ~= "" then
+      ResetBlockedSearch()
+      listState.blockedRedrawOnShow = true
+    else
+      listState.blockedCache = nil
+    end
+  end)
+  frame:SetScript("OnShow", function()
+    if listState.blockedRedrawOnShow then
+      listState.blockedRedrawOnShow = false
+      if activeSection == "Blocked" then
+        ConfigPanel.ShowSection("Blocked")
+      end
+    end
   end)
   if not embedded and UISpecialFrames then
     tinsert(UISpecialFrames, "SiftConfigFrame")
@@ -2679,7 +2809,13 @@ function ConfigPanel.ShowSection(section)
     section = "Detection"
   end
   BuildFrame()
+  if activeSection == "Blocked" and section ~= "Blocked" then
+    ResetBlockedSearch()
+  end
   activeSection = section
+  if section == "Blocked" then
+    listState.blockedRedrawOnShow = false
+  end
   ReleaseContent()
   SetNavHighlight()
 
